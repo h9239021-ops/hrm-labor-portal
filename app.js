@@ -14,29 +14,33 @@
   var CATS = [
     { id: "att", name: "근태", ic: "🕒", desc: "선택적 근로시간제 운영, 분기 근태 미준수 관리, 시간외근로·보상휴가",
       items: ["근태 운영", "(분기)근태 미준수 관리", "시간외근로"],
-      menus: [["manual", "근태관리 매뉴얼"], ["violations", "근태 위반자 관리"], ["worktypes", "근무형태 현황"]] },
-    { id: "leave", name: "휴가", ic: "🌴", desc: "연차·연차 촉진, 리프레쉬·보상·경조휴가, 퇴사자 연차 정산",
-      items: ["연차/휴가", "연차 촉진", "리프레쉬 휴가"], menus: [["manual", "휴가 매뉴얼"]], src: ["연차/휴가", "리프레쉬 휴가"] },
-    { id: "absence", name: "휴직", ic: "🍼", desc: "모성보호, 육아·질병 휴직, 복직 관리",
-      items: ["모성보호", "휴직/복직"], menus: [["main", "휴직"]], src: ["모성보호/휴직/복직"] },
+      menus: [["manual", "근태관리 매뉴얼"], ["violations", "근태 위반자 관리"], ["worktypes", "근무형태 현황"], ["automail", "자동 메일"]] },
+    { id: "leave", name: "휴가", ic: "🌴", desc: "연차·연차 촉진, 리프레쉬·보상·경조휴가, 휴가 사용 현황",
+      items: ["연차/휴가", "연차 촉진", "휴가 현황"], menus: [["manual", "휴가 매뉴얼"], ["status", "휴가 현황"]] },
+    { id: "absence", name: "휴직", ic: "🍼", desc: "모성보호, 육아·질병 휴직, 복직 관리, 휴직·복직 현황",
+      items: ["모성보호", "휴직/복직", "휴직 현황"], menus: [["manual", "휴직 매뉴얼"], ["status", "휴직·복직 현황"]] },
     { id: "welfare", name: "복리후생", ic: "🎁", desc: "경조사, 건강검진, 생일·출산·명절 선물, 복지몰",
-      items: ["경조사", "건강검진", "선물·상품권", "복지몰"], menus: [["main", "복리후생"]], src: ["경조사", "건강검진", "공단건강검진(EDI)", "생일·출산·명절 선물", "복지몰"] },
-    { id: "case", name: "사건", ic: "⚖️", desc: "직장 내 괴롭힘·성희롱 조사와 조치, 인사위원회 운영",
-      items: ["괴롭힘/성희롱", "인사위원회"], menus: [["main", "사건"]], src: ["인사위원회", "노무 검토 의견"] },
+      items: ["경조사", "건강검진", "선물·상품권", "복지몰"], menus: [["manual", "복리후생 매뉴얼"]] },
+    { id: "case", name: "사건", ic: "⚖️", desc: "직장 내 괴롭힘·성희롱·비위행위 조사와 조치, 인사위원회, 징계 이력",
+      items: ["괴롭힘/성희롱", "비위행위", "인사위원회", "징계 이력"], menus: [["manual", "사건 처리 매뉴얼"], ["cases", "사건 현황"], ["discipline", "징계 이력"]] },
     { id: "council", name: "노사협의회", ic: "🤝", desc: "분기 노사협의회 운영과 안건 정리",
-      items: ["협의회 운영", "안건 정리"], menus: [["main", "노사협의회"]], src: ["노사협의회", "노사협의회 안건 정리 DB"] },
+      items: ["협의회 운영", "안건 정리"], menus: [["manual", "운영 매뉴얼"], ["agenda", "안건 정리"]] },
     { id: "safety", name: "산업안전보건", ic: "⛑️", desc: "산업안전보건위원회, 안전보건교육, 위험성평가, 중대재해 대응",
-      items: ["안전보건위원회", "안전보건교육", "위험성평가"], menus: [["main", "산업안전보건"]], src: ["산업안전보건"] },
+      items: ["안전보건위원회", "안전보건교육", "위험성평가"], menus: [["manual", "안전보건 관리 매뉴얼"], ["status", "관리 현황"]] },
     { id: "advice", name: "노무자문", ic: "📑", desc: "노무 자문 요청과 검토 의견, 외부 노무법인 자문 이력",
-      items: ["자문 요청", "검토 의견", "자문 이력"], menus: [["main", "노무자문"]], src: ["노무 검토 의견"] },
-    { id: "disabled", name: "장애인근로자 관리", ic: "♿", desc: "장애인 근로자 현황, 장애인고용부담금 신고·납부",
-      items: ["장애인 근로자 현황", "고용부담금"], menus: [["main", "장애인근로자 관리"]] },
+      items: ["자문 요청", "검토 의견", "자문 이력"], menus: [["manual", "자문 절차"], ["opinions", "검토 의견"]] },
+    { id: "disabled", name: "장애인근로자 관리", ic: "♿", desc: "장애인 근로자(장애인스포츠단) 채용·근태·급여 관리, 고용부담금",
+      items: ["장애인스포츠단", "고용부담금"], menus: [["manual", "관리 매뉴얼"]] },
     { id: "insp", name: "근로감독", ic: "🛡️", desc: "근로감독 대시보드: 대응 매뉴얼, 리스크 관리대장, 감독 대응(자료 취합)",
       items: ["대응 매뉴얼", "리스크 관리대장", "감독 대응"], menus: [["main", "근로감독 대시보드"]], link: DASHBOARD_URL },
-    { id: "etc", name: "기타", ic: "📁", desc: "사업부 특이사항, 업무 관련 링크, MIS 결재선 변경 등",
-      items: ["사업부 특이사항", "업무 링크", "MIS 결재선"], menus: [["main", "기타"]], src: ["사업부 특이사항", "업무 관련 링크", "MIS 결재선 변경 방법", "전적"] }
+    { id: "rules", name: "규정 · 매뉴얼", ic: "📚", desc: "취업규칙·사내 규정 원문과 버전 관리, 취업규칙 개정 절차",
+      items: ["규정 목록", "개정 이력", "개정 절차"], menus: [["docs", "규정 목록"], ["manual", "개정 절차 매뉴얼"]] },
+    { id: "etc", name: "기타", ic: "📁", desc: "사업부 특이사항, 업무 관련 링크, MIS 결재선 변경, 전적, 온보딩 등",
+      items: ["사업부 특이사항", "업무 링크", "MIS 결재선"], menus: [["manual", "기타 매뉴얼"]] }
   ];
-  var HOME_KEYS = [["home.org", "업무분장표"], ["home.calendar", "연간 계획 캘린더"], ["home.faq", "FAQ"]];
+  // menus drawn by the shared record list: "cat.menu" → REC_DEF key
+  var GEN_MENU = { "leave.status": "leave", "absence.status": "absence", "case.cases": "cases", "case.discipline": "discipline", "council.agenda": "agenda", "safety.status": "safety", "advice.opinions": "opinions" };
+  var HOME_KEYS = [["home.org", "업무분장표"], ["home.calendar", "연간 계획 캘린더"], ["home.faq", "FAQ"], ["home.laws", "법령정보"]];
   var DOW = ["일", "월", "화", "수", "목", "금", "토"];
 
   /* ---------- utils ---------- */
@@ -219,6 +223,7 @@
       renderCategory(c, p[2], p[3]);
     } else if (p[0] === "admin" && isAdmin()){ renderAdmin(); }
     else if (p[0] === "faq" && can("home.faq", "read")){ renderFaqPage(p[1]); }
+    else if (p[0] === "laws" && can("home.laws", "read")){ renderLawPage(); }
     else renderHome();
     wireShell();
   }
@@ -244,21 +249,23 @@
     var cats = CATS.filter(catVisible);
     h += '<section style="margin-top:26px"><div class="sec-h"><h2>업무 카테고리</h2></div><div class="cats">' +
       (cats.length ? cats.map(catCard).join("") : '<p class="hint">열람 가능한 카테고리가 없습니다.</p>') + '</div></section>';
+    if (can("home.laws", "read")) h += '<section style="margin-top:26px" id="lawSec"><div class="sec-h"><h2>⚖️ 법령정보</h2></div><p class="hint">불러오는 중…</p></section>';
     h += '<div class="footer-note">HRM팀 노무관리파트 · 권한이 없는 메뉴와 카테고리는 표시되지 않습니다.</div></main>';
     app.innerHTML = shell(h, null);
     if (showOrg) renderOrg();
     if (showCal){ calRefresh(); }
     if (showFaq) renderFaq();
+    if (can("home.laws", "read")) renderLawHome();
     if (showChg){ renderChg(); loadChanges().then(function(){ if ($("#chgCard")){ renderChg(); if (showCal) renderCal(); } }); }
   }
 
   /* ---------- 이달의 근무형태 변경 알림 (근무형태 현황 · 휴직 · 휴가 기록의 시작/종료일) ---------- */
   var CHG = null;
   var CHG_LABEL = { "근로시간 단축자": "근로시간 단축", "재택근무 예외자": "재택근무 예외", "모바일 출퇴근": "모바일 출퇴근", "단시간근로자": "단시간근로", "고정근무자": "고정근무" };
-  function canChg(){ return can("att.worktypes", "read") || can("absence.main", "read") || can("leave.manual", "read"); }
+  function canChg(){ return can("att.worktypes", "read") || can("absence.status", "read") || can("leave.status", "read"); }
   function addDay(s, n){ var d = parseD(s); if (!d) return ""; d.setDate(d.getDate() + n); return ymd(d); }
   async function loadChanges(){
-    async function get(cat, menu){ try { if (menu) return await loadRecs(cat, menu); var r = await sb.from("portal_records").select("*").eq("cat", cat); return r.error ? [] : (r.data || []); } catch(e){ return []; } }
+    async function get(cat, menu){ try { return await loadRecs(cat, menu); } catch(e){ return []; } }
     var out = [];
     function push(x, date, kind, cls, label, href){
       var d = x.data || {}; if (!date) return;
@@ -272,15 +279,22 @@
         push(x, d.start, "시작", "start", label, "#/c/att/worktypes/list"); push(x, d.end, "종료", "end", label, "#/c/att/worktypes/list");
       });
     }
-    var other = [];
-    if (can("absence.main", "read")) other = other.concat((await get("absence", "main")).map(function(x){ return [x, "absence"]; }));
-    if (can("leave.manual", "read")) other = other.concat((await get("leave")).map(function(x){ return [x, "leave"]; }));
-    other.forEach(function(p){
-      var x = p[0], d = x.data || {}, t = d.type || (p[1] === "absence" ? "휴직" : "휴가"), href = "#/c/" + p[1];
-      if (/휴직/.test(t)){ push(x, d.start, "휴직", "start", t, href); if (d.end) push(x, addDay(d.end, 1), "복직", "back", t + " 종료", href); return; }
-      if (d.start && d.start === d.end){ push(x, d.start, "1일", "one", t, href); return; }
-      push(x, d.start, "시작", "start", t, href); push(x, d.end, "종료", "end", t, href);
-    });
+    if (can("absence.status", "read")){
+      (await get("absence", "status")).forEach(function(x){
+        var d = x.data || {}, t = d.type || "휴직", href = "#/c/absence/status";
+        if (/휴가/.test(t)){ push(x, d.start, "시작", "start", t, href); push(x, d.end, "종료", "end", t, href); }
+        else { push(x, d.start, "휴직", "start", t, href); }
+        var back = d.return_date || (d.end ? addDay(d.end, 1) : ""); if (back && !d.ended) push(x, back, "복직", "back", t + " 종료", href);
+      });
+    }
+    if (can("leave.status", "read")){
+      (await get("leave", "status")).forEach(function(x){
+        var d = x.data || {}, t = d.type || "휴가", href = "#/c/leave/status";
+        if (!d.start || (!d.end || d.end === d.start) && /보건휴가|태아검진|예비군|무급휴가|가족돌봄휴가|난임치료휴가/.test(t)) return;   // 하루짜리 수시 휴가는 알림에서 제외
+        if (d.start === d.end || !d.end){ push(x, d.start, "1일", "one", t, href); return; }
+        push(x, d.start, "시작", "start", t, href); push(x, d.end, "종료", "end", t, href);
+      });
+    }
     out.sort(function(a, b){ return a.date < b.date ? -1 : a.date > b.date ? 1 : a.name.localeCompare(b.name); });
     CHG = out; return out;
   }
@@ -306,7 +320,7 @@
   }
   function calRefresh(){ renderCal(); renderTodo(); renderChg(); }
   function catCard(c){
-    var ready = !!c.link || S.pages.some(function(p){ return p.cat === c.id; });
+    var ready = !!c.link || S.pages.some(function(p){ return p.cat === c.id; }) || c.menus.some(function(m){ return m[0] !== "manual" && m[0] !== "main"; });
     return '<a class="catc' + (ready ? "" : " soon") + '" href="' + (c.link ? c.link : "#/c/" + c.id) + '"' + (c.link ? ' target="_blank" rel="noopener"' : '') + '>' +
       (c.link ? '<span class="ext">대시보드 ↗</span>' : (ready ? '' : '<span class="ext">준비 중</span>')) +
       '<div class="ic">' + c.ic + '</div><h3>' + esc(c.name) + '</h3><p>' + esc(c.desc) + '</p>' +
@@ -970,6 +984,9 @@
     var key = c.id + "." + menu;
     if (menu === "manual"){ app.innerHTML = shell(head + '<div class="cat-wrap" id="cw"></div>', c.name); renderManual(c, key, sub); }
     else if (c.id === "att" && menu === "worktypes"){ app.innerHTML = shell(head + '<div class="cat-wrap"><div class="cat-main" id="cm"></div></div>', c.name); if (sub === "exceptions" || sub === "list") renderWorktypes(c, sub === "list" ? "worktypes" : "exceptions"); else renderWtStats(c); }
+    else if (c.id === "att" && menu === "automail"){ app.innerHTML = shell(head + '<div class="cat-wrap"><div class="cat-main" id="cm"></div></div>', c.name); renderAutoMail(c, sub); }
+    else if (c.id === "rules" && menu === "docs"){ app.innerHTML = shell(head + '<div class="cat-wrap"><div class="cat-main" id="cm"></div></div>', c.name); renderRules(c, sub); }
+    else if (GEN_MENU[key]){ app.innerHTML = shell(head + '<div class="cat-wrap"><div class="cat-main" id="cm"></div></div>', c.name); if (key === "case.cases" && can("case.discipline", "read")) loadRecs("case", "discipline").catch(function(){}).then(function(){ renderGen(c, GEN_MENU[key], sub); }); else renderGen(c, GEN_MENU[key], sub); }
     else if (c.id === "att" && menu === "violations"){ app.innerHTML = shell(head + '<div class="cat-wrap"><div class="cat-main" id="cm"></div></div>', c.name); renderViol(c, sub); }
     else {
       app.innerHTML = shell(head + '<div class="cat-wrap"><div class="cat-main"><div class="soon-box"><div class="ic">' + c.ic + '</div><h2>' + esc(c.name) + ' 메뉴는 준비 중입니다</h2>' +
@@ -1579,6 +1596,463 @@
       logp("worktypes", "export", "xlsx " + wsDash.plabel);
     };
     $("#wsPdf").onclick = function(){ exportPdf(this, $("#wsDash"), "근무형태현황_통계_" + wsDash.plabel.replace(/\s/g, "") + (wsOrgF ? "_" + wsOrgF : "") + "_" + todayStr() + ".pdf", "worktypes", "pdf " + wsDash.plabel); };
+  }
+  /* =====================================================================
+     공통 현황표 (휴가·휴직·사건·징계·산업안전보건·노사협의회·노무자문·법령정보)
+     REC_DEF[key].gen 으로 열·필터·통계를 정의하고 renderGen 이 그립니다.
+     ===================================================================== */
+  var ORG_LIST = ["MS", "HQ", "CC", "CC CTO", "DW", "EN", "ST", "PA", "CF", "MT", "SP"];
+  var genF = {};
+  function genFilter(k){ return genF[k] || (genF[k] = { q: "", type: "", org: "", team: "", st: "", ended: true }); }
+  function pStatus(d){ var s = wtStatus(d); return s === "적용 중" ? "진행 중" : s; }
+  function genStatus(def, d){ var g = def.gen; if (g.status === "period") return pStatus(d); if (g.status) return d[g.status] || "-"; return ""; }
+  function stCls(s){ return /종료|종결|완료|시행$/.test(s) ? "neutral" : /예정|접수|입법예고|승인 대기|주소 필요/.test(s) ? "warn" : /실패|해당\(인정\)/.test(s) ? "danger" : "good"; }
+  function fLabel(def, k){ for (var i = 0; i < def.fields.length; i++) if (def.fields[i][0] === k) return def.fields[i][1]; return k; }
+  function genCell(def, k, d){
+    if (k === "_period") return esc((d.start || "") + (d.end && d.end !== d.start ? " ~ " + d.end : ""));
+    if (k === "_status"){ var s = genStatus(def, d); return '<span class="badge ' + stCls(s) + '">' + esc(s) + '</span>'; }
+    if (k === "_files") return (d.files || []).length ? '📎 ' + d.files.length : '';
+    var v = d[k]; if (v == null || v === "") return "";
+    if (k === def.gen.typeF) return String(v).split(",").map(function(t){ return '<span class="badge info">' + esc(t.trim()) + '</span>'; }).join(" ");
+    if (k === def.gen.nameF) return '<b>' + esc(v) + '</b>';
+    if (k === "days") return esc(v) + "일";
+    if (k === "url") return '<a href="' + esc(v) + '" target="_blank" rel="noopener" onclick="event.stopPropagation()">원문 ↗</a>';
+    v = String(v); return esc(v.length > 46 ? v.slice(0, 46) + "…" : v);
+  }
+  function genColLabel(def, k){ return k === "_period" ? (def.gen.periodLabel || "기간") : k === "_status" ? "상태" : k === "_files" ? "첨부" : fLabel(def, k); }
+  function genNav(c, menu, def, cur){
+    if (!def.gen.stats) return "";
+    return '<nav class="subtabs"><a href="#/c/' + c.id + '/' + menu + '" class="' + (cur === "list" ? "on" : "") + '">' + esc(def.title) + '</a><a href="#/c/' + c.id + '/' + menu + '/stats" class="' + (cur === "stats" ? "on" : "") + '">📊 통계</a></nav>';
+  }
+  function genRows(c, def){ var key = c.id + "." + def.menu; return (S.recs[key] || []).filter(function(x){ return !def.list || (x.data.list || def.gen.defaultList) === def.list; }); }
+  async function renderGen(c, defKey, sub, hostSel){
+    var def = REC_DEF[defKey], g = def.gen, key = c.id + "." + def.menu, host = $(hostSel || "#cm"), f = genFilter(defKey);
+    try { await loadRecs(c.id, def.menu); } catch(err){ host.innerHTML = '<div class="banner danger">불러오지 못했습니다: ' + esc(err.message) + '</div>'; return; }
+    if (!$(hostSel || "#cm")) return;
+    if (sub === "stats" && g.stats){ drawGenStats(c, defKey, host); return; }
+    var all = genRows(c, def), w = can(key, "write");
+    var types = g.typeF ? (def.fields.filter(function(x){ return x[0] === g.typeF; })[0][3] || []) : [];
+    var byType = tally(all, function(x){ return String(x.data[g.typeF] || "").split(",").map(function(s){ return s.trim(); }).filter(Boolean); });
+    var shownTypes = types.filter(function(t){ return byType[t]; }); Object.keys(byType).forEach(function(t){ if (shownTypes.indexOf(t) < 0) shownTypes.push(t); });
+    var hasOrg = def.fields.some(function(x){ return x[0] === "org"; }), hasTeam = def.fields.some(function(x){ return x[0] === "team"; });
+    var orgs = [], teams = [], sts = [];
+    all.forEach(function(x){ var d = x.data; if (d.org && orgs.indexOf(d.org) < 0) orgs.push(d.org); if (d.team && (!f.org || d.org === f.org) && teams.indexOf(d.team) < 0) teams.push(d.team); var s = genStatus(def, d); if (s && sts.indexOf(s) < 0) sts.push(s); });
+    orgs.sort(); teams.sort(); if (f.team && teams.indexOf(f.team) < 0) f.team = "";
+    host.innerHTML = genNav(c, def.menu, def, "list") +
+      (g.hint ? '<div class="hint" style="font-size:12.5px;margin:-4px 0 12px">' + g.hint + ' 행을 누르면 세부 내용이 열립니다.</div>' : '') +
+      (shownTypes.length ? '<div class="mini-stats">' + shownTypes.map(function(t){ return '<button class="ms ms-btn' + (f.type === t ? " on" : "") + '" data-ft="' + esc(t) + '">' + esc(t) + '<b>' + (byType[t] || 0) + '</b></button>'; }).join("") + '</div>' : '') +
+      '<div class="rec-tools">' + (hasOrg ? '<select id="gOrg"><option value="">전체 소속</option>' + orgs.map(function(o){ return '<option' + (o === f.org ? " selected" : "") + '>' + esc(o) + '</option>'; }).join("") + '</select>' : '') +
+      (hasTeam ? '<select id="gTeam"><option value="">전체 팀</option>' + teams.map(function(t){ return '<option' + (t === f.team ? " selected" : "") + '>' + esc(t) + '</option>'; }).join("") + '</select>' : '') +
+      (g.status ? '<select id="gSt"><option value="">전체 상태</option>' + sts.map(function(s){ return '<option' + (s === f.st ? " selected" : "") + '>' + esc(s) + '</option>'; }).join("") + '</select>' : '') +
+      '<input type="search" id="gQ" placeholder="검색" value="' + esc(f.q) + '"><span class="grow"></span><span class="hint" id="gCnt" style="font-size:12px"></span>' +
+      '<button class="btn sm" id="gCsv">CSV 내려받기</button>' + (w ? '<button class="btn sm primary" id="gAdd">+ ' + esc(def.noun) + ' 추가</button>' : '') + '</div><div id="gTbl"></div>';
+    var list = [];
+    function rer(){ renderGen(c, defKey, sub, hostSel); }
+    function draw(){
+      var q = f.q.trim();
+      list = all.filter(function(x){ var d = x.data; return (!f.type || String(d[g.typeF] || "").split(",").map(function(s){ return s.trim(); }).indexOf(f.type) >= 0) && (!f.org || d.org === f.org) && (!f.team || d.team === f.team) && (!f.st || genStatus(def, d) === f.st) &&
+        (!q || def.fields.map(function(z){ return d[z[0]]; }).join(" ").indexOf(q) >= 0); })
+        .sort(function(a, b){ var k = g.sort || "start"; return String(b.data[k] || "").localeCompare(String(a.data[k] || "")) || String(a.data[g.nameF] || "").localeCompare(String(b.data[g.nameF] || "")); });
+      $("#gCnt").textContent = list.length + "건";
+      $("#gTbl").innerHTML = '<div class="tbl-box"><table class="rec compact"><thead><tr>' + g.cols.map(function(k){ return '<th>' + esc(genColLabel(def, k)) + '</th>'; }).join("") + '</tr></thead><tbody>' +
+        (list.length ? list.map(function(x){ var s = genStatus(def, x.data); return '<tr class="clk' + (/종료|종결/.test(s) ? " ended" : "") + '" data-rid="' + x.id + '" tabindex="0">' + g.cols.map(function(k){ return '<td>' + genCell(def, k, x.data) + '</td>'; }).join("") + '</tr>'; }).join("")
+          : '<tr><td colspan="' + g.cols.length + '" class="hint" style="padding:18px">해당하는 항목이 없습니다.</td></tr>') + '</tbody></table></div>';
+      $all("#gTbl tr[data-rid]").forEach(function(tr){ function o(){ genDetail(c, defKey, all.filter(function(x){ return x.id === tr.dataset.rid; })[0], rer); } tr.onclick = o; tr.onkeydown = function(e){ if (e.key === "Enter") o(); }; });
+    }
+    draw();
+    $all("[data-ft]", host).forEach(function(b){ b.onclick = function(){ f.type = f.type === b.dataset.ft ? "" : b.dataset.ft; rer(); }; });
+    if ($("#gOrg")) $("#gOrg").onchange = function(e){ f.org = e.target.value; f.team = ""; rer(); };
+    if ($("#gTeam")) $("#gTeam").onchange = function(e){ f.team = e.target.value; draw(); };
+    if ($("#gSt")) $("#gSt").onchange = function(e){ f.st = e.target.value; draw(); };
+    $("#gQ").addEventListener("input", function(e){ f.q = e.target.value; draw(); });
+    $("#gCsv").onclick = function(){ downloadCsv(def.title, def.fields.map(function(z){ return [z[1], function(x){ return x.data[z[0]]; }]; }).concat(g.status ? [["상태", function(x){ return genStatus(def, x.data); }]] : []), list); };
+    if ($("#gAdd")) $("#gAdd").onclick = function(){ openRecord(c, defKey, null, rer); };
+  }
+  function fileSafeExt(name){ return ((String(name).split(".").pop() || "bin").toLowerCase().replace(/[^a-z0-9]/g, "")) || "bin"; }
+  async function uploadRecFile(c, def, x, file){
+    var path = c.id + "/" + def.menu + "/" + x.id + "/" + Date.now().toString(36) + "." + fileSafeExt(file.name);
+    var up = await sb.storage.from(BUCKET).upload(path, file, { upsert: false, contentType: file.type || "application/octet-stream" });
+    if (up.error) throw up.error;
+    var files = (x.data.files || []).concat([{ path: path, name: file.name, size: file.size, at: todayStr(), by: me.name }]);
+    var data = Object.assign({}, x.data, { files: files });
+    var r = await sb.from("portal_records").update({ data: data, updated_by: me.email, updated_at: new Date().toISOString() }).eq("id", x.id).select("*");
+    if (r.error || !r.data || !r.data.length) throw new Error(errMsg(r));
+    Object.assign(x, r.data[0]);
+  }
+  async function openFile(path){
+    var r = await sb.storage.from(BUCKET).createSignedUrl(path, 600);
+    if (r.error || !r.data){ alert("파일을 열지 못했습니다: " + (r.error ? r.error.message : "")); return; }
+    window.open(r.data.signedUrl, "_blank", "noopener");
+  }
+  function genDetail(c, defKey, x, after){
+    var def = REC_DEF[defKey], g = def.gen, d = x.data, key = c.id + "." + def.menu;
+    var canEd = can(key, "edit") || (can(key, "write") && String(x.created_by || "").toLowerCase() === me.email);
+    var long = def.fields.filter(function(z){ return z[2] === "textarea"; }), short = def.fields.filter(function(z){ return z[2] !== "textarea" && z[0] !== g.typeF && z[0] !== g.nameF; });
+    var st = genStatus(def, d);
+    var hist = g.history ? genRows(c, def).filter(function(y){ return y.id !== x.id && String(y.data[g.nameF] || "").trim() === String(d[g.nameF] || "").trim(); }).concat([x]).sort(function(a, b){ return String(a.data.start || "").localeCompare(String(b.data.start || "")); }) : [];
+    var files = d.files || [];
+    var m = showModal('<div style="display:flex;justify-content:space-between;gap:10px"><div>' + (g.typeF && d[g.typeF] ? genCell(def, g.typeF, d) + " " : "") + (st ? '<span class="badge ' + stCls(st) + '">' + esc(st) + '</span>' : '') +
+      '<h3 style="font-size:18px;margin-top:6px">' + esc(d[g.nameF] || "") + '</h3><div class="hint" style="font-size:12.5px">' + esc([d.org, d.team].filter(Boolean).join(" · ")) + '</div></div><button class="btn sm ghost" id="dx">닫기 ✕</button></div>' +
+      '<div class="kv two" style="margin-top:12px">' + short.filter(function(z){ return z[0] !== "org" && z[0] !== "team"; }).map(function(z){ var v = d[z[0]]; return '<div class="row"><span class="hint">' + z[1] + '</span><span>' + (v == null || v === "" ? '<span class="hint">-</span>' : (z[0] === "url" ? '<a href="' + esc(v) + '" target="_blank" rel="noopener">원문 열기 ↗</a>' : esc(v) + (z[0] === "days" ? "일" : ""))) + '</span></div>'; }).join("") + '</div>' +
+      long.map(function(z){ return d[z[0]] ? '<h4 style="margin:14px 0 6px;font-size:13px">' + z[1] + '</h4><div class="wraptext" style="font-size:13.5px;line-height:1.65;background:var(--paper-0);border-radius:10px;padding:12px 14px">' + esc(d[z[0]]) + '</div>' : ''; }).join("") +
+      (g.files ? '<h4 style="margin:14px 0 6px;font-size:13px">첨부 파일 (' + files.length + ')</h4><div class="file-list" id="gdFiles">' + (files.length ? files.map(function(fl, i){ return '<div class="fl"><button class="lk" data-open="' + i + '">📄 ' + esc(fl.name) + '</button><span class="hint">' + (fl.size ? Math.round(fl.size / 1024) + "KB · " : "") + esc(fl.at || "") + '</span>' + (canEd ? '<button class="btn sm ghost" data-rm="' + i + '">삭제</button>' : '') + '</div>'; }).join("") : '<span class="hint" style="font-size:12.5px">첨부된 파일이 없습니다.</span>') + '</div>' +
+        (canEd ? '<label class="btn sm" style="margin-top:8px;display:inline-block;cursor:pointer">+ 파일 첨부<input type="file" id="gdUp" multiple hidden></label>' : '') : '') +
+      (hist.length > 1 ? '<h4 style="margin:16px 0 6px;font-size:13px">' + esc(d[g.nameF]) + ' 님의 ' + esc(def.noun) + ' 이력 (총 ' + hist.length + '건)</h4><div class="tbl-box" style="max-height:220px"><table class="rec compact" style="min-width:0"><thead><tr><th>구분</th><th>기간</th><th>일수</th><th>상태</th></tr></thead><tbody>' +
+        hist.map(function(y){ return '<tr class="' + (y.id === x.id ? "cur" : "") + '"><td>' + esc(y.data[g.typeF] || "") + '</td><td>' + genCell(def, "_period", y.data) + '</td><td>' + (y.data.days ? esc(y.data.days) + "일" : "") + '</td><td>' + genCell(def, "_status", y.data) + '</td></tr>'; }).join("") + '</tbody></table></div>' : '') +
+      '<div class="modal-actions" style="margin-top:14px"><span class="hint" style="font-size:11.5px;margin-right:auto">' + esc(x.updated_by || x.created_by || "") + ' · ' + esc(String(x.updated_at || x.created_at || "").slice(0, 10)) + '</span>' + (canEd ? '<button class="btn primary" id="dEd">수정</button>' : '') + '</div>', hist.length > 1 || long.length > 1 || g.files ? "wide" : "mid");
+    $("#dx", m).onclick = closeModal;
+    if ($("#dEd", m)) $("#dEd", m).onclick = function(){ openRecord(c, defKey, x, after); };
+    $all("[data-open]", m).forEach(function(b){ b.onclick = function(){ openFile(files[+b.dataset.open].path); }; });
+    $all("[data-rm]", m).forEach(function(b){ b.onclick = async function(){
+      var fl = files[+b.dataset.rm]; if (!confirm("'" + fl.name + "' 파일을 삭제할까요?")) return;
+      var data = Object.assign({}, x.data, { files: files.filter(function(z){ return z !== fl; }) });
+      var r = await sb.from("portal_records").update({ data: data, updated_by: me.email, updated_at: new Date().toISOString() }).eq("id", x.id).select("*");
+      if (r.error || !r.data || !r.data.length){ alert("삭제하지 못했습니다: " + errMsg(r)); return; }
+      sb.storage.from(BUCKET).remove([fl.path]).then(function(){}); Object.assign(x, r.data[0]); genDetail(c, defKey, x, after);
+    }; });
+    if ($("#gdUp", m)) $("#gdUp", m).onchange = async function(e){
+      var fs = Array.prototype.slice.call(e.target.files || []); if (!fs.length) return;
+      try { for (var i = 0; i < fs.length; i++){ if (fs[i].size > 30 * 1024 * 1024){ alert(fs[i].name + ": 30MB를 넘는 파일은 올릴 수 없습니다."); continue; } await uploadRecFile(c, def, x, fs[i]); } toast("첨부했습니다."); }
+      catch(err){ alert("첨부하지 못했습니다: " + err.message); }
+      genDetail(c, defKey, x, after);
+    };
+  }
+  /* ---------- 공통 통계 ---------- */
+  var gsPeriod = {};
+  function drawGenStats(c, defKey, host){
+    var def = REC_DEF[defKey], g = def.gen, st = g.stats, dateF = st.date || "start", today = todayStr(), Y = new Date().getFullYear(), md2 = today.slice(5);
+    var per = gsPeriod[defKey] || "all", from = wsFrom(per), plabel = WS_PERIODS.filter(function(p){ return p[0] === per; })[0][1];
+    var allR = genRows(c, def), rows = allR.filter(function(x){ return !from || (x.data[dateF] && x.data[dateF] >= from); });
+    function ytd(y){ return allR.filter(function(x){ var s = String(x.data[dateF] || ""); return s.slice(0, 4) === String(y) && s.slice(5) <= md2; }).length; }
+    var cur = ytd(Y), prev = ytd(Y - 1);
+    var kp = [[plabel + " " + def.noun, rows.length + "<small>건</small>", "전체 " + allR.length + "건"], ["올해", cur + "<small>건</small>", deltaTxt(cur, prev)]];
+    if (g.status === "period"){ var on = allR.filter(function(x){ return pStatus(x.data) === "진행 중"; }), pl = allR.filter(function(x){ return pStatus(x.data) === "예정"; }); kp.push(["현재 진행 중", on.length + "<small>건</small>", "예정 " + pl.length + "건"]); }
+    else if (g.status){ var open = allR.filter(function(x){ return !/종결|완료|종료/.test(genStatus(def, x.data)); }); kp.push(["진행 중", open.length + "<small>건</small>", open.length ? "종결되지 않은 건" : "모두 종결"]); }
+    var durs = st.duration ? rows.map(function(x){ var a = parseD(x.data[st.duration[0]]), b = parseD(x.data[st.duration[1]]); return a && b && b >= a ? Math.round((b - a) / 864e5) + 1 : null; }).filter(function(v){ return v != null; }) : [];
+    if (st.duration) kp.push([st.duration[2] || "평균 기간", (durs.length ? avg(durs) : "-") + "<small>일</small>", durs.length ? "중앙값 " + median(durs) + "일 · 최장 " + Math.max.apply(null, durs) + "일" : "계산할 자료 없음"]);
+    var dims = st.dims.map(function(dm){ var m = tally(rows, function(x){ var v = x.data[dm[1]]; return dm[2] === "multi" ? String(v || "").split(",").map(function(s){ return s.trim(); }).filter(Boolean) : (v || "(미기재)"); }); return { title: dm[0], key: dm[1], list: pairs(m) }; });
+    var years = []; allR.forEach(function(x){ var y = String(x.data[dateF] || "").slice(0, 4); if (/^\d{4}$/.test(y) && years.indexOf(y) < 0) years.push(y); }); years.sort();
+    var typeK = g.typeF, tnames = pairs(tally(allR, function(x){ return x.data[typeK] || "(미기재)"; })).slice(0, 4).map(function(p){ return p[0]; });
+    var yItems = years.map(function(y){ var l = allR.filter(function(x){ return String(x.data[dateF] || "").slice(0, 4) === y; }); return { k: y, label: y + "년", short: y.slice(2) + "년", parts: tnames.map(function(t){ return l.filter(function(x){ return (x.data[typeK] || "(미기재)") === t; }).length; }).concat([l.filter(function(x){ return tnames.indexOf(x.data[typeK] || "(미기재)") < 0; }).length]) }; });
+    var months = []; for (var i = 11; i >= 0; i--){ var dd = new Date(Y, new Date().getMonth() - i, 1), k = ymd(dd).slice(0, 7); months.push({ k: k, label: k, short: (dd.getMonth() === 0 || i === 11 ? String(dd.getFullYear()).slice(2) + "." : "") + (dd.getMonth() + 1) + "월", v: allR.filter(function(x){ return String(x.data[dateF] || "").slice(0, 7) === k; }).length }); }
+    var ins = [];
+    dims.slice(0, 3).forEach(function(dm){ if (dm.list.length && rows.length) ins.push(dm.title.replace(/별$/, "") + "은(는) <b>" + esc(dm.list[0][0]) + "</b>이(가) " + dm.list[0][1] + "건(" + pc(dm.list[0][1], rows.length) + "%)으로 가장 많습니다."); });
+    ins.push("올해(1월 1일~" + (+md2.slice(0, 2)) + "월 " + (+md2.slice(3)) + "일) " + cur + "건, " + deltaTxt(cur, prev) + "입니다.");
+    if (durs.length) ins.push((st.duration[2] || "평균 기간") + "은 " + avg(durs) + "일(중앙값 " + median(durs) + "일)입니다.");
+    var extra = st.extra ? st.extra(rows, allR, c) : null;
+    if (extra && extra.ins) ins = ins.concat(extra.ins);
+    var h = genNav(c, def.menu, def, "stats") +
+      '<div class="rec-tools">' + WS_PERIODS.map(function(p){ return '<button class="btn sm' + (p[0] === per ? " primary" : "") + '" data-gp="' + p[0] + '">' + p[1] + '</button>'; }).join("") + '<span class="grow"></span><span class="hint" style="font-size:12px">' + esc(fLabel(def, dateF)) + ' 기준</span><button class="btn sm" id="gsPdf">⬇ PDF 다운로드</button><button class="btn sm" id="gsXls">⬇ 엑셀 다운로드</button></div>' +
+      '<div id="wsDash"><div class="rpt-h"><div><b>' + esc(def.title) + ' 통계</b><span>HRM팀 노무관리파트 · ' + esc(c.name) + '</span></div><div class="rpt-m">기간: ' + esc(plabel) + (from ? " (" + from + " ~ " + today + ")" : "") + '<br>기준일 ' + today + ' · 작성 ' + esc(me.name) + '</div></div>' +
+      '<div class="kpis' + (kp.length > 4 ? " k6" : "") + '" style="' + (kp.length === 3 ? "grid-template-columns:repeat(3,minmax(0,1fr))" : "") + '">' + kp.map(function(k){ return '<div class="kpi"><div class="k">' + esc(k[0]) + '</div><div class="v">' + k[1] + '</div><div class="s">' + k[2] + '</div></div>'; }).join("") + '</div>' +
+      '<div class="insight"><div class="ih">💡 한눈에 보기</div><ul>' + ins.map(function(s){ return '<li>' + s + '</li>'; }).join("") + '</ul></div>' +
+      '<div class="an-grid">' + wsPanel("연도별 추이", (years[0] || "-") + " ~ " + (years[years.length - 1] || "-") + " · " + esc(fLabel(def, typeK)) + "별", '<div class="legend" style="margin-bottom:4px">' + tnames.map(function(t, i){ return '<span class="lg s' + (i + 1) + '"></span>' + esc(t); }).join("") + '</div>' + wsCols(yItems, { names: tnames.concat(["기타"]) })) +
+      wsPanel("최근 12개월 월별 건수", esc(fLabel(def, dateF)) + " 기준", wsCols(months, {})) + '</div>' +
+      '<h3 class="ws-h">구분별 분석 <span>' + esc(plabel) + ' · ' + rows.length + '건</span></h3><div class="ws-grid">' + dims.map(function(dm){ return wsPanel(dm.title, "", wsBars(dm.list.slice(0, 12), rows.length)); }).join("") + (extra && extra.panels ? extra.panels : "") + '</div></div>';
+    host.innerHTML = h;
+    $all("[data-gp]", host).forEach(function(b){ b.onclick = function(){ gsPeriod[defKey] = b.dataset.gp; drawGenStats(c, defKey, host); }; });
+    var fname = def.title.replace(/[\s·\/]/g, "") + "_통계_" + plabel.replace(/\s/g, "") + "_" + today;
+    $("#gsPdf").onclick = function(){ exportPdf(this, $("#wsDash"), fname + ".pdf", c.id, "pdf " + def.title); };
+    $("#gsXls").onclick = function(){
+      if (!window.XLSX){ alert("엑셀 도구를 불러오지 못했습니다. 새로고침 후 다시 시도하세요."); return; }
+      var wb = XLSX.utils.book_new();
+      function sh(name, aoa){ XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), name.slice(0, 28)); }
+      sh("요약", [[def.title + " 통계"], [], ["기간", plabel], ["기준일", today], [], ["항목", "값", "비고"]].concat(kp.map(function(k){ return [k[0], k[1].replace(/<[^>]+>/g, " ").trim(), k[2].replace(/<[^>]+>/g, "")]; })).concat([[], ["한눈에 보기"]]).concat(ins.map(function(s){ return [s.replace(/<[^>]+>/g, "")]; })));
+      dims.forEach(function(dm){ sh(dm.title, [[dm.title, "건수", "비율(%)"]].concat(dm.list.map(function(p){ return [p[0], p[1], pc(p[1], rows.length)]; }))); });
+      sh("연도별", [["연도"].concat(tnames).concat(["기타", "합계"])].concat(yItems.map(function(x){ return [x.k].concat(x.parts).concat([x.parts.reduce(function(s, v){ return s + v; }, 0)]); })));
+      sh("월별", [["월", "건수"]].concat(months.map(function(x){ return [x.k, x.v]; })));
+      sh("목록", [def.fields.map(function(z){ return z[1]; })].concat(rows.map(function(x){ return def.fields.map(function(z){ var v = x.data[z[0]]; return v == null ? "" : v; }); })));
+      XLSX.writeFile(wb, fname + ".xlsx"); logp(c.id, "export", "xlsx " + def.title);
+    };
+  }
+  /* ---------- 카테고리별 현황표 정의 ---------- */
+  var GENDER = ["", "여", "남"];
+  REC_DEF.leave = { menu: "status", title: "휴가 현황", noun: "휴가",
+    fields: [["type", "구분", "select", ["배우자출산휴가", "무급휴가", "가족돌봄휴가", "난임치료휴가", "유사산휴가", "보건휴가", "태아검진", "예비군(공가)", "병가", "경조휴가", "리프레쉬휴가", "기타"]],
+      ["target", "이름", "text"], ["gender", "성별", "select", GENDER], ["org", "소속", "text"], ["team", "팀", "text"], ["start", "시작일", "date"], ["end", "종료일", "date"], ["days", "일수", "number"],
+      ["basis", "문서번호", "text"], ["tags", "태그", "text"], ["content", "세부 내용", "textarea"]],
+    gen: { typeF: "type", nameF: "target", status: "period", history: true, files: false, cols: ["type", "target", "org", "team", "_period", "days", "basis", "_status"],
+      hint: "연차 외 휴가(배우자출산·무급·가족돌봄·난임치료·보건·태아검진·공가 등) 사용 기록입니다. 시작·종료일은 홈의 근무형태 변경 알림에 표시됩니다(하루짜리 보건·태아검진·예비군·무급휴가는 제외).",
+      stats: { date: "start", dims: [["휴가 유형별", "type"], ["사업부별", "org"], ["성별", "gender"], ["팀별", "team"]], duration: ["start", "end", "평균 사용 기간"] } } };
+  REC_DEF.absence = { menu: "status", title: "휴직·복직 현황", noun: "휴직",
+    fields: [["type", "구분", "select", ["육아휴직", "출산전후휴가", "가족돌봄휴직", "질병휴직(병가)", "무급휴직", "기타 휴직"]],
+      ["target", "이름", "text"], ["gender", "성별", "select", GENDER], ["org", "소속", "text"], ["team", "팀", "text"], ["start", "휴직 시작일", "date"], ["end", "휴직 종료일", "date"], ["days", "일수", "number"],
+      ["return_date", "복직일", "date"], ["due_date", "출산 예정일", "date"], ["birth", "실제 출산일", "date"], ["basis", "휴직원 문서번호", "text"], ["return_doc", "복직원 문서번호", "text"], ["email", "개인 메일", "text"],
+      ["tags", "태그", "text"], ["content", "세부 내용", "textarea"]],
+    gen: { typeF: "type", nameF: "target", status: "period", history: true, files: true, cols: ["type", "target", "org", "team", "_period", "days", "return_date", "_status"], periodLabel: "휴직 기간",
+      hint: "출산전후휴가·육아휴직·질병휴직 등 휴직과 복직 기록입니다. 휴직 시작일과 복직일(종료 다음 날)은 홈의 근무형태 변경 알림에 표시됩니다.",
+      stats: { date: "start", dims: [["휴직 유형별", "type"], ["사업부별", "org"], ["성별", "gender"], ["팀별", "team"]], duration: ["start", "end", "평균 휴직 기간"],
+        extra: function(rows, all){
+          var t = todayStr(), in90 = ymd(new Date(new Date().getFullYear(), new Date().getMonth(), new Date().getDate() + 90));
+          var back = all.filter(function(x){ var d = x.data; return !d.ended && d.end && d.end >= t && d.end <= in90; }).sort(function(a, b){ return a.data.end.localeCompare(b.data.end); });
+          var cc = rows.filter(function(x){ return x.data.type === "육아휴직" && x.data.gender; }), men = cc.filter(function(x){ return x.data.gender === "남"; }).length;
+          return { ins: (cc.length ? ["육아휴직 사용 " + cc.length + "건 중 남성은 <b>" + men + "건(" + pc(men, cc.length) + "%)</b>입니다."] : []).concat(["앞으로 90일 안에 복직 예정은 <b>" + back.length + "명</b>입니다."]),
+            panels: wsPanel("복직 예정 (90일 이내)", t + " ~ " + in90, back.length ? '<table class="tbl mini"><thead><tr><th>종료일</th><th>이름</th><th>소속</th><th>구분</th></tr></thead><tbody>' + back.map(function(x){ var d = x.data; return '<tr><td>' + esc(d.end) + '</td><td><b>' + esc(d.target) + '</b></td><td>' + esc([d.org, d.team].filter(Boolean).join(" ")) + '</td><td>' + esc(d.type) + '</td></tr>'; }).join("") + '</tbody></table>' : '<p class="hint">예정된 복직이 없습니다.</p>', " wide") };
+        } } } };
+  REC_DEF.cases = { menu: "cases", title: "사건 현황", noun: "사건",
+    fields: [["type", "유형", "select", ["직장 내 괴롭힘", "직장 내 성희롱", "비위행위", "노동위원회"]], ["target", "사건명", "text"], ["start", "접수일", "date"], ["end", "종결일", "date"],
+      ["company", "회사", "text"], ["org", "사업부", "text"], ["reporter", "신고인", "text"], ["victim", "피해 근로자", "text"], ["accused", "행위자(피신고인)", "text"], ["investigator", "조사자", "text"],
+      ["status", "진행 상태", "select", ["접수", "조사 중", "인사위원회", "노동위원회 진행", "종결"]], ["result", "처리 결과", "select", ["해당(인정)", "미해당(혐의 없음)", "자진취하", "당사자 합의", "징계", "권고사직", "각하", "화해", "진행 중"]],
+      ["action", "조치 내용", "text"], ["folder", "자료 폴더", "text"], ["summary", "사건 개요·주장 행위", "textarea"], ["note", "비고", "textarea"]],
+    gen: { typeF: "type", nameF: "target", status: "status", sort: "start", files: true, cols: ["type", "target", "start", "org", "accused", "result", "action", "_files", "_status"],
+      hint: "직장 내 괴롭힘·성희롱 신고, 비위행위 조사, 노동위원회 사건의 접수·처리 현황입니다. 민감 정보이므로 권한이 있는 사람만 볼 수 있습니다.",
+      stats: { date: "start", dims: [["사건 유형별", "type"], ["처리 결과별", "result"], ["사업부별", "org"], ["진행 상태별", "status"], ["회사별", "company"]], duration: ["start", "end", "평균 처리 기간"],
+        extra: function(rows){
+          var disc = (S.recs["case.discipline"] || []), byT = pairs(tally(disc, function(x){ return x.data.type || "(미기재)"; }));
+          var hr = rows.filter(function(x){ return /괴롭힘|성희롱/.test(x.data.type || ""); }), yes = hr.filter(function(x){ return /해당\(인정\)|징계/.test(x.data.result || ""); }).length;
+          return { ins: (hr.length ? ["괴롭힘·성희롱 신고 " + hr.length + "건 중 <b>인정 " + yes + "건(" + pc(yes, hr.length) + "%)</b>입니다."] : []).concat(disc.length ? ["징계 이력은 총 " + disc.length + "건이며 " + esc(byT[0][0]) + "이(가) " + byT[0][1] + "건으로 가장 많습니다."] : []),
+            panels: wsPanel("징계 종류 분포", "징계 이력 " + disc.length + "건", wsBars(byT, disc.length)) };
+        } } } };
+  REC_DEF.discipline = { menu: "discipline", title: "징계 이력", noun: "징계",
+    fields: [["type", "징계 종류", "select", ["경고", "견책", "감봉", "정직", "강등", "해고", "권고사직", "포상"]], ["target", "성명", "text"], ["company", "회사", "text"], ["org", "사업부", "text"], ["team", "팀", "text"], ["rank", "직위", "text"],
+      ["start", "징계 일자", "date"], ["detail", "징계 내용", "text", "예: 감봉 1개월"], ["reason", "사유", "text"], ["committee", "인사위원회", "text", "개최일 등"], ["case_ref", "관련 사건", "text"], ["period", "대상 기간", "text"], ["note", "비고", "textarea"]],
+    gen: { typeF: "type", nameF: "target", status: null, sort: "start", files: true, cols: ["type", "target", "org", "start", "detail", "reason", "case_ref", "_files"], history: false,
+      hint: "인사위원회 의결 등으로 확정된 징계·포상 이력입니다(상벌규정 서식 1 관리대장).",
+      stats: { date: "start", dims: [["징계 종류별", "type"], ["사업부별", "org"], ["사유별", "reason"]] } } };
+  REC_DEF.agenda = { menu: "agenda", title: "안건 정리", noun: "안건",
+    fields: [["type", "구분", "select", ["협의 사항", "의결 사항", "보고 사항", "고충 처리", "기타"]], ["target", "안건", "text"], ["start", "회의일", "date"], ["round", "회차", "text", "예: 2026년 3분기"], ["proposer", "제안", "select", ["근로자위원", "사용자위원", "공통"]],
+      ["status", "진행 상태", "select", ["제안", "검토 중", "수용", "일부 수용", "불수용", "완료"]], ["owner", "담당", "text"], ["content", "안건 내용", "textarea"], ["result", "회사 답변·결과", "textarea"]],
+    gen: { typeF: "type", nameF: "target", status: "status", sort: "start", files: true, cols: ["round", "type", "target", "proposer", "start", "owner", "_status"],
+      hint: "분기 노사협의회(기업문화발전위원회) 안건과 처리 결과입니다.", stats: { date: "start", dims: [["구분별", "type"], ["진행 상태별", "status"], ["제안 주체별", "proposer"], ["회차별", "round"]] } } };
+  REC_DEF.safety = { menu: "status", title: "안전보건 관리 현황", noun: "관리 항목",
+    fields: [["type", "구분", "select", ["산업안전보건위원회", "안전보건교육", "위험성평가", "합동·순회 점검", "건강검진·보건관리", "재해·사고", "법령 이행점검", "안전보건 계획·예산", "기타"]], ["target", "제목", "text"], ["start", "실시(예정)일", "date"], ["end", "종료일", "date"],
+      ["org", "대상 사업장", "text"], ["owner", "담당", "text"], ["status", "진행 상태", "select", ["예정", "진행 중", "완료", "미실시"]], ["cycle", "주기", "select", ["수시", "매월", "분기", "반기", "연 1회"]], ["basis", "근거", "text"],
+      ["content", "내용", "textarea"], ["result", "결과·조치 사항", "textarea"]],
+    gen: { typeF: "type", nameF: "target", status: "status", sort: "start", files: true, cols: ["type", "target", "start", "org", "owner", "cycle", "_files", "_status"],
+      hint: "산업안전보건위원회, 안전보건교육, 위험성평가, 점검, 재해 발생 등 안전보건 관리 활동의 일정과 결과입니다.", stats: { date: "start", dims: [["구분별", "type"], ["진행 상태별", "status"], ["사업장별", "org"], ["주기별", "cycle"]] } } };
+  REC_DEF.opinions = { menu: "opinions", title: "노무 검토 의견", noun: "검토 의견",
+    fields: [["type", "분야", "select", ["근로시간", "임금·수당", "휴가·휴직", "징계·해고", "채용·계약", "괴롭힘·성희롱", "취업규칙·제도", "산업안전", "기타"]], ["target", "제목", "text"], ["start", "검토일", "date"], ["org", "사업부", "text"],
+      ["asker", "요청자", "text"], ["advisor", "자문처", "text", "내부 검토 / 노무법인명"], ["status", "상태", "select", ["요청", "검토 중", "완료"]], ["question", "질의 내용", "textarea"], ["content", "검토 의견", "textarea"], ["note", "후속 조치", "textarea"]],
+    gen: { typeF: "type", nameF: "target", status: "status", sort: "start", files: true, cols: ["type", "target", "start", "org", "asker", "advisor", "_files", "_status"],
+      hint: "노무 이슈별 검토 의견과 외부 자문 이력입니다.", stats: { date: "start", dims: [["분야별", "type"], ["사업부별", "org"], ["자문처별", "advisor"], ["상태별", "status"]] } } };
+  var LAW_STAGES = ["입법예고", "시행예정", "시행"];
+  REC_DEF.laws = { menu: "laws", title: "법령정보", noun: "법령 개정사항",
+    fields: [["stage", "단계", "select", LAW_STAGES], ["target", "제목", "text"], ["law", "법령명", "text"], ["kind", "구분", "select", ["법률", "시행령", "시행규칙", "고시·지침", "판례·행정해석"]],
+      ["announce", "공포·예고일", "date"], ["start", "시행일", "date"], ["due", "의견 제출 마감", "date"], ["month", "기준월", "text", "예: 2026-11"], ["url", "출처 링크", "text"], ["checked", "확인 상태", "select", ["원문 확인", "확인 필요"]],
+      ["content", "주요 내용", "textarea"], ["impact", "실무 영향·할 일", "textarea"]],
+    gen: { typeF: "stage", nameF: "target", status: "stage", sort: "month", files: false, cols: ["stage", "target", "law", "announce", "start", "due", "checked", "url"],
+      hint: "인사·노무 관련 법령 개정사항입니다. 매월 초 입법예고 · 시행예정 · 시행으로 나누어 업데이트합니다. 내용은 반드시 출처 원문으로 다시 확인하세요." } };
+  var LAW_CAT = { id: "home", name: "법령정보", ic: "⚖️", menus: [["laws", "법령정보"]] };
+
+  /* ---------- 법령정보 (홈 영역 + 전체 화면) ---------- */
+  async function renderLawHome(){
+    var host = $("#lawSec"); if (!host) return;
+    try { await loadRecs("home", "laws"); } catch(e){ host.innerHTML = '<p class="hint">법령정보를 불러오지 못했습니다.</p>'; return; }
+    if (!$("#lawSec")) return;
+    var all = S.recs["home.laws"] || [], months = all.map(function(x){ return x.data.month || ""; }).sort(), last = months[months.length - 1] || "";
+    $("#lawSec").innerHTML = '<div class="sec-h"><h2><a href="#/laws" class="h-link">⚖️ 법령정보 ›</a></h2><div class="tools"><span class="hint" style="font-size:12px">인사·노무 관련 법령 개정사항 · 매월 초 업데이트' + (last ? " · 최근 기준월 " + esc(last) : "") + '</span></div></div><div class="law-cols">' +
+      LAW_STAGES.map(function(st){
+        var l = all.filter(function(x){ return x.data.stage === st; }).sort(function(a, b){ return String(b.data.month || "").localeCompare(String(a.data.month || "")) || String(b.data.start || b.data.announce || "").localeCompare(String(a.data.start || a.data.announce || "")); });
+        return '<section class="card2 lawc"><div class="sec-h"><h2><span class="badge ' + stCls(st) + '">' + st + '</span></h2><div class="tools"><span class="hint" style="font-size:12px">' + l.length + '건</span></div></div><ul class="law-list">' +
+          (l.length ? l.slice(0, 5).map(function(x){ var d = x.data; return '<li><button data-law="' + x.id + '"><span class="tx">' + esc(d.target || "") + '</span><small>' + esc(d.law || "") + (st === "입법예고" ? (d.due ? " · 의견 마감 " + esc(d.due) : "") : (d.start ? " · 시행 " + esc(d.start) : "")) + '</small></button></li>'; }).join("") : '<li class="hint" style="font-size:12.5px;padding:8px">등록된 항목이 없습니다.</li>') + '</ul></section>';
+      }).join("") + '</div>';
+    $all("[data-law]", host).forEach(function(b){ b.onclick = function(){ genDetail(LAW_CAT, "laws", all.filter(function(x){ return x.id === b.dataset.law; })[0], renderLawHome); }; });
+  }
+  function renderLawPage(){
+    app.innerHTML = shell('<div class="cat-head"><div class="crumb"><a href="#/">홈</a> › 법령정보</div><h1><span>⚖️</span>법령정보</h1><p class="hint" style="margin:4px 0 14px;font-size:13px">인사·노무 관련 법령의 입법예고 · 시행예정 · 시행 사항을 매월 초 정리합니다. 단계 버튼을 눌러 걸러 볼 수 있습니다.</p></div><div class="cat-wrap"><div class="cat-main" id="cm"></div></div>', "법령정보");
+    wireShell(); renderGen(LAW_CAT, "laws", null);
+  }
+
+  /* ---------- 규정 · 매뉴얼: 규정 목록과 버전 관리 ---------- */
+  var RULE_GROUPS = ["1. 기본·지배구조", "2. 조직·권한", "3. 인사·복무", "4. 총무·보안", "5. 회계·자금", "6. 교육", "7. 구매", "신고·제출 자료", "기타"];
+  var ruleQ = "", ruleTab = "docs";
+  function ruleCur(d){ var v = (d.versions || []).slice().sort(function(a, b){ return String(b.date || "").localeCompare(String(a.date || "")) || String(b.at || "").localeCompare(String(a.at || "")); }); return v[0] || null; }
+  async function renderRules(c, sub){
+    var host = $("#cm"), key = "rules.docs"; ruleTab = sub === "history" ? "history" : "docs";
+    try { await loadRecs("rules", "docs"); } catch(err){ host.innerHTML = '<div class="banner danger">불러오지 못했습니다: ' + esc(err.message) + '</div>'; return; }
+    if (!$("#cm")) return;
+    var all = S.recs[key], w = can(key, "write");
+    function rer(){ renderRules(c, sub); }
+    var nav = '<nav class="subtabs"><a href="#/c/rules/docs" class="' + (ruleTab === "docs" ? "on" : "") + '">규정 목록</a><a href="#/c/rules/docs/history" class="' + (ruleTab === "history" ? "on" : "") + '">개정 이력</a></nav>';
+    if (ruleTab === "history"){
+      var vs = []; all.forEach(function(x){ (x.data.versions || []).forEach(function(v){ vs.push({ x: x, v: v }); }); });
+      vs.sort(function(a, b){ return String(b.v.date || "").localeCompare(String(a.v.date || "")) || String(a.x.data.no || "").localeCompare(String(b.x.data.no || "")); });
+      host.innerHTML = nav + '<div class="hint" style="font-size:12.5px;margin:-4px 0 12px">규정별로 올린 모든 버전을 시행일 순으로 보여 줍니다. 행을 누르면 그 규정의 버전 이력이 열립니다.</div><div class="tbl-box"><table class="rec compact"><thead><tr><th>시행(개정)일</th><th>번호</th><th>규정명</th><th>버전</th><th>개정 요지</th><th>파일</th><th>올린 사람</th></tr></thead><tbody>' +
+        (vs.length ? vs.map(function(o){ return '<tr class="clk" data-rid="' + o.x.id + '"><td>' + esc(o.v.date || "") + '</td><td>' + esc(o.x.data.no || "") + '</td><td><b>' + esc(o.x.data.target || "") + '</b></td><td>' + esc(o.v.ver || "") + '</td><td>' + esc(o.v.note || "") + '</td><td>' + esc(o.v.name || "") + '</td><td>' + esc(o.v.by || "") + '</td></tr>'; }).join("") : '<tr><td colspan="7" class="hint" style="padding:18px">등록된 버전이 없습니다.</td></tr>') + '</tbody></table></div>';
+      $all("tr[data-rid]", host).forEach(function(tr){ tr.onclick = function(){ ruleDetail(c, all.filter(function(x){ return x.id === tr.dataset.rid; })[0], rer); }; });
+      return;
+    }
+    host.innerHTML = nav + '<div class="hint" style="font-size:12.5px;margin:-4px 0 12px">회사 사규와 고용노동부 신고 자료입니다. 규정을 누르면 현재 버전과 이전 버전을 볼 수 있고, 개정되면 "새 버전 올리기"로 파일을 추가합니다(이전 버전은 이력에 남습니다).</div>' +
+      '<div class="rec-tools"><input type="search" id="rlQ" placeholder="규정명·번호 검색" value="' + esc(ruleQ) + '"><span class="grow"></span><span class="hint" id="rlCnt" style="font-size:12px"></span>' + (w ? '<button class="btn sm primary" id="rlAdd">+ 규정 추가</button>' : '') + '</div><div id="rlTbl"></div>';
+    function draw(){
+      var q = ruleQ.trim(), list = all.filter(function(x){ var d = x.data; return !q || [d.no, d.target, d.group, d.owner].join(" ").indexOf(q) >= 0; })
+        .sort(function(a, b){ return RULE_GROUPS.indexOf(a.data.group) - RULE_GROUPS.indexOf(b.data.group) || String(a.data.no || "").localeCompare(String(b.data.no || ""), "ko", { numeric: true }); });
+      $("#rlCnt").textContent = list.length + "개 규정";
+      var h = "", cur = null;
+      list.forEach(function(x){
+        var d = x.data, v = ruleCur(d);
+        if (d.group !== cur){ if (cur != null) h += '</tbody></table></div>'; cur = d.group; h += '<h3 class="ws-h" style="margin-top:16px">' + esc(cur || "기타") + '</h3><div class="tbl-box" style="max-height:none"><table class="rec compact"><thead><tr><th style="width:70px">번호</th><th>규정명</th><th>현재 버전</th><th>시행(개정)일</th><th>버전 수</th><th>담당</th><th></th></tr></thead><tbody>'; }
+        h += '<tr class="clk" data-rid="' + x.id + '" tabindex="0"><td>' + esc(d.no || "") + '</td><td><b>' + esc(d.target || "") + '</b></td><td>' + (v ? esc(v.ver || "-") : '<span class="hint">파일 없음</span>') + '</td><td>' + (v ? esc(v.date || "") : "") + '</td><td>' + (d.versions || []).length + '</td><td>' + esc(d.owner || "") + '</td><td>' + (v && v.path ? '<button class="btn sm" data-view="' + x.id + '">열기</button>' : '') + '</td></tr>';
+      });
+      $("#rlTbl").innerHTML = list.length ? h + '</tbody></table></div>' : '<p class="hint" style="padding:18px">해당하는 규정이 없습니다.</p>';
+      $all("#rlTbl tr[data-rid]").forEach(function(tr){ tr.onclick = function(){ ruleDetail(c, all.filter(function(x){ return x.id === tr.dataset.rid; })[0], rer); }; });
+      $all("#rlTbl [data-view]").forEach(function(b){ b.onclick = function(e){ e.stopPropagation(); var x = all.filter(function(y){ return y.id === b.dataset.view; })[0]; openFile(ruleCur(x.data).path); }; });
+    }
+    draw();
+    $("#rlQ").addEventListener("input", function(e){ ruleQ = e.target.value; draw(); });
+    if ($("#rlAdd")) $("#rlAdd").onclick = function(){ ruleEdit(c, null, rer); };
+  }
+  function ruleEdit(c, x, after){
+    var d = x ? x.data : { group: RULE_GROUPS[2] };
+    var m = showModal('<h3>규정 ' + (x ? "정보 수정" : "추가") + '</h3><form class="f" id="rlf"><label>번호<input name="no" value="' + esc(d.no || "") + '" placeholder="예: 3-2"></label><label>분류<select name="group">' + RULE_GROUPS.map(function(g){ return '<option' + (g === d.group ? " selected" : "") + '>' + g + '</option>'; }).join("") + '</select></label>' +
+      '<label class="full">규정명<input name="target" value="' + esc(d.target || "") + '" required></label><label>담당 부서·담당자<input name="owner" value="' + esc(d.owner || "") + '"></label><label>최초 제정일<input type="date" name="enacted" value="' + esc(d.enacted || "") + '"></label>' +
+      '<label class="full">비고<textarea name="note" rows="3">' + esc(d.note || "") + '</textarea></label><div class="form-actions">' + (x && can("rules.docs", "edit") ? '<button type="button" class="btn danger" id="rlDel" style="margin-right:auto">규정 삭제</button>' : '') + '<button type="button" class="btn ghost" id="rlNo">취소</button><button class="btn primary">저장</button></div></form>', "mid");
+    $("#rlNo", m).onclick = function(){ if (x) ruleDetail(c, x, after); else closeModal(); };
+    if ($("#rlDel", m)) $("#rlDel", m).onclick = async function(){
+      if (!confirm("'" + d.target + "' 규정과 올린 모든 버전 파일(" + (d.versions || []).length + "개)을 삭제할까요? 되돌릴 수 없습니다.")) return;
+      var r = await sb.from("portal_records").delete().eq("id", x.id).select("id");
+      if (r.error || !r.data || !r.data.length){ alert("삭제하지 못했습니다: " + errMsg(r)); return; }
+      var paths = (d.versions || []).map(function(v){ return v.path; }).filter(Boolean); if (paths.length) sb.storage.from(BUCKET).remove(paths).then(function(){});
+      S.recs["rules.docs"] = S.recs["rules.docs"].filter(function(y){ return y.id !== x.id; }); logp("rules.docs", "delete", d.target); closeModal(); after();
+    };
+    $("#rlf", m).addEventListener("submit", async function(e){
+      e.preventDefault(); var fd = new FormData(e.target), data = Object.assign({}, d);
+      ["no", "group", "target", "owner", "enacted", "note"].forEach(function(k){ var v = String(fd.get(k) || "").trim(); if (v) data[k] = v; else delete data[k]; });
+      if (!data.versions) data.versions = [];
+      var r = x ? await sb.from("portal_records").update({ data: data, updated_by: me.email, updated_at: new Date().toISOString() }).eq("id", x.id).select("*") : await sb.from("portal_records").insert({ cat: "rules", menu: "docs", data: data, updated_by: me.email }).select("*");
+      if (r.error || !r.data || !r.data.length){ alert("저장하지 못했습니다: " + errMsg(r)); return; }
+      if (x) Object.assign(x, r.data[0]); else S.recs["rules.docs"].push(r.data[0]);
+      logp("rules.docs", x ? "edit" : "add", data.target); toast("저장했습니다."); after(); ruleDetail(c, x || r.data[0], after);
+    });
+  }
+  function ruleDetail(c, x, after){
+    var d = x.data, w = can("rules.docs", "write"), ed = can("rules.docs", "edit");
+    var vs = (d.versions || []).slice().sort(function(a, b){ return String(b.date || "").localeCompare(String(a.date || "")) || String(b.at || "").localeCompare(String(a.at || "")); });
+    var m = showModal('<div style="display:flex;justify-content:space-between;gap:10px"><div><span class="badge info">' + esc(d.group || "") + '</span><h3 style="font-size:18px;margin-top:6px">' + esc((d.no ? d.no + ". " : "") + (d.target || "")) + '</h3><div class="hint" style="font-size:12.5px">' + esc([d.owner ? "담당 " + d.owner : "", d.enacted ? "제정 " + d.enacted : ""].filter(Boolean).join(" · ")) + '</div></div><button class="btn sm ghost" id="dx">닫기 ✕</button></div>' +
+      (d.note ? '<div class="banner info" style="margin:12px 0 0">' + esc(d.note) + '</div>' : '') +
+      '<h4 style="margin:16px 0 6px;font-size:13px">버전 이력 (' + vs.length + ')</h4><div class="tbl-box" style="max-height:300px"><table class="rec compact" style="min-width:0"><thead><tr><th>버전</th><th>시행(개정)일</th><th>개정 요지</th><th>파일</th><th>올린 사람</th><th></th></tr></thead><tbody>' +
+      (vs.length ? vs.map(function(v, i){ return '<tr class="' + (i === 0 ? "cur" : "") + '"><td><b>' + esc(v.ver || "-") + '</b>' + (i === 0 ? ' <span class="badge good">현재</span>' : '') + '</td><td>' + esc(v.date || "") + '</td><td style="white-space:normal;min-width:180px">' + esc(v.note || "") + '</td><td>' + esc(v.name || "") + '</td><td>' + esc(v.by || "") + '</td><td>' + (v.path ? '<button class="btn sm" data-vo="' + esc(v.path) + '">열기</button>' : '') + (ed ? ' <button class="btn sm ghost" data-vd="' + esc(v.id) + '">삭제</button>' : '') + '</td></tr>'; }).join("") : '<tr><td colspan="6" class="hint" style="padding:14px">아직 올린 파일이 없습니다.</td></tr>') + '</tbody></table></div>' +
+      (w ? '<form class="f" id="rvf" style="margin-top:14px;border:1px dashed var(--line);border-radius:12px;padding:12px 14px"><div class="full" style="font-weight:700;font-size:13px">새 버전 올리기</div><label>버전<input name="ver" placeholder="예: 2026.01 개정" required></label><label>시행(개정)일<input type="date" name="date" value="' + todayStr() + '" required></label>' +
+        '<label class="full">개정 요지<input name="note" placeholder="무엇이 바뀌었는지 한 줄로"></label><label class="full">파일 (PDF·한글·워드·엑셀, 30MB 이하)<input type="file" name="file" required></label><div class="form-actions"><button class="btn primary">올리기</button></div></form>' : '') +
+      '<div class="modal-actions" style="margin-top:12px">' + (ed ? '<button class="btn" id="rlEd">규정 정보 수정</button>' : '') + '</div>', "wide");
+    $("#dx", m).onclick = closeModal;
+    if ($("#rlEd", m)) $("#rlEd", m).onclick = function(){ ruleEdit(c, x, after); };
+    $all("[data-vo]", m).forEach(function(b){ b.onclick = function(){ openFile(b.dataset.vo); }; });
+    async function saveVersions(list){
+      var data = Object.assign({}, x.data, { versions: list });
+      var r = await sb.from("portal_records").update({ data: data, updated_by: me.email, updated_at: new Date().toISOString() }).eq("id", x.id).select("*");
+      if (r.error || !r.data || !r.data.length) throw new Error(errMsg(r));
+      Object.assign(x, r.data[0]);
+    }
+    $all("[data-vd]", m).forEach(function(b){ b.onclick = async function(){
+      var v = (d.versions || []).filter(function(z){ return String(z.id) === b.dataset.vd; })[0]; if (!v || !confirm("버전 '" + (v.ver || "") + "' (" + (v.name || "") + ")을 삭제할까요?")) return;
+      try { await saveVersions((d.versions || []).filter(function(z){ return z !== v; })); if (v.path) sb.storage.from(BUCKET).remove([v.path]).then(function(){}); logp("rules.docs", "version-delete", d.target + " " + v.ver); after(); ruleDetail(c, x, after); } catch(err){ alert("삭제하지 못했습니다: " + err.message); }
+    }; });
+    if ($("#rvf", m)) $("#rvf", m).addEventListener("submit", async function(e){
+      e.preventDefault(); var fd = new FormData(e.target), file = fd.get("file"), btn = $("#rvf .primary", m);
+      if (!file || !file.size){ alert("파일을 고르세요."); return; } if (file.size > 30 * 1024 * 1024){ alert("30MB를 넘는 파일은 올릴 수 없습니다."); return; }
+      btn.disabled = true; btn.textContent = "올리는 중…";
+      try {
+        var vid = Date.now().toString(36), path = "rules/docs/" + x.id + "/" + vid + "." + fileSafeExt(file.name);
+        var up = await sb.storage.from(BUCKET).upload(path, file, { upsert: false, contentType: file.type || "application/octet-stream" }); if (up.error) throw up.error;
+        await saveVersions((x.data.versions || []).concat([{ id: vid, ver: String(fd.get("ver")).trim(), date: fd.get("date"), note: String(fd.get("note") || "").trim(), path: path, name: file.name, size: file.size, by: me.name, at: new Date().toISOString() }]));
+        logp("rules.docs", "version-add", d.target + " " + fd.get("ver")); toast("새 버전을 올렸습니다."); after(); ruleDetail(c, x, after);
+      } catch(err){ alert("올리지 못했습니다: " + err.message); btn.disabled = false; btn.textContent = "올리기"; }
+    });
+  }
+
+  /* ---------- 자동 메일 (근태 › 자동 메일): 규칙 · 발송 대기 · 수신 주소록 ---------- */
+  var AM_SRC = [["wt:근로시간 단축자", "근로시간 단축자"], ["wt:재택근무 예외자", "재택근무 예외자"], ["absence:*", "휴직(전체)"], ["absence:육아휴직", "육아휴직"], ["absence:출산전후휴가", "출산전후휴가"], ["leave:배우자출산휴가", "배우자출산휴가"], ["leave:*", "휴가(전체)"]];
+  var AM_WHEN = [["rel", "기준일 기준 D±n일"], ["monthly", "매월 정해진 날 일괄"]];
+  var AM_VARS = "{이름} {소속} {팀} {구분} {시작일} {종료일} {복직일} {일수} {담당자}";
+  var amTab = "rules";
+  function amSrcRecs(src){
+    var p = String(src || "").split(":"), kind = p[0], t = p[1];
+    var recs = kind === "wt" ? (S.recs["att.worktypes"] || []).filter(function(x){ return (x.data.list || "worktype") === "worktype" && wtHas(x.data, t); }) : (S.recs[kind + ".status"] || []).filter(function(x){ return t === "*" || x.data.type === t; });
+    return recs.filter(function(x){ return !x.data.ended || kind !== "wt" || true; });
+  }
+  function amEventDate(rule, d){ return rule.event === "end" ? d.end : rule.event === "return" ? (d.return_date || (d.end ? addDay(d.end, 1) : "")) : d.start; }
+  // 오늘 기준으로 이 규칙이 보내야 할 대상 [{rec, date, due}]
+  function amTargets(rule, today){
+    var out = [], t = today || todayStr(), now = parseD(t);
+    amSrcRecs(rule.source).forEach(function(x){
+      var ev = amEventDate(rule, x.data); if (!ev) return;
+      if (rule.when === "monthly"){
+        var day = Math.min(+rule.day || 1, new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate()), base = new Date(now.getFullYear(), now.getMonth() + (rule.scope === "next" ? 1 : 0), 1), ym = ymd(base).slice(0, 7);
+        if (ev.slice(0, 7) === ym) out.push({ rec: x, date: ev, due: t.slice(0, 8) + pad(day) });
+      } else { var due = addDay(ev, +rule.offset || 0); if (due >= addDay(t, -3) && due <= addDay(t, 14)) out.push({ rec: x, date: ev, due: due }); }
+    });
+    return out.sort(function(a, b){ return a.due.localeCompare(b.due); });
+  }
+  function amFill(tpl, d){
+    var map = { "이름": d.target, "소속": d.org, "팀": d.team, "구분": d.type, "시작일": d.start, "종료일": d.end, "복직일": d.return_date || (d.end ? addDay(d.end, 1) : ""), "일수": d.days, "담당자": me.name };
+    return String(tpl || "").replace(/\{([^}]+)\}/g, function(m0, k){ return map[k] != null && map[k] !== "" ? map[k] : (k in map ? "-" : m0); });
+  }
+  function amEmail(people, d){ if (d.email) return d.email; var l = people.filter(function(p){ return p.data.target === d.target; }); if (l.length > 1){ var o = l.filter(function(p){ return p.data.org === d.org; }); if (o.length) l = o; } return l[0] ? l[0].data.email || "" : ""; }
+  async function renderAutoMail(c, sub){
+    var host = $("#cm"), key = "att.automail"; amTab = ["queue", "people"].indexOf(sub) >= 0 ? sub : "rules";
+    host.innerHTML = '<p class="hint">불러오는 중…</p>';
+    try { await Promise.all([loadRecs("att", "automail"), can("att.worktypes", "read") ? loadRecs("att", "worktypes") : null, can("absence.status", "read") ? loadRecs("absence", "status") : null, can("leave.status", "read") ? loadRecs("leave", "status") : null]); }
+    catch(err){ host.innerHTML = '<div class="banner danger">불러오지 못했습니다: ' + esc(err.message) + '</div>'; return; }
+    if (!$("#cm")) return;
+    var all = S.recs[key], rules = all.filter(function(x){ return x.data.list === "rule"; }), queue = all.filter(function(x){ return x.data.list === "queue"; }), people = all.filter(function(x){ return x.data.list === "people"; }), w = can(key, "write");
+    function rer(){ renderAutoMail(c, sub); }
+    var cfg = all.filter(function(x){ return x.data.list === "config"; })[0];
+    var h = '<nav class="subtabs"><a href="#/c/att/automail" class="' + (amTab === "rules" ? "on" : "") + '">발송 규칙</a><a href="#/c/att/automail/queue" class="' + (amTab === "queue" ? "on" : "") + '">발송 대기·기록 <span class="hint">' + queue.length + '</span></a><a href="#/c/att/automail/people" class="' + (amTab === "people" ? "on" : "") + '">수신 주소록 <span class="hint">' + people.length + '</span></a></nav>' +
+      '<div class="banner ' + (cfg && cfg.data.last_run ? "info" : "warn") + '" style="margin-top:0">' + (cfg && cfg.data.last_run ? "발송기 마지막 실행: " + esc(cfg.data.last_run) + " · " + esc(cfg.data.last_msg || "") : "아직 발송기가 실행된 적이 없습니다. GitHub 저장소 Secrets(SUPABASE_SERVICE_KEY · SMTP_USER · SMTP_PASS)를 등록해야 실제 메일이 나갑니다. 등록 전에도 아래에서 규칙을 만들고 대상·본문을 미리 볼 수 있습니다.") + '</div>';
+    if (amTab === "rules"){
+      h += '<div class="hint" style="font-size:12.5px;margin:0 0 12px">근무형태 현황·휴직·휴가 기록의 시작/종료일에 맞춰 대상자에게 안내 메일을 보냅니다. 규칙마다 <b>자동 발송</b> 또는 <b>승인 후 발송</b>을 고를 수 있고, 꺼 둔 규칙은 아무것도 보내지 않습니다. 발송기는 평일 오전 9시경 하루 한 번 실행됩니다.</div>' +
+        '<div class="rec-tools"><span class="grow"></span>' + (w ? '<button class="btn sm primary" id="amAdd">+ 규칙 추가</button>' : '') + '</div><div class="am-rules">' +
+        (rules.length ? rules.sort(function(a, b){ return String(a.data.target).localeCompare(String(b.data.target)); }).map(function(x){ var d = x.data, tg = amTargets(d);
+          return '<div class="am-rule' + (d.enabled ? " on" : "") + '"><div class="am-h"><div><b>' + esc(d.target) + '</b> <span class="badge ' + (d.enabled ? "good" : "neutral") + '">' + (d.enabled ? "켜짐" : "꺼짐") + '</span> <span class="badge info">' + (d.mode === "auto" ? "자동 발송" : "승인 후 발송") + '</span></div>' +
+            '<div class="tools">' + (w ? '<button class="btn sm" data-amt="' + x.id + '">' + (d.enabled ? "끄기" : "켜기") + '</button><button class="btn sm" data-ame="' + x.id + '">수정</button>' : '') + '<button class="btn sm" data-amp="' + x.id + '">대상·본문 미리보기 (' + tg.length + ')</button></div></div>' +
+            '<div class="hint" style="font-size:12.5px;margin-top:4px">대상: ' + esc((AM_SRC.filter(function(s){ return s[0] === d.source; })[0] || ["", d.source])[1]) + ' · 기준일: ' + (d.event === "end" ? "종료일" : d.event === "return" ? "복직일" : "시작일") + ' · ' +
+            (d.when === "monthly" ? "매월 " + (d.day || 1) + "일에 " + (d.scope === "next" ? "다음 달" : "이번 달") + " 해당자 일괄" : "기준일 " + ((+d.offset || 0) === 0 ? "당일" : (+d.offset < 0 ? (-d.offset) + "일 전" : d.offset + "일 후"))) + (d.cc ? " · 참조 " + esc(d.cc) : "") + '</div><div class="am-sub">제목: ' + esc(d.subject || "") + '</div></div>'; }).join("") : '<p class="hint" style="padding:14px">등록된 규칙이 없습니다.</p>') + '</div>';
+    } else if (amTab === "queue"){
+      var qs = queue.slice().sort(function(a, b){ return String(b.data.due || "").localeCompare(String(a.data.due || "")); });
+      h += '<div class="hint" style="font-size:12.5px;margin:0 0 12px">발송기가 만든 메일입니다. "승인 대기"는 내용을 확인하고 승인하면 다음 실행 때 발송됩니다. "주소 필요"는 수신 주소록에 이메일을 넣으면 다시 시도합니다.</div>' +
+        '<div class="tbl-box"><table class="rec compact"><thead><tr><th>발송 예정일</th><th>규칙</th><th>받는 사람</th><th>이메일</th><th>제목</th><th>상태</th><th>발송 시각</th><th></th></tr></thead><tbody>' +
+        (qs.length ? qs.map(function(x){ var d = x.data; return '<tr class="clk" data-qid="' + x.id + '"><td>' + esc(d.due || "") + '</td><td>' + esc(d.rule_name || "") + '</td><td><b>' + esc(d.target || "") + '</b></td><td>' + esc(d.email || "") + '</td><td>' + esc(d.subject || "") + '</td><td><span class="badge ' + stCls(d.status || "") + '">' + esc(d.status || "") + '</span></td><td>' + esc(String(d.sent_at || "").slice(0, 16).replace("T", " ")) + '</td><td>' + (w && d.status === "승인 대기" ? '<button class="btn sm primary" data-qok="' + x.id + '">승인</button>' : '') + '</td></tr>'; }).join("") : '<tr><td colspan="8" class="hint" style="padding:18px">아직 만들어진 메일이 없습니다.</td></tr>') + '</tbody></table></div>';
+    } else {
+      h += '<div class="hint" style="font-size:12.5px;margin:0 0 12px">이름으로 수신 주소를 찾습니다. 동명이인은 소속까지 같은 사람을 씁니다. 휴직 기록에 개인 메일이 있으면 그 주소가 먼저 쓰입니다. 엑셀에서 「이름 · 소속 · 이메일」 세 열을 복사해 붙여 넣을 수 있습니다.</div>' +
+        '<div class="rec-tools"><span class="grow"></span>' + (w ? '<button class="btn sm" id="amPaste">엑셀 붙여넣기</button><button class="btn sm primary" id="amPAdd">+ 주소 추가</button>' : '') + '</div>' +
+        '<div class="tbl-box"><table class="rec compact"><thead><tr><th>이름</th><th>소속</th><th>이메일</th><th></th></tr></thead><tbody>' + (people.length ? people.sort(function(a, b){ return String(a.data.target).localeCompare(String(b.data.target)); }).map(function(x){ return '<tr><td><b>' + esc(x.data.target) + '</b></td><td>' + esc(x.data.org || "") + '</td><td>' + esc(x.data.email || "") + '</td><td>' + (w ? '<button class="btn sm ghost" data-pdel="' + x.id + '">삭제</button>' : '') + '</td></tr>'; }).join("") : '<tr><td colspan="4" class="hint" style="padding:18px">등록된 주소가 없습니다.</td></tr>') + '</tbody></table></div>';
+    }
+    host.innerHTML = h;
+    async function save(x, patch){ var data = Object.assign({}, x.data, patch); var r = await sb.from("portal_records").update({ data: data, updated_by: me.email, updated_at: new Date().toISOString() }).eq("id", x.id).select("*"); if (r.error || !r.data || !r.data.length){ alert("저장하지 못했습니다: " + errMsg(r)); return false; } Object.assign(x, r.data[0]); return true; }
+    async function add(data){ var r = await sb.from("portal_records").insert({ cat: "att", menu: "automail", data: data, updated_by: me.email }).select("*"); if (r.error || !r.data || !r.data.length){ alert("저장하지 못했습니다: " + errMsg(r)); return null; } all.push(r.data[0]); return r.data[0]; }
+    function byId(id){ return all.filter(function(x){ return x.id === id; })[0]; }
+    $all("[data-amt]", host).forEach(function(b){ b.onclick = async function(){ var x = byId(b.dataset.amt); if (!x.data.enabled && !confirm("'" + x.data.target + "' 규칙을 켤까요?\n" + (x.data.mode === "auto" ? "자동 발송 규칙입니다. 발송기가 실행되면 대상자에게 메일이 바로 나갑니다." : "승인 후 발송 규칙입니다. 메일은 '승인 대기'로 쌓이고 승인해야 나갑니다."))) return; if (await save(x, { enabled: !x.data.enabled })){ logp(key, "rule-toggle", x.data.target + " " + (x.data.enabled ? "on" : "off")); rer(); } }; });
+    $all("[data-ame]", host).forEach(function(b){ b.onclick = function(){ amRuleEdit(byId(b.dataset.ame)); }; });
+    $all("[data-amp]", host).forEach(function(b){ b.onclick = function(){ amPreview(byId(b.dataset.amp)); }; });
+    if ($("#amAdd")) $("#amAdd").onclick = function(){ amRuleEdit(null); };
+    $all("[data-qok]", host).forEach(function(b){ b.onclick = async function(e){ e.stopPropagation(); var x = byId(b.dataset.qok); if (!confirm(x.data.target + " (" + (x.data.email || "주소 없음") + ") 님에게 보낼 메일을 승인할까요? 다음 발송기 실행 때 발송됩니다.")) return; if (await save(x, { status: "발송 대기", approved_by: me.name })) rer(); }; });
+    $all("tr[data-qid]", host).forEach(function(tr){ tr.onclick = function(){ var d = byId(tr.dataset.qid).data; showModal('<h3>' + esc(d.subject || "") + '</h3><p class="hint">받는 사람: ' + esc(d.target || "") + ' &lt;' + esc(d.email || "주소 없음") + '&gt; · ' + esc(d.status || "") + (d.error ? " · " + esc(d.error) : "") + '</p><div class="wraptext" style="font-size:13.5px;line-height:1.7;background:var(--paper-0);border-radius:10px;padding:12px 14px">' + esc(d.body || "") + '</div><div class="modal-actions"><button class="btn" onclick="document.getElementById(\'modalRoot\').remove()">닫기</button></div>', "wide"); }; });
+    $all("[data-pdel]", host).forEach(function(b){ b.onclick = async function(){ var x = byId(b.dataset.pdel); if (!confirm(x.data.target + " 주소를 삭제할까요?")) return; var r = await sb.from("portal_records").delete().eq("id", x.id).select("id"); if (r.error || !r.data || !r.data.length){ alert("삭제하지 못했습니다: " + errMsg(r)); return; } S.recs[key] = all.filter(function(y){ return y.id !== x.id; }); rer(); }; });
+    if ($("#amPAdd")) $("#amPAdd").onclick = function(){ promptModal("주소 추가", "이름, 소속, 이메일을 쉼표로 구분해 입력하세요. 예: 홍길동, MS, hong@example.com", "", false, async function(v){ var p = v.split(",").map(function(s){ return s.trim(); }); if (!p[0] || !/@/.test(p[2] || p[1] || "")){ alert("이름과 이메일을 확인하세요."); return; } if (await add({ list: "people", target: p[0], org: p[2] ? p[1] : "", email: p[2] || p[1] })) rer(); }); };
+    if ($("#amPaste")) $("#amPaste").onclick = function(){ promptModal("엑셀 붙여넣기", "「이름 · 소속 · 이메일」 순서의 세 열을 복사해 붙여 넣으세요. 이미 있는 이름+소속은 이메일만 바뀝니다.", "", true, async function(v){
+      var rows = v.split(/\r?\n/).map(function(l){ return l.split("\t").map(function(s){ return s.trim(); }); }).filter(function(p){ return p[0] && /@/.test(p[2] || ""); }), n = 0;
+      for (var i = 0; i < rows.length; i++){ var p = rows[i], ex = people.filter(function(x){ return x.data.target === p[0] && (x.data.org || "") === (p[1] || ""); })[0]; if (ex){ if (await save(ex, { email: p[2] })) n++; } else if (await add({ list: "people", target: p[0], org: p[1] || "", email: p[2] })) n++; }
+      toast(n + "명의 주소를 저장했습니다."); rer(); }); };
+    function amPreview(x){
+      var d = x.data, tg = amTargets(d);
+      var m = showModal('<div style="display:flex;justify-content:space-between;gap:10px"><div><h3>' + esc(d.target) + ' · 대상 미리보기</h3><p class="hint" style="margin-top:4px">' + (d.when === "monthly" ? (d.scope === "next" ? "다음 달" : "이번 달") + " 해당자" : "발송 예정일이 3일 전~14일 뒤인 대상") + ' ' + tg.length + '명</p></div><button class="btn sm ghost" id="dx">닫기 ✕</button></div>' +
+        (tg.length ? '<div class="tbl-box" style="max-height:200px;margin-top:8px"><table class="rec compact" style="min-width:0"><thead><tr><th>발송 예정일</th><th>이름</th><th>소속</th><th>기준일</th><th>이메일</th></tr></thead><tbody>' + tg.map(function(t, i){ var r = t.rec.data, em = amEmail(people, r); return '<tr class="clk" data-pv="' + i + '"><td>' + t.due + '</td><td><b>' + esc(r.target || "") + '</b></td><td>' + esc([r.org, r.team].filter(Boolean).join(" ")) + '</td><td>' + esc(t.date) + '</td><td>' + (em ? esc(em) : '<span class="badge warn">주소 필요</span>') + '</td></tr>'; }).join("") + '</tbody></table></div>' : '<p class="hint" style="padding:12px 0">지금은 해당하는 대상이 없습니다.</p>') +
+        '<h4 style="margin:14px 0 6px;font-size:13px">본문 미리보기' + (tg.length ? ' <span class="hint" style="font-weight:500">(대상 행을 누르면 그 사람 기준으로 바뀝니다)</span>' : '') + '</h4><div class="am-sub" id="pvS"></div><div class="wraptext" id="pvB" style="font-size:13.5px;line-height:1.7;background:var(--paper-0);border-radius:10px;padding:12px 14px"></div>', "wide");
+      function show(r){ $("#pvS", m).textContent = "제목: " + amFill(d.subject, r); $("#pvB", m).textContent = amFill(d.body, r); }
+      show(tg[0] ? tg[0].rec.data : { target: "홍길동", org: "MS", team: "○○팀", type: "예시", start: todayStr(), end: addDay(todayStr(), 30) });
+      $("#dx", m).onclick = closeModal; $all("[data-pv]", m).forEach(function(tr){ tr.onclick = function(){ show(tg[+tr.dataset.pv].rec.data); }; });
+    }
+    function amRuleEdit(x){
+      var d = x ? x.data : { list: "rule", source: AM_SRC[0][0], event: "start", when: "rel", offset: -7, mode: "approve", enabled: false, subject: "", body: "" };
+      function sel(name, opts, cur){ return '<select name="' + name + '">' + opts.map(function(o){ return '<option value="' + esc(o[0]) + '"' + (String(o[0]) === String(cur) ? " selected" : "") + '>' + esc(o[1]) + '</option>'; }).join("") + '</select>'; }
+      var m = showModal('<h3>발송 규칙 ' + (x ? "수정" : "추가") + '</h3><form class="f" id="amf"><label class="full">규칙 이름<input name="target" value="' + esc(d.target || "") + '" required></label>' +
+        '<label>대상' + sel("source", AM_SRC, d.source) + '</label><label>기준일' + sel("event", [["start", "시작일"], ["end", "종료일"], ["return", "복직일(종료 다음 날)"]], d.event) + '</label>' +
+        '<label>보내는 시점' + sel("when", AM_WHEN, d.when) + '</label><label>D±n일 (전은 음수, 예: -7)<input type="number" name="offset" value="' + esc(d.offset == null ? 0 : d.offset) + '"></label>' +
+        '<label>매월 발송일 (일괄일 때)<input type="number" name="day" min="1" max="31" value="' + esc(d.day || 1) + '"></label><label>일괄 대상' + sel("scope", [["this", "이번 달 해당자"], ["next", "다음 달 해당자"]], d.scope || "this") + '</label>' +
+        '<label>발송 방식' + sel("mode", [["approve", "승인 후 발송"], ["auto", "자동 발송"]], d.mode) + '</label><label>참조(CC)<input name="cc" value="' + esc(d.cc || "") + '" placeholder="쉼표로 구분"></label>' +
+        '<label class="full">제목<input name="subject" value="' + esc(d.subject || "") + '" required></label><label class="full">본문 <span class="hint" style="font-weight:500">쓸 수 있는 값: ' + AM_VARS + '</span><textarea name="body" rows="12" required>' + esc(d.body || "") + '</textarea></label>' +
+        '<div class="form-actions">' + (x && can(key, "edit") ? '<button type="button" class="btn danger" id="amDel" style="margin-right:auto">삭제</button>' : '') + '<button type="button" class="btn ghost" id="amNo">취소</button><button class="btn primary">저장</button></div></form>', "wide");
+      $("#amNo", m).onclick = closeModal;
+      if ($("#amDel", m)) $("#amDel", m).onclick = async function(){ if (!confirm("이 규칙을 삭제할까요?")) return; var r = await sb.from("portal_records").delete().eq("id", x.id).select("id"); if (r.error || !r.data || !r.data.length){ alert("삭제하지 못했습니다: " + errMsg(r)); return; } S.recs[key] = all.filter(function(y){ return y.id !== x.id; }); closeModal(); rer(); };
+      $("#amf", m).addEventListener("submit", async function(e){
+        e.preventDefault(); var fd = new FormData(e.target), data = Object.assign({}, d);
+        ["target", "source", "event", "when", "scope", "mode", "cc", "subject", "body"].forEach(function(k){ data[k] = String(fd.get(k) || "").trim(); });
+        data.offset = +fd.get("offset") || 0; data.day = Math.max(1, Math.min(31, +fd.get("day") || 1)); data.list = "rule";
+        var ok = x ? await save(x, data) : await add(data);
+        if (ok){ logp(key, x ? "rule-edit" : "rule-add", data.target); closeModal(); toast("저장했습니다."); rer(); }
+      });
+    }
   }
   async function renderWorktypes(c, tab){
     var host = $("#cm"), key = "att.worktypes", def = REC_DEF[tab], f = wtFilter[tab];
