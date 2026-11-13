@@ -784,7 +784,7 @@
           items.map(function(x){
             var sibs = items.filter(function(y){ return (y.parent || null) === (x.parent || null); }), si = sibs.indexOf(x);
             var canIn = !x.parent && si > 0 && !d.some(function(y){ return y.parent === x.id; });
-            return '<div class="te-p' + (x.parent ? " sub" : "") + '"><span class="t">' + (x.parent ? "ㄴ " : "") + esc(x.title) + '</span><span class="ctl">' +
+            return '<div class="te-p' + (x.parent ? " sub" : "") + '"><span class="t">' + esc(x.title) + '</span><span class="ctl">' +
               '<button class="ib" data-pu="' + esc(x.id) + '" title="위로"' + (si > 0 ? "" : " disabled") + '>↑</button><button class="ib" data-pd="' + esc(x.id) + '" title="아래로"' + (si < sibs.length - 1 ? "" : " disabled") + '>↓</button>' +
               '<button class="ib" data-pin="' + esc(x.id) + '" title="바로 위 문서의 하위 목차로"' + (canIn ? "" : " disabled") + '>→</button><button class="ib" data-pout="' + esc(x.id) + '" title="하위 목차에서 꺼내기"' + (x.parent ? "" : " disabled") + '>←</button>' +
               '<button class="ib" data-pr="' + esc(x.id) + '" title="목차 이름 바꾸기">✎</button>' +
