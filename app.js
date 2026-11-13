@@ -264,48 +264,53 @@
   var orgOpen = false;
   function renderOrg(){
     var host = $("#orgSec"); if (!host) return;
-    var ed = can("home.org", "edit"), q = orgQuery.trim();
-    var openSet = window.__orgOpen || {};
+    var ed = can("home.org", "edit"), q0 = orgQuery.trim();
     var groups = orgGroups();
     var total = S.org.length;
-    var h = '<details class="og-wrap" id="orgWrap"' + (orgOpen || q ? " open" : "") + '><summary><span class="cv">▶</span><h2>노무관리파트 업무분장표</h2><span class="hint" style="font-size:12.5px">' + groups.length + '개 대분류 · ' + total + '개 업무</span>' +
+    host.innerHTML = '<details class="og-wrap" id="orgWrap"' + (orgOpen || q0 ? " open" : "") + '><summary><span class="cv">▶</span><h2>노무관리파트 업무분장표</h2><span class="hint" style="font-size:12.5px">' + groups.length + '개 대분류 · ' + total + '개 업무</span>' +
       '<span class="legend" style="margin-left:auto">' + S.staff.map(function(s){ return chip(s.name); }).join("") + '</span></summary><div class="og-in">' +
       '<div class="sec-h"><div class="hint" style="font-size:12.5px">대분류를 눌러 펼치고, 업무명을 누르면 세부 내용이 열립니다.' + (ed ? ' 사업부 칸의 담당자를 누르면 바로 바꿀 수 있습니다.' : '') + '</div>' +
-      '<div class="tools"><input type="search" id="orgQ" placeholder="업무·담당자 검색" value="' + esc(q) + '">' +
+      '<div class="tools"><input type="search" id="orgQ" placeholder="업무·담당자 검색" value="' + esc(q0) + '">' +
       '<button class="btn sm" id="orgAll">모두 펼치기</button><button class="btn sm" id="orgNone">모두 접기</button>' +
-      (ed ? '<button class="btn sm primary" id="orgAdd">+ 업무 추가</button>' : '') + '</div></div>';
-    if (!groups.length) h += '<p class="hint">등록된 업무분장이 없습니다.</p>';
-    groups.forEach(function(g){
-      var rows = g.rows.filter(function(r){
-        if (!q) return true;
-        var hay = [r.grp, r.title, r.note].concat(UNITS.map(function(u){ return (r.units || {})[u[0]]; })).join(" ");
-        return hay.indexOf(q) >= 0;
+      (ed ? '<button class="btn sm primary" id="orgAdd">+ 업무 추가</button>' : '') + '</div></div><div id="orgGroups"></div></div></details>';
+    // only the group list is redrawn while typing, so the search box keeps focus (한글 입력 유지)
+    function drawGroups(){
+      var q = orgQuery.trim(), openSet = window.__orgOpen || {}, h = "";
+      if (!groups.length) h += '<p class="hint">등록된 업무분장이 없습니다.</p>';
+      groups.forEach(function(g){
+        var rows = g.rows.filter(function(r){
+          if (!q) return true;
+          var hay = [r.grp, r.title, r.note].concat(UNITS.map(function(u){ return (r.units || {})[u[0]]; })).join(" ");
+          return hay.indexOf(q) >= 0;
+        });
+        if (!rows.length) return;
+        var who = {}; rows.forEach(function(r){ UNITS.forEach(function(u){ var v = (r.units || {})[u[0]]; if (v) who[v] = 1; }); });
+        var open = q || openSet[g.grp];
+        h += '<details class="og" data-g="' + esc(g.grp) + '"' + (open ? " open" : "") + '><summary><span class="cv">▶</span><span class="t">' + esc(g.grp) + '</span><span class="n">' + rows.length + '개 업무</span>' +
+          '<span class="who">' + Object.keys(who).map(chip).join("") + '</span></summary><div class="og-body"><table class="org"><thead><tr>' +
+          '<th class="l">업무(중분류)</th>' + UNITS.map(function(u, i){ return '<th class="' + (i === 0 ? "ugrp" : "") + '">' + u[1] + '</th>'; }).join("") + '<th class="l ugrp">비고</th></tr></thead><tbody>' +
+          rows.map(function(r){
+            var u = r.units || {};
+            return '<tr data-id="' + r.id + '"><td class="l ttl"><button data-open="' + r.id + '">' + esc(r.title) + '</button>' + (r.detail_html ? '<span class="has">세부 ▸</span>' : '') + '</td>' +
+              UNITS.map(function(x, i){
+                var c = u[x[0]] ? chip(u[x[0]]) : '<span class="chip empty">-</span>';
+                return '<td class="' + (i === 0 ? "ugrp" : "") + '">' + (ed ? '<button class="pick" data-pick="' + r.id + '" data-u="' + x[0] + '" title="' + esc(x[1]) + ' 담당자 바꾸기">' + c + '</button>' : c) + '</td>';
+              }).join("") +
+              '<td class="note ugrp">' + esc(r.note || "") + '</td></tr>';
+          }).join("") + '</tbody></table></div></details>';
       });
-      if (!rows.length) return;
-      var who = {}; rows.forEach(function(r){ UNITS.forEach(function(u){ var v = (r.units || {})[u[0]]; if (v) who[v] = 1; }); });
-      var open = q || openSet[g.grp];
-      h += '<details class="og" data-g="' + esc(g.grp) + '"' + (open ? " open" : "") + '><summary><span class="cv">▶</span><span class="t">' + esc(g.grp) + '</span><span class="n">' + rows.length + '개 업무</span>' +
-        '<span class="who">' + Object.keys(who).map(chip).join("") + '</span></summary><div class="og-body"><table class="org"><thead><tr>' +
-        '<th class="l">업무(중분류)</th>' + UNITS.map(function(u, i){ return '<th class="' + (i === 0 ? "ugrp" : "") + '">' + u[1] + '</th>'; }).join("") + '<th class="l ugrp">비고</th></tr></thead><tbody>' +
-        rows.map(function(r){
-          var u = r.units || {};
-          return '<tr data-id="' + r.id + '"><td class="l ttl"><button data-open="' + r.id + '">' + esc(r.title) + '</button>' + (r.detail_html ? '<span class="has">세부 ▸</span>' : '') + '</td>' +
-            UNITS.map(function(x, i){
-              var c = u[x[0]] ? chip(u[x[0]]) : '<span class="chip empty">-</span>';
-              return '<td class="' + (i === 0 ? "ugrp" : "") + '">' + (ed ? '<button class="pick" data-pick="' + r.id + '" data-u="' + x[0] + '" title="' + esc(x[1]) + ' 담당자 바꾸기">' + c + '</button>' : c) + '</td>';
-            }).join("") +
-            '<td class="note ugrp">' + esc(r.note || "") + '</td></tr>';
-        }).join("") + '</tbody></table></div></details>';
-    });
-    host.innerHTML = h + '</div></details>';
+      if (groups.length && !h) h = '<p class="hint">검색 결과가 없습니다.</p>';
+      var box = $("#orgGroups"); box.innerHTML = h;
+      $all("details.og", box).forEach(function(d){ d.addEventListener("toggle", function(){ if (orgQuery.trim()) return; window.__orgOpen = window.__orgOpen || {}; window.__orgOpen[d.dataset.g] = d.open; }); });
+      $all("[data-open]", box).forEach(function(b){ b.onclick = function(){ openOrg(+b.dataset.open); }; });
+      $all("[data-pick]", box).forEach(function(b){ b.onclick = function(e){ e.stopPropagation(); openPicker(b, +b.dataset.pick, b.dataset.u); }; });
+    }
+    drawGroups();
     $("#orgWrap").addEventListener("toggle", function(e){ orgOpen = e.target.open; });
-    $all("details.og", host).forEach(function(d){ d.addEventListener("toggle", function(){ window.__orgOpen = window.__orgOpen || {}; window.__orgOpen[d.dataset.g] = d.open; }); });
-    $("#orgQ").addEventListener("input", function(e){ orgQuery = e.target.value; var pos = e.target.selectionStart; renderOrg(); var i = $("#orgQ"); i.focus(); try { i.setSelectionRange(pos, pos); } catch(x){} });
-    $("#orgAll").onclick = function(){ $all("details.og", host).forEach(function(d){ d.open = true; }); };
-    $("#orgNone").onclick = function(){ $all("details.og", host).forEach(function(d){ d.open = false; }); };
+    $("#orgQ").addEventListener("input", function(e){ orgQuery = e.target.value; drawGroups(); });
+    $("#orgAll").onclick = function(){ $all("#orgGroups details.og").forEach(function(d){ d.open = true; }); };
+    $("#orgNone").onclick = function(){ $all("#orgGroups details.og").forEach(function(d){ d.open = false; }); };
     if ($("#orgAdd")) $("#orgAdd").onclick = function(){ openOrgEdit(null); };
-    $all("[data-open]", host).forEach(function(b){ b.onclick = function(){ openOrg(+b.dataset.open); }; });
-    $all("[data-pick]", host).forEach(function(b){ b.onclick = function(e){ e.stopPropagation(); openPicker(b, +b.dataset.pick, b.dataset.u); }; });
   }
   function closePicker(){ var p = document.getElementById("pickPop"); if (p) p.remove(); document.removeEventListener("mousedown", pickOutside, true); }
   function pickOutside(e){ var p = document.getElementById("pickPop"); if (p && !p.contains(e.target)) closePicker(); }
@@ -574,19 +579,23 @@
   // home card: category tabs (근태·시간외근로·휴가·휴직·복리후생·기타), top 10 most-asked questions each
   function renderFaq(){
     var host = $("#faqCard"); if (!host) return;
-    var w = can("home.faq", "write"), q = faqQ.trim();
-    var inCat = S.faq.filter(function(f){ return (f.category || "기타") === homeFaqCat && (!q || [f.question, f.answer, f.qtype].join(" ").indexOf(q) >= 0); });
-    var groups = faqGroups(inCat).slice(0, 10);
+    var w = can("home.faq", "write");
+    function topHtml(){
+      var q = faqQ.trim();
+      var inCat = S.faq.filter(function(f){ return (f.category || "기타") === homeFaqCat && (!q || [f.question, f.answer, f.qtype].join(" ").indexOf(q) >= 0); });
+      var groups = faqGroups(inCat).slice(0, 10);
+      return '<ol class="faq-links top">' + (groups.length ? groups.map(function(g, i){
+        var f = g.latest;
+        return '<li><a href="#/faq/' + encodeURIComponent(f.id) + '"><span class="rk">' + (i + 1) + '</span><span class="tx">' + esc(f.question) + '</span>' + (g.items.length > 1 ? '<span class="badge info">' + g.items.length + '건</span>' : '') + srcBadge(f) + '</a></li>';
+      }).join("") : '<li class="hint" style="font-size:13px;padding:8px">해당하는 FAQ가 없습니다.</li>') + '</ol>';
+    }
     host.innerHTML = '<div class="sec-h"><h2><a href="#/faq" class="h-link">💬 FAQ ›</a></h2><div class="tools"><input type="search" id="fq" placeholder="질문 검색" value="' + esc(faqQ) + '" style="width:150px">' + (w ? '<button class="btn sm primary" id="fAdd">+ FAQ</button>' : '') + '</div></div>' +
       '<div class="faq-tabs">' + HOME_FAQ_CATS.map(function(c){ var n = S.faq.filter(function(f){ return (f.category || "기타") === c; }).length; return '<button data-fc="' + esc(c) + '" class="' + (c === homeFaqCat ? "on" : "") + '">' + esc(c) + ' <span class="n">' + n + '</span></button>'; }).join("") + '</div>' +
       '<div class="hint" style="font-size:11.5px;margin:-2px 0 6px">' + esc(homeFaqCat) + ' · 문의 건수 많은 순 상위 10개</div>' +
-      '<ol class="faq-links top">' + (groups.length ? groups.map(function(g, i){
-        var f = g.latest;
-        return '<li><a href="#/faq/' + encodeURIComponent(f.id) + '"><span class="rk">' + (i + 1) + '</span><span class="tx">' + esc(f.question) + '</span>' + (g.items.length > 1 ? '<span class="badge info">' + g.items.length + '건</span>' : '') + srcBadge(f) + '</a></li>';
-      }).join("") : '<li class="hint" style="font-size:13px;padding:8px">해당하는 FAQ가 없습니다.</li>') + '</ol>' +
+      '<div id="faqTop">' + topHtml() + '</div>' +
       '<a class="btn sm" href="#/faq" style="margin-top:8px;align-self:flex-end">FAQ 화면에서 전체 보기 · 문의 분석 →</a>';
     $all("[data-fc]", host).forEach(function(b){ b.onclick = function(){ homeFaqCat = b.dataset.fc; renderFaq(); }; });
-    $("#fq").addEventListener("input", function(e){ faqQ = e.target.value; renderFaq(); var i = $("#fq"); i.focus(); i.setSelectionRange(i.value.length, i.value.length); });
+    $("#fq").addEventListener("input", function(e){ faqQ = e.target.value; $("#faqTop").innerHTML = topHtml(); });
     if ($("#fAdd")) $("#fAdd").onclick = function(){ openFaq(null, renderFaq); };
   }
   function openFaq(f, after){
@@ -853,22 +862,24 @@
       '<tr><td>반복 비율</td>' + rs.map(function(x){ return '<td class="n">' + (x.n ? Math.round(x.rep / x.n * 100) + "%" : "-") + '</td>'; }).join("") + '</tr></tbody></table></div></section></div>';
     var cats = ["전체"]; S.faq.forEach(function(f){ if (f.category && cats.indexOf(f.category) < 0) cats.push(f.category); });
     var answerers = ["이혜린", "김고은", "김보결", "전현주"];
-    var list = sortFaq(S.faq.filter(function(f){ return (faqCat === "전체" || f.category === faqCat) && (!faqSrc || srcOf(f) === faqSrc) && (!faqKind || f.kind === faqKind) && (!faqStatus || (f.status || "완료") === faqStatus) && (!faqAns || String(f.answerer || "").split(",").map(function(s){ return s.trim(); }).indexOf(faqAns) >= 0) &&
+    function filtered(){ var q = faqQ.trim(); return sortFaq(S.faq.filter(function(f){ return (faqCat === "전체" || f.category === faqCat) && (!faqSrc || srcOf(f) === faqSrc) && (!faqKind || f.kind === faqKind) && (!faqStatus || (f.status || "완료") === faqStatus) && (!faqAns || String(f.answerer || "").split(",").map(function(s){ return s.trim(); }).indexOf(faqAns) >= 0) &&
       (!faqType || String(f.qtype || "").split(",").map(function(t){ return t.trim(); }).indexOf(faqType) >= 0) &&
-      (!faqQ || [f.question, f.answer, f.detail, f.asker_name, f.asker_dept, f.qtype].join(" ").indexOf(faqQ) >= 0); }));
+      (!q || [f.question, f.answer, f.detail, f.asker_name, f.asker_dept, f.qtype].join(" ").indexOf(q) >= 0); })); }
+    function rowsHtml(list){ return list.length ? list.map(function(f){
+        return '<tr class="clk" data-fid="' + esc(f.id) + '" tabindex="0"><td>' + srcBadge(f) + '</td><td class="fq-t">' + (f.caution ? '<span class="badge danger" style="font-size:10px">주의</span> ' : '') + esc(f.question) + ((f.images || []).length ? ' <span title="첨부 이미지 ' + f.images.length + '장">🖼</span>' : '') + '</td><td class="fq-ty">' + esc(f.qtype || "") + '</td><td>' + asker(f) + '</td>' +
+          '<td>' + esc(f.asked_on || "") + '</td><td>' + esc(f.done_on || "") + '</td><td>' + statusBadge(f.status) + '</td><td>' + (f.answerer ? chip(f.answerer) : "") + '</td></tr>';
+      }).join("") : '<tr><td colspan="8" class="hint" style="padding:18px">해당하는 FAQ가 없습니다.</td></tr>'; }
+    var list = filtered();
     if (faqTab === "list")
-    h += '<section class="panel" style="margin-top:0"><div class="panel-head"><div><h2>FAQ 목록</h2><div class="desc">' + list.length + '건 · 행을 누르면 문의 내용과 답변이 열립니다</div></div>' +
+    h += '<section class="panel" style="margin-top:0"><div class="panel-head"><div><h2>FAQ 목록</h2><div class="desc"><span id="fqCnt">' + list.length + '</span>건 · 행을 누르면 문의 내용과 답변이 열립니다</div></div>' +
       '<div class="rec-tools" style="margin:0"><select id="fsrcSel"><option value="">반복·특수 전체</option>' + FAQ_SRC.map(function(s){ return '<option' + (s === faqSrc ? " selected" : "") + '>' + s + '</option>'; }).join("") + '</select><select id="ftSel"><option value="">전체 유형</option>' + FAQ_TYPES.map(function(t){ return '<option' + (t === faqType ? " selected" : "") + '>' + t + '</option>'; }).join("") + '</select>' +
       '<select id="fsSel"><option value="">전체 진행현황</option>' + FAQ_STATUS.map(function(s){ return '<option' + (s === faqStatus ? " selected" : "") + '>' + s + '</option>'; }).join("") + '</select>' +
       '<select id="faSel"><option value="">전체 답변자</option>' + answerers.map(function(s){ return '<option' + (s === faqAns ? " selected" : "") + '>' + esc(s) + '</option>'; }).join("") + '</select>' +
       '<select id="fkSel"><option value="">반복 세부 구분</option>' + ["단순 반복", "개별 판단", "FAQ 미수록"].map(function(k){ return '<option' + (k === faqKind ? " selected" : "") + '>' + k + '</option>'; }).join("") + '</select>' +
       '<input type="search" id="fpq" placeholder="질문·답변·질문자 검색" value="' + esc(faqQ) + '"><button class="btn sm" id="fpCsv">CSV</button>' + (w ? '<button class="btn sm primary" id="fpAdd">+ FAQ 추가</button>' : '') + '</div></div>' +
       '<div class="faq-tabs">' + cats.map(function(c){ return '<button data-fc="' + esc(c) + '" class="' + (c === faqCat ? "on" : "") + '">' + esc(c) + '</button>'; }).join("") + '</div>' +
-      '<div class="tbl-box" style="max-height:640px"><table class="rec compact faq-tbl"><thead><tr><th>문의 구분</th><th>질문</th><th>유형</th><th>질문자 (이름/소속/직책)</th><th>문의날짜</th><th>완료날짜</th><th>진행현황</th><th>답변자</th></tr></thead><tbody>' +
-      (list.length ? list.map(function(f){
-        return '<tr class="clk" data-fid="' + esc(f.id) + '" tabindex="0"><td>' + srcBadge(f) + '</td><td class="fq-t">' + (f.caution ? '<span class="badge danger" style="font-size:10px">주의</span> ' : '') + esc(f.question) + ((f.images || []).length ? ' <span title="첨부 이미지 ' + f.images.length + '장">🖼</span>' : '') + '</td><td class="fq-ty">' + esc(f.qtype || "") + '</td><td>' + asker(f) + '</td>' +
-          '<td>' + esc(f.asked_on || "") + '</td><td>' + esc(f.done_on || "") + '</td><td>' + statusBadge(f.status) + '</td><td>' + (f.answerer ? chip(f.answerer) : "") + '</td></tr>';
-      }).join("") : '<tr><td colspan="8" class="hint" style="padding:18px">해당하는 FAQ가 없습니다.</td></tr>') + '</tbody></table></div></section>';
+      '<div class="tbl-box" style="max-height:640px"><table class="rec compact faq-tbl"><thead><tr><th>문의 구분</th><th>질문</th><th>유형</th><th>질문자 (이름/소속/직책)</th><th>문의날짜</th><th>완료날짜</th><th>진행현황</th><th>답변자</th></tr></thead><tbody id="fqBody">' +
+      rowsHtml(list) + '</tbody></table></div></section>';
     host.innerHTML = h;
     function redraw(){ drawFaqPage(); }
     $all("[data-pd]", host).forEach(function(b){ b.onclick = function(){ faqPeriod = b.dataset.pd; redraw(); }; });
@@ -884,10 +895,11 @@
     $("#fsSel").onchange = function(e){ faqStatus = e.target.value; redraw(); };
     $("#faSel").onchange = function(e){ faqAns = e.target.value; redraw(); };
     $("#fkSel").onchange = function(e){ faqKind = e.target.value; redraw(); };
-    $("#fpq").addEventListener("input", function(e){ faqQ = e.target.value; redraw(); var i = $("#fpq"); i.focus(); i.setSelectionRange(i.value.length, i.value.length); });
+    $("#fpq").addEventListener("input", function(e){ faqQ = e.target.value; list = filtered(); $("#fqBody").innerHTML = rowsHtml(list); $("#fqCnt").textContent = list.length; wireRows(); });
     $("#fpCsv").onclick = function(){ downloadCsv("FAQ", [["문의 구분", function(f){ return srcOf(f); }], ["질문", function(f){ return f.question; }], ["유형", function(f){ return f.qtype; }], ["분류", function(f){ return f.category; }], ["구분", function(f){ return f.kind; }], ["질문자", function(f){ return f.asker_name; }], ["소속", function(f){ return f.asker_dept; }], ["직책", function(f){ return f.asker_title; }], ["문의수단", function(f){ return f.channel; }], ["문의날짜", function(f){ return f.asked_on; }], ["완료날짜", function(f){ return f.done_on; }], ["진행현황", function(f){ return f.status; }], ["답변자", function(f){ return f.answerer; }], ["주의", function(f){ return f.caution ? "Y" : ""; }], ["문의 내용", function(f){ return f.detail; }], ["답변", function(f){ return f.answer; }]], list); };
     if ($("#fpAdd")) $("#fpAdd").onclick = function(){ openFaq(null, redraw); };
-    $all("tr[data-fid]", host).forEach(function(tr){ function o(){ faqDetail(S.faq.filter(function(f){ return f.id === tr.dataset.fid; })[0], redraw); } tr.onclick = o; tr.onkeydown = function(e){ if (e.key === "Enter") o(); }; });
+    function wireRows(){ $all("#fqBody tr[data-fid]").forEach(function(tr){ function o(){ faqDetail(S.faq.filter(function(f){ return f.id === tr.dataset.fid; })[0], redraw); } tr.onclick = o; tr.onkeydown = function(e){ if (e.key === "Enter") o(); }; }); }
+    wireRows();
   }
 
   /* =====================================================================
@@ -1190,7 +1202,7 @@
   function qLabel(q){ var m = /^(\d{4})-(\d)Q$/.exec(q || ""); return m ? m[1] + "년 " + m[2] + "분기" : q; }
   function quarterOf(y, mo){ return y + "-" + (Math.floor((mo - 1) / 3) + 1) + "Q"; }
   function hm(h){ var t = Math.round((+h || 0) * 60), s = t < 0 ? "-" : ""; t = Math.abs(t); return s + Math.floor(t / 60) + "시간 " + (t % 60) + "분"; }
-  function wtStatus(d){ var t = todayStr(); if (d.end && d.end < t) return "종료"; if (d.start && d.start > t) return "예정"; return "적용 중"; }
+  function wtStatus(d){ var t = todayStr(); if (d.ended) return "종료"; if (d.end && d.end < t) return "종료"; if (d.start && d.start > t) return "예정"; return "적용 중"; }
   function linkify(s){ if (!s) return ""; s = String(s); return /^https?:\/\//.test(s) ? '<a href="' + esc(s) + '" target="_blank" rel="noopener">문서 열기 ↗</a>' : esc(s); }
   async function loadRecs(cat, menu){
     var key = cat + "." + menu;
@@ -1201,10 +1213,10 @@
   }
   var REC_DEF = {
     worktypes: { menu: "worktypes", list: "worktype", title: "근무형태 현황", noun: "근무형태",
-      fields: [["type", "구분", "select", ["모바일 출퇴근", "단시간근로자", "근로시간 단축자", "고정근무자", "재택근무 예외자"]], ["target", "이름", "text"], ["dept", "소속", "text"],
+      fields: [["type", "구분", "select", ["모바일 출퇴근", "단시간근로자", "근로시간 단축자", "고정근무자", "재택근무 예외자"]], ["target", "이름", "text"], ["org", "소속", "text"], ["team", "팀", "text"],
         ["start", "적용 시작", "date"], ["end", "적용 종료", "date"], ["weekly_hours", "1주 소정근로시간", "number"], ["tags", "태그", "text", "쉼표로 구분"], ["basis", "요청자·근거", "text"], ["content", "세부 내용", "textarea"]] },
     exceptions: { menu: "worktypes", list: "exception", title: "예외 이력", noun: "예외 이력",
-      fields: [["type", "구분", "select", ["새벽·야간근무", "시간외근로 예외", "근무결과신청 예외", "재택·외근", "기타"]], ["target", "대상(성명·조직)", "text"], ["dept", "소속", "text"],
+      fields: [["type", "구분", "select", ["새벽·야간근무", "시간외근로 예외", "근무결과신청 예외", "재택·외근", "기타"]], ["target", "대상(성명·조직)", "text"], ["org", "소속", "text"], ["team", "팀", "text"],
         ["start", "적용일", "date"], ["end", "종료일", "date"], ["tags", "태그", "text", "쉼표로 구분"], ["basis", "요청자·근거", "text"], ["content", "세부 내용", "textarea"]] },
     violations: { menu: "violations", title: "조치 대상", noun: "조치 대상",
       fields: [["quarter", "분기", "text", "예: 2026-3Q"], ["name", "성명", "text"], ["dept", "소속", "text"], ["rank", "구분", "select", ["팀원", "팀장", "실장 이상"]], ["email", "이메일", "text"],
@@ -1252,47 +1264,65 @@
   }
 
   /* ---------- 근무형태 현황 (목록 + 팝업, 예외 이력 탭) ---------- */
-  var wtFilter = { worktypes: { q: "", type: "", ended: false }, exceptions: { q: "", type: "", ended: true } };
+  var wtFilter = { worktypes: { q: "", type: "", ended: false, org: "", team: "" }, exceptions: { q: "", type: "", ended: true, org: "", team: "" } };
+  function wtOrg(d){ return d.org || ""; }
+  function wtTeam(d){ return d.team || (d.org ? "" : d.dept || ""); }
   async function renderWorktypes(c, tab){
     var host = $("#cm"), key = "att.worktypes", def = REC_DEF[tab], f = wtFilter[tab];
     try { await loadRecs("att", "worktypes"); } catch(err){ host.innerHTML = '<div class="banner danger">불러오지 못했습니다: ' + esc(err.message) + '</div>'; return; }
     if (!$("#cm")) return;
     var all = S.recs[key].filter(function(x){ return (x.data.list || "worktype") === def.list; });
     var w = can(key, "write");
-    var list = all.filter(function(x){ var d = x.data; return (f.ended || wtStatus(d) !== "종료") && (!f.type || d.type === f.type) && (!f.q || [d.target, d.dept, d.content, d.basis, d.tags].join(" ").indexOf(f.q) >= 0); })
-      .sort(function(a, b){ return def.fields[0][3].indexOf(a.data.type) - def.fields[0][3].indexOf(b.data.type) || String(a.data.target).localeCompare(String(b.data.target)); });
     var byType = {}; all.forEach(function(x){ if (wtStatus(x.data) !== "종료") byType[x.data.type] = (byType[x.data.type] || 0) + 1; });
-    var h = '<nav class="subtabs"><a href="#/c/att/worktypes" class="' + (tab === "worktypes" ? "on" : "") + '">근무형태 현황</a><a href="#/c/att/worktypes/exceptions" class="' + (tab === "exceptions" ? "on" : "") + '">예외 이력</a></nav>' +
+    var orgs = []; all.forEach(function(x){ var o = wtOrg(x.data); if (o && orgs.indexOf(o) < 0) orgs.push(o); }); orgs.sort();
+    var teams = []; all.forEach(function(x){ var t = wtTeam(x.data); if (t && (!f.org || wtOrg(x.data) === f.org) && teams.indexOf(t) < 0) teams.push(t); }); teams.sort();
+    if (f.team && teams.indexOf(f.team) < 0) f.team = "";
+    host.innerHTML = '<nav class="subtabs"><a href="#/c/att/worktypes" class="' + (tab === "worktypes" ? "on" : "") + '">근무형태 현황</a><a href="#/c/att/worktypes/exceptions" class="' + (tab === "exceptions" ? "on" : "") + '">예외 이력</a></nav>' +
       '<div class="hint" style="font-size:12.5px;margin:-4px 0 12px">' + (tab === "worktypes" ? "기본 근무형태(선택적 근로시간제)와 다르게 근무하는 인원입니다. 단시간근로자·근로시간 단축자의 1주 소정근로시간은 근태 위반자 관리 › 자동 필터링의 개인별 의무 근로시간 기준으로 쓰입니다. 휴가·휴직자는 휴가/휴직 현황에서 관리합니다." : "개인·조직별로 근태 기준과 다르게 처리한 예외 이력입니다.") + ' 행을 누르면 세부 내용이 열립니다.</div>' +
-      '<div class="mini-stats">' + def.fields[0][3].map(function(t){ return '<button class="ms ms-btn' + (f.type === t ? " on" : "") + '" data-ft="' + esc(t) + '">' + esc(t) + '<b>' + (byType[t] || 0) + '</b></button>'; }).join("") + '</div>' +
-      '<div class="rec-tools"><input type="search" id="fT" placeholder="이름·소속·내용 검색" value="' + esc(f.q) + '"><label class="hint" style="font-size:12.5px;display:flex;gap:4px;align-items:center"><input type="checkbox" id="fE"' + (f.ended ? " checked" : "") + '> 종료된 항목 포함</label><span class="grow"></span>' +
-      '<button class="btn sm" id="rCsv">CSV 내려받기</button>' + (w ? '<button class="btn sm primary" id="rAdd">+ ' + esc(def.noun) + ' 추가</button>' : '') + '</div>';
+      '<div class="mini-stats">' + def.fields[0][3].map(function(t){ return '<button class="ms ms-btn' + (f.type === t ? " on" : "") + '" data-ft="' + esc(t) + '">' + esc(t) + '<b>' + (byType[t] || 0) + '</b><small class="hint" style="display:block;font-size:10.5px;font-weight:500">적용 중</small></button>'; }).join("") + '</div>' +
+      '<div class="rec-tools"><select id="fOrg"><option value="">전체 소속</option>' + orgs.map(function(o){ return '<option' + (o === f.org ? " selected" : "") + '>' + esc(o) + '</option>'; }).join("") + '</select>' +
+      '<select id="fTeam"><option value="">전체 팀</option>' + teams.map(function(t){ return '<option' + (t === f.team ? " selected" : "") + '>' + esc(t) + '</option>'; }).join("") + '</select>' +
+      '<input type="search" id="fT" placeholder="이름·소속·팀·내용 검색" value="' + esc(f.q) + '"><label class="hint" style="font-size:12.5px;display:flex;gap:4px;align-items:center"><input type="checkbox" id="fE"' + (f.ended ? " checked" : "") + '> 종료된 항목 포함</label><span class="grow"></span>' +
+      '<span class="hint" id="wtCnt" style="font-size:12px"></span><button class="btn sm" id="rCsv">CSV 내려받기</button>' + (w ? '<button class="btn sm primary" id="rAdd">+ ' + esc(def.noun) + ' 추가</button>' : '') + '</div>' +
+      '<div id="wtTbl"></div>';
     var cols = tab === "worktypes"
-      ? [["구분", function(d){ return '<span class="badge info">' + esc(d.type || "-") + '</span>'; }], ["이름", function(d){ return '<b>' + esc(d.target || "") + '</b>'; }], ["소속", function(d){ return esc(d.dept || ""); }],
+      ? [["구분", function(d){ return '<span class="badge info">' + esc(d.type || "-") + '</span>'; }], ["이름", function(d){ return '<b>' + esc(d.target || "") + '</b>'; }], ["소속", function(d){ return esc(wtOrg(d)); }], ["팀", function(d){ return esc(wtTeam(d)); }],
          ["적용기간", function(d){ return esc((d.start || "") + (d.start || d.end ? " ~ " : "") + (d.end || "")); }], ["1주 소정근로시간", function(d){ return d.weekly_hours ? esc(d.weekly_hours) + "시간" : ""; }],
          ["태그", function(d){ return esc(d.tags || ""); }], ["상태", function(d){ var s = wtStatus(d); return '<span class="badge ' + (s === "종료" ? "neutral" : s === "예정" ? "warn" : "good") + '">' + s + '</span>'; }]]
-      : [["구분", function(d){ return '<span class="badge info">' + esc(d.type || "-") + '</span>'; }], ["대상", function(d){ return '<b>' + esc(d.target || "") + '</b>'; }], ["소속", function(d){ return esc(d.dept || ""); }],
+      : [["구분", function(d){ return '<span class="badge info">' + esc(d.type || "-") + '</span>'; }], ["대상", function(d){ return '<b>' + esc(d.target || "") + '</b>'; }], ["소속", function(d){ return esc(wtOrg(d)); }], ["팀", function(d){ return esc(wtTeam(d)); }],
          ["적용일", function(d){ return esc((d.start || "") + (d.end ? " ~ " + d.end : "")); }], ["태그", function(d){ return esc(d.tags || ""); }], ["상태", function(d){ var s = wtStatus(d); return '<span class="badge ' + (s === "종료" ? "neutral" : "good") + '">' + s + '</span>'; }]];
-    h += '<div class="tbl-box"><table class="rec compact"><thead><tr>' + cols.map(function(c2){ return '<th>' + c2[0] + '</th>'; }).join("") + '</tr></thead><tbody>' +
-      (list.length ? list.map(function(x){ return '<tr class="clk' + (wtStatus(x.data) === "종료" ? " ended" : "") + '" data-rid="' + x.id + '" tabindex="0">' + cols.map(function(c2){ return '<td>' + c2[1](x.data) + '</td>'; }).join("") + '</tr>'; }).join("")
-        : '<tr><td colspan="' + cols.length + '" class="hint" style="padding:18px">해당하는 항목이 없습니다.</td></tr>') + '</tbody></table></div>';
-    host.innerHTML = h;
+    var list = [];
     function rer(){ renderWorktypes(c, tab); }
+    // only the table is redrawn while typing, so the search box keeps focus (한글 입력 유지)
+    function drawTable(){
+      var q = f.q.trim();
+      list = all.filter(function(x){ var d = x.data; return (f.ended || wtStatus(d) !== "종료") && (!f.type || d.type === f.type) && (!f.org || wtOrg(d) === f.org) && (!f.team || wtTeam(d) === f.team) &&
+        (!q || [d.target, d.org, d.team, d.dept, d.content, d.basis, d.tags].join(" ").indexOf(q) >= 0); })
+        .sort(function(a, b){ return def.fields[0][3].indexOf(a.data.type) - def.fields[0][3].indexOf(b.data.type) || (wtStatus(a.data) === "종료") - (wtStatus(b.data) === "종료") || String(b.data.start || "").localeCompare(String(a.data.start || "")) || String(a.data.target).localeCompare(String(b.data.target)); });
+      $("#wtCnt").textContent = list.length + "건";
+      $("#wtTbl").innerHTML = '<div class="tbl-box"><table class="rec compact"><thead><tr>' + cols.map(function(c2){ return '<th>' + c2[0] + '</th>'; }).join("") + '</tr></thead><tbody>' +
+        (list.length ? list.map(function(x){ return '<tr class="clk' + (wtStatus(x.data) === "종료" ? " ended" : "") + '" data-rid="' + x.id + '" tabindex="0">' + cols.map(function(c2){ return '<td>' + c2[1](x.data) + '</td>'; }).join("") + '</tr>'; }).join("")
+          : '<tr><td colspan="' + cols.length + '" class="hint" style="padding:18px">해당하는 항목이 없습니다.</td></tr>') + '</tbody></table></div>';
+      $all("#wtTbl tr[data-rid]").forEach(function(tr){
+        function open(){ wtDetail(c, tab, S.recs[key].filter(function(x){ return x.id === tr.dataset.rid; })[0], rer); }
+        tr.onclick = open; tr.onkeydown = function(e){ if (e.key === "Enter") open(); };
+      });
+    }
+    drawTable();
     $all("[data-ft]", host).forEach(function(b){ b.onclick = function(){ f.type = f.type === b.dataset.ft ? "" : b.dataset.ft; rer(); }; });
-    $("#fE").onchange = function(e){ f.ended = e.target.checked; rer(); };
-    $("#fT").addEventListener("input", function(e){ f.q = e.target.value; rer(); var i = $("#fT"); i.focus(); i.setSelectionRange(i.value.length, i.value.length); });
-    $("#rCsv").onclick = function(){ downloadCsv(def.title, def.fields.map(function(f2){ return [f2[1], function(x){ return x.data[f2[0]]; }]; }).concat([["상태", function(x){ return wtStatus(x.data); }]]), list); };
+    $("#fE").onchange = function(e){ f.ended = e.target.checked; drawTable(); };
+    $("#fOrg").onchange = function(e){ f.org = e.target.value; f.team = ""; rer(); };
+    $("#fTeam").onchange = function(e){ f.team = e.target.value; drawTable(); };
+    $("#fT").addEventListener("input", function(e){ f.q = e.target.value; drawTable(); });
+    $("#rCsv").onclick = function(){ downloadCsv(def.title, def.fields.map(function(f2){ return [f2[1], function(x){ return f2[0] === "org" ? wtOrg(x.data) : f2[0] === "team" ? wtTeam(x.data) : x.data[f2[0]]; }]; }).concat([["상태", function(x){ return wtStatus(x.data); }]]), list); };
     if ($("#rAdd")) $("#rAdd").onclick = function(){ openRecord(c, tab, null, rer); };
-    $all("tr[data-rid]", host).forEach(function(tr){
-      function open(){ wtDetail(c, tab, S.recs[key].filter(function(x){ return x.id === tr.dataset.rid; })[0], rer); }
-      tr.onclick = open; tr.onkeydown = function(e){ if (e.key === "Enter") open(); };
-    });
   }
   function wtDetail(c, tab, x, after){
     var def = REC_DEF[tab], d = x.data, key = "att.worktypes";
     var canEd = can(key, "edit") || (can(key, "write") && String(x.created_by || "").toLowerCase() === me.email);
-    var m = showModal('<div style="display:flex;justify-content:space-between;gap:10px"><div><span class="badge info">' + esc(d.type || "-") + '</span> <span class="badge ' + (wtStatus(d) === "종료" ? "neutral" : "good") + '">' + wtStatus(d) + '</span><h3 style="font-size:18px;margin-top:6px">' + esc(d.target || "") + '</h3><div class="hint" style="font-size:12.5px">' + esc(d.dept || "") + '</div></div><button class="btn sm ghost" id="dx">닫기 ✕</button></div>' +
-      '<div class="kv" style="margin-top:12px">' + def.fields.filter(function(f){ return ["type", "target", "dept", "content"].indexOf(f[0]) < 0; }).map(function(f){ var v = d[f[0]]; return '<div class="row"><span class="hint">' + f[1] + '</span><span>' + (v == null || v === "" ? '<span class="hint">-</span>' : esc(v) + (f[0] === "weekly_hours" ? "시간" : "")) + '</span></div>'; }).join("") + '</div>' +
+    var m = showModal('<div style="display:flex;justify-content:space-between;gap:10px"><div><span class="badge info">' + esc(d.type || "-") + '</span> <span class="badge ' + (wtStatus(d) === "종료" ? "neutral" : "good") + '">' + wtStatus(d) + '</span><h3 style="font-size:18px;margin-top:6px">' + esc(d.target || "") + '</h3><div class="hint" style="font-size:12.5px">' + esc([wtOrg(d), wtTeam(d)].filter(Boolean).join(" · ")) + '</div></div><button class="btn sm ghost" id="dx">닫기 ✕</button></div>' +
+      '<div class="kv" style="margin-top:12px">' + def.fields.filter(function(f){ return ["type", "target", "org", "team", "content"].indexOf(f[0]) < 0; }).map(function(f){ var v = d[f[0]]; return '<div class="row"><span class="hint">' + f[1] + '</span><span>' + (v == null || v === "" ? '<span class="hint">-</span>' : esc(v) + (f[0] === "weekly_hours" ? "시간" : "")) + '</span></div>'; }).join("") +
+      (d.op_flag ? '<div class="row"><span class="hint">운영여부(원본)</span><span>' + esc(d.op_flag) + '</span></div>' : '') + '</div>' +
       '<h4 style="margin:14px 0 6px;font-size:13px">세부 내용</h4><div class="wraptext" style="font-size:13.5px;line-height:1.65;background:var(--paper-0);border-radius:10px;padding:12px 14px">' + (d.content ? esc(d.content) : '<span class="hint">-</span>') + '</div>' +
       '<div class="modal-actions" style="margin-top:14px"><span class="hint" style="font-size:11.5px;margin-right:auto">' + esc(x.updated_by || x.created_by || "") + ' · ' + esc(String(x.updated_at || x.created_at || "").slice(0, 10)) + '</span>' + (canEd ? '<button class="btn primary" id="dEd">수정</button>' : '') + '</div>', "mid");
     $("#dx", m).onclick = closeModal;
@@ -1636,7 +1666,7 @@
     function canEditRow(x){ return e || (w && String(x.created_by || "").toLowerCase() === me.email); }
     var qs = allQuarters(); if (qs.indexOf(violQ) < 0) violQ = qs[0];
     var per = aggregateQuarter(violQ, ""), savedM = qMonths(violQ).map(function(ym){ return ATT.months.filter(function(m){ return m.year === ym[0] && m.month === ym[1]; }).length; });
-    var list = rows.filter(function(x){ var d = x.data; return d.quarter === violQ && (!tFilter.status || d.status === tFilter.status) && (!tFilter.inc || (tFilter.inc === "in" ? !d.exclude : !!d.exclude)) && (!tFilter.q || [d.name, d.dept, d.note, d.doc].join(" ").indexOf(tFilter.q) >= 0); })
+    var list = rows.filter(function(x){ var d = x.data; return d.quarter === violQ && (!tFilter.status || d.status === tFilter.status) && (!tFilter.inc || (tFilter.inc === "in" ? !d.exclude : !!d.exclude)) ; })
       .sort(function(a, b){ return appliedStep(b.data) - appliedStep(a.data) || String(a.data.name).localeCompare(String(b.data.name)); });
     var inc = list.filter(function(x){ return !x.data.exclude; }), cnt = [0, 0, 0, 0, 0, 0, 0]; inc.forEach(function(x){ cnt[appliedStep(x.data)]++; });
     var notSynced = Object.keys(per).filter(function(n){ var a = per[n]; if (!(a.late > 0 || a.short_h > 0)) return false; var x = rows.filter(function(y){ return y.data.quarter === violQ && y.data.name === n; })[0]; return !x || !x.data.auto || x.data.late !== a.late || x.data.short_h !== a.short_h; }).length;
@@ -1654,7 +1684,7 @@
         var d = x.data, b = baseStep(d), s = appliedStep(d), months = (d.auto && d.auto.months) || {};
         var prev = rows.filter(function(y){ return y.data.name === d.name && y.data.quarter === prevQuarter(d.quarter); })[0];
         var overdue = d.due && d.due < today && ["대상 확인", "안내 발송", "소명·정정 중"].indexOf(d.status) >= 0;
-        return '<tr class="clk' + (d.exclude ? " ended" : "") + '" data-rid="' + x.id + '"><td><input type="checkbox" data-inc="' + x.id + '"' + (d.exclude ? "" : " checked") + (canEditRow(x) ? "" : " disabled") + ' title="' + esc(d.exclude_reason || "") + '"></td><td><b>' + esc(d.name) + '</b></td><td>' + esc(d.dept || "") + '</td><td>' + esc(d.rank || "") + '</td>' +
+        return '<tr class="clk' + (d.exclude ? " ended" : "") + '" data-rid="' + x.id + '" data-s="' + esc([d.name, d.dept, d.note, d.doc, d.email].join(" ")) + '"><td><input type="checkbox" data-inc="' + x.id + '"' + (d.exclude ? "" : " checked") + (canEditRow(x) ? "" : " disabled") + ' title="' + esc(d.exclude_reason || "") + '"></td><td><b>' + esc(d.name) + '</b></td><td>' + esc(d.dept || "") + '</td><td>' + esc(d.rank || "") + '</td>' +
           qMonths(violQ).map(function(ym){ var mm = months[ym[1]]; return '<td class="n">' + (mm ? mm.late : "") + '</td>'; }).join("") +
           '<td class="n"><b>' + esc(d.late == null ? "" : d.late) + '</b></td><td class="n">' + (d.short_h ? hm(d.short_h) : "") + '</td><td>' + stepBadge(b) + '</td><td>' + stepBadge(s) + (s > b ? ' <span class="hint" style="font-size:11px">상향</span>' : '') + (prev ? '<div class="hint" style="font-size:11px">직전: ' + STEP[appliedStep(prev.data)] + '</div>' : '') + '</td>' +
           '<td style="font-size:12px">' + esc(actor(d, s)) + '</td><td>' + esc(d.status || "") + '</td><td' + (overdue ? ' style="color:var(--danger-700);font-weight:700"' : '') + '>' + esc(d.due || "") + '</td><td>' + (d.auto ? '<span class="badge info">자동</span>' : '<span class="badge neutral">수기</span>') + '</td></tr>';
@@ -1664,7 +1694,10 @@
     $("#tq").onchange = function(ev){ violQ = ev.target.value; rer(); };
     $("#tInc").onchange = function(ev){ tFilter.inc = ev.target.value; rer(); };
     $("#tS").onchange = function(ev){ tFilter.status = ev.target.value; rer(); };
-    $("#tT").addEventListener("input", function(ev){ tFilter.q = ev.target.value; rer(); var i = $("#tT"); i.focus(); i.setSelectionRange(i.value.length, i.value.length); });
+    // 검색은 표를 다시 그리지 않고 행만 숨기거나 보여서 입력창 포커스를 유지합니다 (한글 입력 유지)
+    function applyQ(){ var q = tFilter.q.trim(); $all("#vb tr[data-s]").forEach(function(tr){ tr.style.display = !q || tr.dataset.s.indexOf(q) >= 0 ? "" : "none"; }); }
+    applyQ();
+    $("#tT").addEventListener("input", function(ev){ tFilter.q = ev.target.value; applyQ(); });
     if ($("#tSync")) $("#tSync").onclick = async function(){ this.disabled = true; await syncQuarter(c, violQ, ""); rer(); };
     if ($("#tAdd")) $("#tAdd").onclick = function(){ openRecord(c, "violations", null, rer); };
     if ($("#tPaste")) $("#tPaste").onclick = function(){ pasteRecords(c, rer); };
