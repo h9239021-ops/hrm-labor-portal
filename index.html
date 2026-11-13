@@ -563,11 +563,53 @@
   .col .cl{position:absolute;bottom:2px;font-size:10.5px;color:var(--ink-500);white-space:nowrap;}
   .faq-list.big summary{font-size:14px;align-items:center;}
   .faq-list.big .a{font-size:13.5px;}
+
+  /* ===== v3: sub tabs, TOC editing, compact lists, attendance filtering ===== */
+  .subtabs{display:flex;gap:4px;flex-wrap:wrap;margin:0 0 16px;padding:4px;background:var(--paper-50);border:1px solid var(--line);border-radius:12px;width:fit-content;max-width:100%;}
+  .subtabs a{padding:7px 14px;border-radius:9px;font-size:13.5px;font-weight:700;color:var(--ink-500);text-decoration:none;white-space:nowrap;}
+  .subtabs a:hover{color:var(--ink-900);background:var(--surface);}
+  .subtabs a.on{background:var(--surface);color:var(--accent-700);box-shadow:var(--shadow);}
+  .pos-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:0 0 12px;padding:8px 10px;border:1px dashed var(--line);border-radius:10px;font-size:13px;}
+  .pos-row select{font-family:var(--font-body);font-size:13px;padding:5px 8px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--ink-900);margin:0;width:auto;}
+  .toc-edit .te-g{margin:0 6px 10px;border:1px solid var(--line);border-radius:10px;background:var(--surface);overflow:hidden;}
+  .toc-edit .te-gh{display:flex;justify-content:space-between;align-items:center;gap:6px;padding:7px 8px;background:var(--paper-0);font-size:13px;}
+  .toc-edit .te-p{display:flex;flex-direction:column;gap:4px;padding:6px 8px;border-top:1px solid var(--line-soft);font-size:12.5px;}
+  .toc-edit .te-p .ctl{display:flex;gap:4px;align-items:center;}
+  .toc-edit .te-p select{font-size:11.5px;padding:2px 4px;border:1px solid var(--line);border-radius:6px;background:var(--surface);color:var(--ink-900);max-width:130px;}
+  .ib{border:1px solid var(--line);background:var(--surface);color:var(--ink-700);border-radius:6px;width:24px;height:22px;font-size:12px;cursor:pointer;padding:0;}
+  .ib:hover:not(:disabled){border-color:var(--accent-500);color:var(--accent-700);}
+  .ib:disabled{opacity:.35;cursor:default;}
+  .doc a.in-link{font-weight:600;}
+  .doc a.in-link::after{content:" ↗";font-size:.85em;}
+  table.rec.compact{min-width:760px;}
+  table.rec.compact td{white-space:nowrap;padding:8px 10px;vertical-align:middle;}
+  table.rec tr.clk{cursor:pointer;}
+  table.rec tr.clk:focus-visible td{outline:2px solid var(--accent-500);outline-offset:-2px;}
+  .ms-btn{cursor:pointer;font-family:var(--font-body);text-align:left;}
+  .ms-btn:hover,.ms-btn.on{border-color:var(--accent-500);background:var(--accent-050);}
+  .step-h{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px;}
+  .step-h .n{width:22px;height:22px;border-radius:50%;background:var(--accent-700);color:#fff;font-size:12px;font-weight:700;display:inline-flex;align-items:center;justify-content:center;}
+  .pgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:10px;}
+  .pgrid label{display:flex;flex-direction:column;gap:4px;font-size:12px;font-weight:600;color:var(--ink-500);}
+  .pgrid label.wide{grid-column:span 2;}
+  .pgrid input,.pgrid select{font-family:var(--font-body);font-size:13px;padding:7px 9px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--ink-900);}
+  @media (max-width:560px){ .pgrid label.wide{grid-column:auto;} }
+  details.mapbox{margin-top:10px;border:1px solid var(--line-soft);border-radius:10px;padding:8px 12px;}
+  details.mapbox summary{cursor:pointer;font-size:13px;font-weight:700;color:var(--accent-700);}
+  details.mapbox .pgrid{margin-top:10px;}
+  details.res-sec{border:1px solid var(--line);border-radius:10px;margin:8px 0;padding:8px 12px;background:var(--surface);}
+  details.res-sec summary{cursor:pointer;font-size:14px;padding:2px 0 6px;}
+  details.res-sec .tbl-box{margin-top:6px;}
+  .dash-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;}
+  @media (max-width:900px){ .dash-grid{grid-template-columns:1fr;} }
+  input.em{font-family:var(--font-body);font-size:12.5px;padding:4px 8px;border:1px solid var(--line);border-radius:7px;background:var(--surface);color:var(--ink-900);width:220px;}
+  .kv .row span:last-child{text-align:right;}
 </style>
 </head>
 <body>
 <div id="app"></div>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="config.js"></script>
 <script src="logo.js"></script>
 <script src="app.js"></script>

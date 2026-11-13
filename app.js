@@ -111,7 +111,7 @@
       h2: function(){ document.execCommand("formatBlock", false, "h2"); }, h3: function(){ document.execCommand("formatBlock", false, "h3"); }, p: function(){ document.execCommand("formatBlock", false, "p"); },
       ul: function(){ document.execCommand("insertUnorderedList"); }, ol: function(){ document.execCommand("insertOrderedList"); },
       link: function(){ var r = rng(); if (!r || r.collapsed){ alert("링크를 걸 글자를 먼저 선택하세요."); return; } var saved = r.cloneRange();
-        var u = window.prompt("링크 주소", "https://"); if (!u) return; var s = window.getSelection(); s.removeAllRanges(); s.addRange(saved); document.execCommand("createLink", false, u.trim()); dirty(); },
+        linkPicker(function(u){ body.focus(); var s = window.getSelection(); s.removeAllRanges(); s.addRange(saved); document.execCommand("createLink", false, u.trim()); dirty(); }); },
       unlink: function(){ document.execCommand("unlink"); },
       note: function(){ document.execCommand("insertHTML", false, '<div class="note info"><span class="nt">안내</span>내용을 입력하세요.</div><p><br></p>'); },
       table: function(){ document.execCommand("insertHTML", false, '<div class="tbl-w"><table class="t"><thead><tr><th>항목</th><th>내용</th></tr></thead><tbody><tr><td><br></td><td><br></td></tr></tbody></table></div><p><br></p>'); },
@@ -679,7 +679,8 @@
       '<nav class="tabs">' + menus.map(function(m){ var l = level(c.id + "." + m[0]); return '<a href="#/c/' + c.id + '/' + m[0] + '" class="' + (m[0] === menu ? "on" : "") + '">' + esc(m[1]) + '<span class="lv">' + LV_LABEL[Object.keys(LV)[l]] + '</span></a>'; }).join("") + '</nav></div>';
     var key = c.id + "." + menu;
     if (c.id === "att" && menu === "manual"){ app.innerHTML = shell(head + '<div class="cat-wrap" id="cw"></div>', c.name); renderManual(c, key, sub); }
-    else if (c.id === "att" && (menu === "violations" || menu === "worktypes")){ app.innerHTML = shell(head + '<div class="cat-wrap"><div class="cat-main" id="cm"></div></div>', c.name); renderRecords(c, menu); }
+    else if (c.id === "att" && menu === "worktypes"){ app.innerHTML = shell(head + '<div class="cat-wrap"><div class="cat-main" id="cm"></div></div>', c.name); renderWorktypes(c, sub === "exceptions" ? "exceptions" : "worktypes"); }
+    else if (c.id === "att" && menu === "violations"){ app.innerHTML = shell(head + '<div class="cat-wrap"><div class="cat-main" id="cm"></div></div>', c.name); renderViol(c, sub); }
     else {
       app.innerHTML = shell(head + '<div class="cat-wrap"><div class="cat-main"><div class="soon-box"><div class="ic">' + c.ic + '</div><h2>' + esc(c.name) + ' 메뉴는 준비 중입니다</h2>' +
         '<p>근태 카테고리와 같은 틀(상단 메뉴 · 왼쪽 절차 · 관리표)로 이어서 구성할 예정입니다.</p>' +
@@ -690,21 +691,118 @@
   }
 
   /* ---------- manual (pages) ---------- */
-  var manualEditing = false;
-  async function renderManual(c, key, pid){
-    var host = $("#cw"), pages = S.pages.filter(function(p){ return p.cat === c.id && p.menu === "manual"; });
-    if (!pages.length){ host.innerHTML = '<div class="cat-main"><p class="hint">등록된 매뉴얼이 없습니다.</p></div>'; return; }
-    var page = pages.filter(function(p){ return p.id === pid; })[0] || pages[0];
-    var groups = [], gm = {};
-    pages.forEach(function(p){ if (!gm[p.grp]){ gm[p.grp] = []; groups.push(p.grp); } gm[p.grp].push(p); });
-    var side = '<aside class="side"><div class="side-title">근태관리 매뉴얼</div>' + groups.map(function(g){
-      var open = gm[g].some(function(p){ return p.id === page.id; }) || g === groups[0];
+  var manualEditing = false, tocEditing = false, tocDraft = null;
+  function manualPages(c){ return S.pages.filter(function(p){ return p.cat === c.id && p.menu === "manual"; }).sort(function(a, b){ return a.grp_sort - b.grp_sort || a.sort - b.sort; }); }
+  function groupNames(list){ var g = []; list.forEach(function(p){ if (g.indexOf(p.grp) < 0) g.push(p.grp); }); return g; }
+  // keep each group's items contiguous, in order of the group's first appearance
+  function normalizeDraft(d){ var g = groupNames(d); var out = []; g.forEach(function(n){ d.forEach(function(x){ if (x.grp === n) out.push(x); }); }); return out; }
+  // ordered: [{id, grp}] in the final order → writes grp / grp_sort / sort for rows that changed
+  async function saveOrder(ordered){
+    ordered = normalizeDraft(ordered);
+    var gOrder = groupNames(ordered), cnt = {}, todo = [];
+    ordered.forEach(function(o){
+      var gs = (gOrder.indexOf(o.grp) + 1) * 10; cnt[o.grp] = (cnt[o.grp] || 0) + 1;
+      var p = S.pages.filter(function(x){ return x.id === o.id; })[0]; if (!p) return;
+      var v = { grp: o.grp, grp_sort: gs, sort: cnt[o.grp] };
+      if (p.grp !== v.grp || p.grp_sort !== v.grp_sort || p.sort !== v.sort) todo.push([p, v]);
+    });
+    for (var i = 0; i < todo.length; i++){
+      var r = await sb.from("portal_pages").update(todo[i][1]).eq("id", todo[i][0].id).select("id");
+      if (r.error || !r.data || !r.data.length){ alert("목차 순서를 저장하지 못했습니다: " + errMsg(r)); return false; }
+      Object.assign(todo[i][0], todo[i][1]);
+    }
+    S.pages.sort(function(a, b){ return a.grp_sort - b.grp_sort || a.sort - b.sort; });
+    if (todo.length) logp("pages", "order", todo.length + "건");
+    return true;
+  }
+  // position controls used by the page editor and "문서 추가"
+  function posControls(list, curGrp, selfId, afterId){
+    var groups = groupNames(list);
+    return '<div class="pos-row"><span class="hint">목차 위치</span><select id="posGrp">' + groups.map(function(g){ return '<option' + (g === curGrp ? " selected" : "") + '>' + esc(g) + '</option>'; }).join("") + '<option value="__new">+ 새 그룹…</option></select>' +
+      '<select id="posAfter"></select></div>';
+  }
+  function wirePos(root, list, selfId, afterId){
+    var gs = $("#posGrp", root), af = $("#posAfter", root);
+    function fill(sel){
+      var items = list.filter(function(p){ return p.grp === gs.value && p.id !== selfId; });
+      af.innerHTML = '<option value="__first">맨 앞</option>' + items.map(function(p){ return '<option value="' + esc(p.id) + '">' + esc(p.title) + ' 다음</option>'; }).join("");
+      af.value = sel && items.some(function(p){ return p.id === sel; }) ? sel : (items.length ? items[items.length - 1].id : "__first");
+    }
+    gs.addEventListener("change", function(){
+      if (gs.value === "__new"){
+        var n = (window.prompt("새 그룹 이름", "") || "").trim();
+        if (!n){ gs.selectedIndex = 0; fill(); return; }
+        var o = document.createElement("option"); o.textContent = n; gs.insertBefore(o, gs.lastChild); gs.value = n;
+      }
+      fill();
+    });
+    fill(afterId);
+    return function(){ return { grp: gs.value, after: af.value }; };
+  }
+  function orderWith(list, id, pos){
+    var d = list.filter(function(p){ return p.id !== id; }).map(function(p){ return { id: p.id, grp: p.grp }; });
+    var item = { id: id, grp: pos.grp };
+    var idx;
+    if (pos.after === "__first"){ idx = d.findIndex(function(x){ return x.grp === pos.grp; }); if (idx < 0) idx = d.length; }
+    else { idx = d.findIndex(function(x){ return x.id === pos.after; }); idx = idx < 0 ? d.length : idx + 1; }
+    d.splice(idx, 0, item);
+    return d;
+  }
+  function tocSide(c, key, list, page){
+    var groups = groupNames(list), ed = can(key, "edit");
+    if (tocEditing && ed){
+      var d = tocDraft, dg = groupNames(d);
+      return '<aside class="side toc-edit"><div class="side-title">목차 편집</div><p class="hint" style="font-size:12px;padding:0 10px">↑↓로 순서를, 그룹 선택으로 위치를 바꾼 뒤 저장하세요.</p>' + dg.map(function(g, gi){
+        return '<div class="te-g"><div class="te-gh"><b>' + esc(g) + '</b><span><button class="ib" data-gu="' + gi + '" title="그룹 위로"' + (gi ? "" : " disabled") + '>↑</button><button class="ib" data-gd="' + gi + '" title="그룹 아래로"' + (gi < dg.length - 1 ? "" : " disabled") + '>↓</button><button class="ib" data-gr="' + gi + '" title="그룹 이름 바꾸기">✎</button></span></div>' +
+          d.filter(function(x){ return x.grp === g; }).map(function(x){
+            return '<div class="te-p"><span class="t">' + esc(x.title) + '</span><span class="ctl"><button class="ib" data-pu="' + esc(x.id) + '" title="위로">↑</button><button class="ib" data-pd="' + esc(x.id) + '" title="아래로">↓</button>' +
+              '<select data-pg="' + esc(x.id) + '" title="그룹 옮기기">' + dg.map(function(n){ return '<option' + (n === g ? " selected" : "") + '>' + esc(n) + '</option>'; }).join("") + '<option value="__new">+ 새 그룹…</option></select></span></div>';
+          }).join("") + '</div>';
+      }).join("") + '<div style="display:flex;gap:6px;padding:12px 10px"><button class="btn sm ghost" id="teNo">취소</button><button class="btn sm primary" id="teOk">저장</button></div></aside>';
+    }
+    return '<aside class="side"><div class="side-title">근태관리 매뉴얼</div>' + groups.map(function(g){
+      var open = list.some(function(p){ return p.grp === g && p.id === page.id; }) || g === groups[0];
       return '<div class="grp' + (open ? " open" : "") + '"><button class="grp-h" type="button">' + esc(g) + '<span class="chev">▶</span></button><ul>' +
-        gm[g].map(function(p){ return '<li><a href="#/c/' + c.id + '/manual/' + encodeURIComponent(p.id) + '" class="' + (p.id === page.id ? "on" : "") + '">' + esc(p.title) + '</a></li>'; }).join("") + '</ul></div>';
-    }).join("") + (can(key, "manage") ? '<div style="padding:12px 10px"><button class="btn sm" id="pgAdd">+ 문서 추가</button></div>' : '') + '</aside>';
-    host.innerHTML = side + '<div class="cat-main"><div class="doc-wrap"><article class="doc" id="docA"><p class="hint">불러오는 중…</p></article><nav class="toc-r" id="tocR"></nav></div></div>';
+        list.filter(function(p){ return p.grp === g; }).map(function(p){ return '<li><a href="#/c/' + c.id + '/manual/' + encodeURIComponent(p.id) + '" class="' + (p.id === page.id ? "on" : "") + '">' + esc(p.title) + '</a></li>'; }).join("") + '</ul></div>';
+    }).join("") + '<div style="padding:12px 10px;display:flex;gap:6px;flex-wrap:wrap">' + (ed ? '<button class="btn sm" id="tocEdit">↕ 목차 편집</button>' : '') + (can(key, "manage") ? '<button class="btn sm" id="pgAdd">+ 문서 추가</button>' : '') + '</div></aside>';
+  }
+  function wireTocEdit(c, key, page){
+    var host = $("#cw"), d = tocDraft;
+    function re(){ tocDraft = normalizeDraft(tocDraft); renderManual(c, key, page.id); }
+    function swapIn(id, dir){
+      var i = d.findIndex(function(x){ return x.id === id; }), g = d[i].grp, j = i + dir;
+      while (j >= 0 && j < d.length && d[j].grp !== g) j += dir;
+      if (j < 0 || j >= d.length) return; var t = d[i]; d[i] = d[j]; d[j] = t; re();
+    }
+    function moveGroup(gi, dir){
+      var gs = groupNames(d), a = gs[gi], b = gs[gi + dir]; if (!b) return;
+      gs[gi] = b; gs[gi + dir] = a;
+      tocDraft = []; gs.forEach(function(n){ d.forEach(function(x){ if (x.grp === n) tocDraft.push(x); }); }); renderManual(c, key, page.id);
+    }
+    $all("[data-pu]", host).forEach(function(b){ b.onclick = function(){ swapIn(b.dataset.pu, -1); }; });
+    $all("[data-pd]", host).forEach(function(b){ b.onclick = function(){ swapIn(b.dataset.pd, 1); }; });
+    $all("[data-gu]", host).forEach(function(b){ b.onclick = function(){ moveGroup(+b.dataset.gu, -1); }; });
+    $all("[data-gd]", host).forEach(function(b){ b.onclick = function(){ moveGroup(+b.dataset.gd, 1); }; });
+    $all("[data-gr]", host).forEach(function(b){ b.onclick = function(){
+      var old = groupNames(d)[+b.dataset.gr], n = (window.prompt("그룹 이름", old) || "").trim(); if (!n || n === old) return;
+      d.forEach(function(x){ if (x.grp === old) x.grp = n; }); re(); }; });
+    $all("[data-pg]", host).forEach(function(s){ s.onchange = function(){
+      var x = d.filter(function(y){ return y.id === s.dataset.pg; })[0], v = s.value;
+      if (v === "__new"){ v = (window.prompt("새 그룹 이름", "") || "").trim(); if (!v){ re(); return; } }
+      d.splice(d.indexOf(x), 1); x.grp = v;
+      var last = -1; d.forEach(function(y, i){ if (y.grp === v) last = i; }); d.splice(last < 0 ? d.length : last + 1, 0, x); re(); }; });
+    $("#teNo").onclick = function(){ tocEditing = false; tocDraft = null; renderManual(c, key, page.id); };
+    $("#teOk").onclick = async function(){ var ok = await saveOrder(tocDraft); if (!ok) return; tocEditing = false; tocDraft = null; toast("목차 순서를 저장했습니다."); renderManual(c, key, page.id); };
+  }
+  async function renderManual(c, key, pid){
+    var host = $("#cw"), pages = manualPages(c);
+    if (!pages.length){ host.innerHTML = '<div class="cat-main"><p class="hint">등록된 매뉴얼이 없습니다.</p>' + (can(key, "manage") ? '<button class="btn sm" id="pgAdd">+ 문서 추가</button>' : '') + '</div>'; if ($("#pgAdd")) $("#pgAdd").onclick = function(){ addPage(c, pages, ""); }; return; }
+    var page = pages.filter(function(p){ return p.id === pid; })[0] || pages[0];
+    host.innerHTML = tocSide(c, key, pages, page) + '<div class="cat-main"><div class="doc-wrap"><article class="doc" id="docA"><p class="hint">불러오는 중…</p></article><nav class="toc-r" id="tocR"></nav></div></div>';
     $all(".grp-h", host).forEach(function(b){ b.onclick = function(){ b.parentNode.classList.toggle("open"); }; });
-    if ($("#pgAdd")) $("#pgAdd").onclick = function(){ addPage(c, groups, page.grp); };
+    if ($("#pgAdd")) $("#pgAdd").onclick = function(){ addPage(c, pages, page.grp); };
+    if ($("#tocEdit")) $("#tocEdit").onclick = function(){ tocEditing = true; tocDraft = pages.map(function(p){ return { id: p.id, grp: p.grp, title: p.title }; }); renderManual(c, key, page.id); };
+    if (tocEditing && $("#teOk")) wireTocEdit(c, key, page);
     if (page.body_html == null){
       var r = await sb.from("portal_pages").select("body_html").eq("id", page.id).maybeSingle();
       page.body_html = (r.data && r.data.body_html) || "";
@@ -713,11 +811,14 @@
     var idx = pages.indexOf(page), prev = pages[idx - 1], next = pages[idx + 1];
     var art = $("#docA"), ed = can(key, "edit");
     if (manualEditing && ed){
+      var before = idx > 0 && pages[idx - 1].grp === page.grp ? pages[idx - 1].id : "__first";
       art.innerHTML = '<div class="crumb">' + esc(c.name) + ' › ' + esc(page.grp) + ' · 편집 중</div>' + editorBar() +
-        '<p class="ed-hint">제목·요약·본문을 화면에서 바로 고칩니다. 글자를 선택한 뒤 도구를 누르세요.</p>' +
+        posControls(pages, page.grp, page.id, before) +
+        '<p class="ed-hint">제목·요약·본문을 화면에서 바로 고칩니다. 글자를 선택한 뒤 도구를 누르세요. 「링크」로 포털 안 다른 메뉴·문서도 연결할 수 있습니다.</p>' +
         '<h1 id="edTitle" contenteditable="true">' + esc(page.title) + '</h1><p class="lead" id="edLead" contenteditable="true">' + esc(page.lead || "") + '</p>' +
         '<div id="edBody" class="body" contenteditable="true">' + cleanHtml(page.body_html) + '</div><textarea id="edHtml" class="ed-html" style="display:none"></textarea>' +
         '<div class="modal-actions" style="margin-top:24px">' + (can(key, "manage") ? '<button class="btn danger" id="pgDel" style="margin-right:auto">문서 삭제</button>' : '') + '<button class="btn ghost" id="pgNo">취소</button><button class="btn primary" id="pgOk">저장</button></div>';
+      var getPos = wirePos(art, pages, page.id, before);
       var st = wireEditor(art, function(){ window.__editDirty = true; });
       [$("#edTitle"), $("#edLead")].forEach(function(x){ x.addEventListener("input", function(){ st.dirty = true; window.__editDirty = true; }); x.addEventListener("keydown", function(e){ if (e.key === "Enter") e.preventDefault(); }); });
       $("#pgNo").onclick = function(){ if (st.dirty && !confirm("수정한 내용을 저장하지 않고 닫을까요?")) return; manualEditing = false; window.__editDirty = false; renderManual(c, key, page.id); };
@@ -725,7 +826,10 @@
         var upd = { title: $("#edTitle").textContent.trim() || page.title, lead: $("#edLead").textContent.trim(), body_html: st.getHtml(), updated_by: me.email, updated_at: new Date().toISOString() };
         var x = await sb.from("portal_pages").update(upd).eq("id", page.id).select("id");
         if (x.error || !x.data || !x.data.length){ alert("저장하지 못했습니다: " + errMsg(x)); return; }
-        Object.assign(page, upd); logp("pages", "edit", page.title); manualEditing = false; window.__editDirty = false; toast("매뉴얼을 저장했습니다."); renderManual(c, key, page.id);
+        Object.assign(page, upd);
+        var pos = getPos();
+        if (pos.grp !== page.grp || pos.after !== before){ if (!(await saveOrder(orderWith(pages, page.id, pos)))) return; }
+        logp("pages", "edit", page.title); manualEditing = false; window.__editDirty = false; toast("매뉴얼을 저장했습니다."); renderManual(c, key, page.id);
       };
       if ($("#pgDel")) $("#pgDel").onclick = async function(){
         if (!confirm("'" + page.title + "' 문서를 삭제할까요? 되돌릴 수 없습니다.")) return;
@@ -742,8 +846,8 @@
       '<div class="body">' + cleanHtml(page.body_html) + '</div>' +
       '<div class="pn">' + (prev ? '<a href="#/c/' + c.id + '/manual/' + encodeURIComponent(prev.id) + '"><small>이전</small>' + esc(prev.title) + '</a>' : '<span></span>') +
       (next ? '<a class="nx" href="#/c/' + c.id + '/manual/' + encodeURIComponent(next.id) + '"><small>다음</small>' + esc(next.title) + '</a>' : '') + '</div>';
-    if ($("#pgEdit")) $("#pgEdit").onclick = function(){ manualEditing = true; renderManual(c, key, page.id); };
-    $all(".body a", art).forEach(function(a){ var h = a.getAttribute("href") || ""; if (/^https?:/.test(h)){ a.target = "_blank"; a.rel = "noopener"; } });
+    if ($("#pgEdit")) $("#pgEdit").onclick = function(){ manualEditing = true; tocEditing = false; renderManual(c, key, page.id); };
+    $all(".body a", art).forEach(function(a){ var h = a.getAttribute("href") || ""; if (/^https?:/.test(h)){ a.target = "_blank"; a.rel = "noopener"; } else if (h.indexOf("#/") === 0) a.classList.add("in-link"); });
     buildToc(art);
     window.scrollTo(0, 0);
   }
@@ -756,28 +860,52 @@
     var links = $all("a", host);
     window.onscroll = function(){ var y = window.scrollY + 120, cur = 0; hs.forEach(function(h, i){ if (h.offsetTop <= y) cur = i; }); links.forEach(function(l, i){ l.classList.toggle("on", i === cur); }); };
   }
-  function addPage(c, groups, curGrp){
-    var m = showModal('<h3>문서 추가</h3><form class="f" id="af"><label class="full">그룹<input name="grp" list="gl" value="' + esc(curGrp) + '" required><datalist id="gl">' + groups.map(function(g){ return '<option value="' + esc(g) + '">'; }).join("") + '</datalist></label>' +
-      '<label class="full">문서 제목<input name="title" required></label><div class="form-actions"><button type="button" class="btn ghost" id="aNo">취소</button><button class="btn primary">만들기</button></div></form>', "mid");
+  function addPage(c, pages, curGrp){
+    var m = showModal('<h3>문서 추가</h3><form class="f" id="af"><label class="full">문서 제목<input name="title" required></label><div class="full">' + posControls(pages.length ? pages : [{ grp: curGrp || "업무 개요", id: "", title: "" }], curGrp || (pages[0] && pages[0].grp) || "업무 개요", null, null) + '</div>' +
+      '<div class="form-actions"><button type="button" class="btn ghost" id="aNo">취소</button><button class="btn primary">만들기</button></div></form>', "mid");
+    var getPos = wirePos(m, pages, null, null);
     $("#aNo", m).onclick = closeModal;
     $("#af", m).addEventListener("submit", async function(e){
-      e.preventDefault(); var fd = new FormData(e.target), grp = String(fd.get("grp")).trim();
-      var same = S.pages.filter(function(p){ return p.cat === c.id && p.grp === grp; });
-      var gs = same.length ? same[0].grp_sort : Math.max.apply(null, S.pages.map(function(p){ return p.grp_sort; }).concat([0])) + 10;
-      var rec = { id: c.id + "-" + Date.now().toString(36), cat: c.id, menu: "manual", grp: grp, grp_sort: gs, sort: same.length ? Math.max.apply(null, same.map(function(p){ return p.sort; })) + 1 : 1, title: String(fd.get("title")).trim(), lead: "", body_html: "<h2>개요</h2><p>내용을 입력하세요.</p>", updated_by: me.email };
+      e.preventDefault(); var fd = new FormData(e.target), pos = getPos();
+      var rec = { id: c.id + "-" + Date.now().toString(36), cat: c.id, menu: "manual", grp: pos.grp, grp_sort: 999, sort: 999, title: String(fd.get("title")).trim(), lead: "", body_html: "<h2>개요</h2><p>내용을 입력하세요.</p>", updated_by: me.email };
       var x = await sb.from("portal_pages").insert(rec).select("id,cat,menu,grp,grp_sort,sort,title,lead,updated_at,updated_by");
       if (x.error || !x.data || !x.data.length){ alert("만들지 못했습니다: " + errMsg(x)); return; }
       var np = x.data[0]; np.body_html = rec.body_html; S.pages.push(np);
-      S.pages.sort(function(a, b){ return a.grp_sort - b.grp_sort || a.sort - b.sort; });
+      await saveOrder(orderWith(pages, np.id, pos));
       closeModal(); manualEditing = true; location.hash = "#/c/" + c.id + "/manual/" + encodeURIComponent(np.id);
     });
   }
 
-  /* ---------- records: 근태 위반자 관리 / 근무형태 현황 ---------- */
+  /* ---------- link picker (internal menus/documents or external URL) ---------- */
+  function portalTargets(){
+    var t = [["업무포털 홈", "#/"]];
+    if (can("home.faq", "read")) t.push(["FAQ", "#/faq"]);
+    CATS.forEach(function(c){ if (c.link) return; c.menus.forEach(function(m){ t.push([c.name + " › " + m[1], "#/c/" + c.id + "/" + m[0]]); }); });
+    t.push(["근태 › 근무형태 현황 › 예외 이력", "#/c/att/worktypes/exceptions"]);
+    VIOL_TABS.forEach(function(v){ t.push(["근태 › 근태 위반자 관리 › " + v[1], "#/c/att/violations/" + v[0]]); });
+    var docs = S.pages.slice().sort(function(a, b){ return a.grp_sort - b.grp_sort || a.sort - b.sort; }).map(function(p){ var c = catById(p.cat); return [(c ? c.name : p.cat) + " 매뉴얼 › " + p.grp + " › " + p.title, "#/c/" + p.cat + "/manual/" + p.id]; });
+    return { menus: t, docs: docs };
+  }
+  function linkPicker(onPick){
+    var old = document.getElementById("linkPop"); if (old) old.remove();
+    var t = portalTargets();
+    var el = document.createElement("div"); el.id = "linkPop"; el.className = "modal-backdrop"; el.style.zIndex = 160;
+    el.innerHTML = '<div class="modal mid"><h3>링크 넣기</h3><p class="hint">포털 안의 메뉴·문서를 고르거나, 외부 주소를 입력하세요.</p>' +
+      '<label class="hint" style="font-size:12.5px">포털 안 메뉴·문서</label><select id="lpIn"><option value="">선택하세요</option><optgroup label="메뉴">' +
+      t.menus.map(function(x){ return '<option value="' + esc(x[1]) + '">' + esc(x[0]) + '</option>'; }).join("") + '</optgroup><optgroup label="매뉴얼 문서">' +
+      t.docs.map(function(x){ return '<option value="' + esc(x[1]) + '">' + esc(x[0]) + '</option>'; }).join("") + '</optgroup></select>' +
+      '<label class="hint" style="font-size:12.5px">또는 외부 주소</label><input id="lpUrl" placeholder="https://"><div class="modal-actions"><button class="btn ghost" id="lpNo">취소</button><button class="btn primary" id="lpOk">넣기</button></div></div>';
+    document.body.appendChild(el);
+    $("#lpNo", el).onclick = function(){ el.remove(); };
+    $("#lpOk", el).onclick = function(){ var v = $("#lpIn", el).value || $("#lpUrl", el).value.trim(); el.remove(); if (v && v !== "https://") onPick(v); };
+  }
+
+  /* ---------- shared record helpers ---------- */
   var STEP = ["-", "안내", "계획서 제출", "면담", "경고", "견책 검토", "인사위원회 검토"];
   function lateStep(n){ n = +n || 0; return n <= 0 ? 0 : n <= 4 ? 1 : n <= 9 ? 2 : 3; }
   function shortStep(h){ h = +h || 0; return h <= 0 ? 0 : h < 1 ? 1 : h < 16 ? 2 : h < 40 ? 3 : 4; }
   function baseStep(d){ return Math.max(lateStep(d.late), shortStep(d.short_h)); }
+  function appliedStep(d){ return d.step != null && d.step !== "" ? +d.step : baseStep(d); }
   function stepBadge(i){ var cls = i <= 0 ? "neutral" : i === 1 ? "info" : i === 2 ? "warn" : "danger"; return '<span class="badge ' + cls + '">' + STEP[i] + '</span>'; }
   function actor(d, step){
     var rk = d.rank || "팀원";
@@ -787,111 +915,44 @@
   }
   function prevQuarter(q){ var m = /^(\d{4})-(\d)Q$/.exec(q || ""); if (!m) return ""; var y = +m[1], n = +m[2] - 1; if (n < 1){ n = 4; y--; } return y + "-" + n + "Q"; }
   function curQuarter(){ var d = new Date(); return d.getFullYear() + "-" + (Math.floor(d.getMonth() / 3) + 1) + "Q"; }
-  var REC_DEF = {
-    violations: {
-      title: "근태 위반자 관리", desc: "분기별 지각·의무 근로시간 미달 대상자와 대응 단계를 관리합니다. 기준 단계는 운영 기준(지각 1~4회 안내 / 5~9회 계획서 / 10회 이상 면담, 미달 1시간 미만 안내 / 1~16시간 계획서 / 16~40시간 면담 / 40시간 이상 경고)에 따라 자동 계산되고, 직전 분기 이력을 고려해 적용 단계를 올릴 수 있습니다.",
-      fields: [
-        ["quarter", "분기", "text", "예: 2026-3Q"], ["name", "성명", "text"], ["dept", "소속", "text"], ["rank", "구분", "select", ["팀원", "팀장", "실장 이상"]],
-        ["late", "지각(회)", "number"], ["short_h", "미달(시간)", "number"], ["step", "적용 단계", "stepsel"],
-        ["status", "진행 상태", "select", ["대상 확인", "안내 발송", "소명·정정 중", "정정 완료(제외)", "계획서 제출", "면담 완료", "경고", "종결"]],
-        ["due", "소명 기한", "date"], ["doc", "계획서·문서", "text", "문서번호 또는 링크"], ["note", "비고", "textarea"]
-      ]
-    },
-    worktypes: {
-      title: "근무형태 현황", desc: "모바일 출퇴근 허용, 단축근무, 재택 예외, 새벽근무 등 기본 근무형태와 다르게 운영되는 인원·조직과 예외 처리 이력을 관리합니다. 개인 정보가 포함되므로 권한이 있는 인원만 열람합니다.",
-      fields: [
-        ["type", "구분", "select", ["모바일 출퇴근", "단축근무", "모성보호", "재택 예외", "새벽·야간근무", "시간외근로 예외", "계약·근무시간 예외", "휴가·휴직 예외", "기타 예외"]],
-        ["target", "대상(성명·조직)", "text"], ["dept", "소속", "text"], ["content", "내용", "textarea"],
-        ["start", "적용 시작", "date"], ["end", "적용 종료", "date"], ["basis", "요청자·근거", "text"], ["tags", "태그", "text", "쉼표로 구분"]
-      ]
-    }
-  };
-  var recFilter = { violations: { q: "", quarter: "", status: "" }, worktypes: { q: "", type: "", ended: false } };
-  async function renderRecords(c, menu){
-    var host = $("#cm"), key = c.id + "." + menu, def = REC_DEF[menu];
-    if (!S.recs[key]){
-      host.innerHTML = '<p class="hint">불러오는 중…</p>';
-      var r = await sb.from("portal_records").select("*").eq("cat", c.id).eq("menu", menu).order("created_at");
-      if (r.error){ host.innerHTML = '<div class="banner danger">불러오지 못했습니다: ' + esc(r.error.message) + '</div>'; return; }
-      S.recs[key] = r.data || [];
-    }
-    if (!$("#cm")) return;
-    var rows = S.recs[key], f = recFilter[menu], w = can(key, "write"), e = can(key, "edit"), today = todayStr();
-    function canEditRow(x){ return e || (w && String(x.created_by || "").toLowerCase() === me.email); }
-    var h = '<div class="sec-h"><div><h2>' + esc(def.title) + '</h2><div class="hint" style="font-size:12.5px;margin-top:4px;max-width:1100px">' + esc(def.desc) + '</div></div></div>';
-    var list;
-    if (menu === "violations"){
-      var qs = []; rows.forEach(function(x){ if (x.data.quarter && qs.indexOf(x.data.quarter) < 0) qs.push(x.data.quarter); }); qs.sort().reverse();
-      if (f.quarter === "" && qs.length) f.quarter = qs[0];
-      list = rows.filter(function(x){ var d = x.data; return (!f.quarter || f.quarter === "*" || d.quarter === f.quarter) && (!f.status || d.status === f.status) && (!f.q || [d.name, d.dept, d.note, d.doc].join(" ").indexOf(f.q) >= 0); });
-      var cnt = [0, 0, 0, 0, 0, 0, 0]; list.forEach(function(x){ var s = x.data.step != null && x.data.step !== "" ? +x.data.step : baseStep(x.data); cnt[s]++; });
-      h += '<div class="mini-stats"><div class="ms">대상자<b>' + list.length + '</b></div>' + [1, 2, 3, 4].map(function(i){ return '<div class="ms">' + STEP[i] + '<b>' + cnt[i] + '</b></div>'; }).join("") +
-        '<div class="ms">정정 완료(제외)<b>' + list.filter(function(x){ return x.data.status === "정정 완료(제외)"; }).length + '</b></div></div>';
-      h += '<div class="rec-tools"><select id="fQ"><option value="*">전체 분기</option>' + qs.map(function(q){ return '<option' + (q === f.quarter ? " selected" : "") + '>' + q + '</option>'; }).join("") + '</select>' +
-        '<select id="fS"><option value="">전체 상태</option>' + def.fields[7][3].map(function(s){ return '<option' + (s === f.status ? " selected" : "") + '>' + s + '</option>'; }).join("") + '</select>' +
-        '<input type="search" id="fT" placeholder="성명·소속 검색" value="' + esc(f.q) + '"><span class="grow"></span>' +
-        '<button class="btn sm" id="rCsv">CSV 내려받기</button>' + (w ? '<button class="btn sm" id="rPaste">엑셀 붙여넣기</button><button class="btn sm primary" id="rAdd">+ 대상자 추가</button>' : '') + '</div>';
-      h += '<div class="tbl-box"><table class="rec"><thead><tr><th>분기</th><th>성명</th><th>소속</th><th>구분</th><th>지각</th><th>미달(h)</th><th>기준 단계</th><th>적용 단계</th><th>조치 주체</th><th>진행 상태</th><th>소명 기한</th><th>계획서·문서</th><th>비고</th><th></th></tr></thead><tbody>' +
-        (list.length ? list.map(function(x){
-          var d = x.data, b = baseStep(d), s = d.step != null && d.step !== "" ? +d.step : b;
-          var prev = rows.filter(function(y){ return y.data.name === d.name && y.data.quarter === prevQuarter(d.quarter); })[0];
-          var overdue = d.due && d.due < today && ["대상 확인", "안내 발송", "소명·정정 중"].indexOf(d.status) >= 0;
-          return '<tr><td>' + esc(d.quarter) + '</td><td><b>' + esc(d.name) + '</b></td><td>' + esc(d.dept) + '</td><td>' + esc(d.rank) + '</td><td class="n">' + esc(d.late == null ? "" : d.late) + '</td><td class="n">' + esc(d.short_h == null ? "" : d.short_h) + '</td>' +
-            '<td>' + stepBadge(b) + '</td><td>' + stepBadge(s) + (s > b ? ' <span class="hint" style="font-size:11px">상향</span>' : '') + (prev ? '<div class="hint" style="font-size:11px">직전 분기: ' + STEP[prev.data.step != null && prev.data.step !== "" ? +prev.data.step : baseStep(prev.data)] + '</div>' : '') + '</td>' +
-            '<td style="font-size:12px">' + esc(actor(d, s)) + '</td><td>' + esc(d.status || "") + '</td><td' + (overdue ? ' style="color:var(--danger-700);font-weight:700"' : '') + '>' + esc(d.due || "") + '</td>' +
-            '<td style="font-size:12px;max-width:200px;overflow-wrap:anywhere">' + linkify(d.doc) + '</td><td class="wrap" style="font-size:12px">' + esc(d.note || "") + '</td>' +
-            '<td>' + (canEditRow(x) ? '<button class="btn sm" data-re="' + x.id + '">수정</button>' : '') + '</td></tr>';
-        }).join("") : '<tr><td colspan="14" class="hint" style="padding:18px">해당 조건의 대상자가 없습니다.</td></tr>') + '</tbody></table></div>';
-    } else {
-      list = rows.filter(function(x){ var d = x.data, ended = d.end && d.end < today; return (f.ended || !ended) && (!f.type || d.type === f.type) && (!f.q || [d.target, d.dept, d.content, d.basis, d.tags].join(" ").indexOf(f.q) >= 0); });
-      var byType = {}; rows.forEach(function(x){ if (!(x.data.end && x.data.end < today)) byType[x.data.type] = (byType[x.data.type] || 0) + 1; });
-      h += '<div class="mini-stats"><div class="ms">적용 중<b>' + rows.filter(function(x){ return !(x.data.end && x.data.end < today); }).length + '</b></div>' + Object.keys(byType).map(function(t){ return '<div class="ms">' + esc(t) + '<b>' + byType[t] + '</b></div>'; }).join("") + '</div>';
-      h += '<div class="rec-tools"><select id="fY"><option value="">전체 구분</option>' + def.fields[0][3].map(function(s){ return '<option' + (s === f.type ? " selected" : "") + '>' + s + '</option>'; }).join("") + '</select>' +
-        '<input type="search" id="fT" placeholder="대상·내용 검색" value="' + esc(f.q) + '"><label class="hint" style="font-size:12.5px;display:flex;gap:4px;align-items:center"><input type="checkbox" id="fE"' + (f.ended ? " checked" : "") + '> 종료된 항목 포함</label><span class="grow"></span>' +
-        '<button class="btn sm" id="rCsv">CSV 내려받기</button>' + (w ? '<button class="btn sm primary" id="rAdd">+ 항목 추가</button>' : '') + '</div>';
-      h += '<div class="tbl-box"><table class="rec"><thead><tr><th>구분</th><th>대상</th><th>소속</th><th>내용</th><th>적용 기간</th><th>요청자·근거</th><th>태그</th><th>상태</th><th></th></tr></thead><tbody>' +
-        (list.length ? list.map(function(x){
-          var d = x.data, ended = d.end && d.end < today;
-          return '<tr class="' + (ended ? "ended" : "") + '"><td><span class="badge info">' + esc(d.type || "-") + '</span></td><td><b>' + esc(d.target) + '</b></td><td>' + esc(d.dept || "") + '</td><td class="wrap">' + esc(d.content || "") + '</td>' +
-            '<td style="white-space:nowrap;font-size:12px">' + esc(d.start || "") + (d.start || d.end ? " ~ " : "") + esc(d.end || "") + '</td><td style="font-size:12px">' + esc(d.basis || "") + '</td>' +
-            '<td style="font-size:12px">' + esc(d.tags || "") + '</td><td>' + (ended ? '<span class="badge neutral">종료</span>' : '<span class="badge good">적용 중</span>') + '</td>' +
-            '<td>' + (canEditRow(x) ? '<button class="btn sm" data-re="' + x.id + '">수정</button>' : '') + '</td></tr>';
-        }).join("") : '<tr><td colspan="9" class="hint" style="padding:18px">해당 조건의 항목이 없습니다.</td></tr>') + '</tbody></table></div>';
-    }
-    host.innerHTML = h;
-    function rer(){ renderRecords(c, menu); }
-    if ($("#fQ")) $("#fQ").onchange = function(e){ f.quarter = e.target.value; rer(); };
-    if ($("#fS")) $("#fS").onchange = function(e){ f.status = e.target.value; rer(); };
-    if ($("#fY")) $("#fY").onchange = function(e){ f.type = e.target.value; rer(); };
-    if ($("#fE")) $("#fE").onchange = function(e){ f.ended = e.target.checked; rer(); };
-    $("#fT").addEventListener("input", function(e){ f.q = e.target.value; rer(); var i = $("#fT"); i.focus(); i.setSelectionRange(i.value.length, i.value.length); });
-    $("#rCsv").onclick = function(){ downloadCsv(def, list, menu); };
-    if ($("#rAdd")) $("#rAdd").onclick = function(){ openRecord(c, menu, null); };
-    if ($("#rPaste")) $("#rPaste").onclick = function(){ pasteRecords(c, menu); };
-    $all("[data-re]", host).forEach(function(b){ b.onclick = function(){ openRecord(c, menu, rows.filter(function(x){ return x.id === b.dataset.re; })[0]); }; });
-  }
+  function qMonths(q){ var m = /^(\d{4})-(\d)Q$/.exec(q || ""); if (!m) return []; var s = (+m[2] - 1) * 3 + 1; return [[+m[1], s], [+m[1], s + 1], [+m[1], s + 2]]; }
+  function qLabel(q){ var m = /^(\d{4})-(\d)Q$/.exec(q || ""); return m ? m[1] + "년 " + m[2] + "분기" : q; }
+  function quarterOf(y, mo){ return y + "-" + (Math.floor((mo - 1) / 3) + 1) + "Q"; }
+  function hm(h){ var t = Math.round((+h || 0) * 60), s = t < 0 ? "-" : ""; t = Math.abs(t); return s + Math.floor(t / 60) + "시간 " + (t % 60) + "분"; }
+  function wtStatus(d){ var t = todayStr(); if (d.end && d.end < t) return "종료"; if (d.start && d.start > t) return "예정"; return "적용 중"; }
   function linkify(s){ if (!s) return ""; s = String(s); return /^https?:\/\//.test(s) ? '<a href="' + esc(s) + '" target="_blank" rel="noopener">문서 열기 ↗</a>' : esc(s); }
-  function downloadCsv(def, list, menu){
-    var cols = def.fields.map(function(f){ return f; });
-    var lines = [cols.map(function(f){ return f[1]; }).concat(menu === "violations" ? ["기준 단계"] : []).join(",")];
-    list.forEach(function(x){
-      var d = x.data;
-      var vals = cols.map(function(f){ var v = d[f[0]]; if (f[2] === "stepsel") v = STEP[v != null && v !== "" ? +v : baseStep(d)]; return v == null ? "" : String(v); });
-      if (menu === "violations") vals.push(STEP[baseStep(d)]);
-      lines.push(vals.map(function(v){ return '"' + v.replace(/"/g, '""') + '"'; }).join(","));
-    });
-    var blob = new Blob(["﻿" + lines.join("\r\n")], { type: "text/csv;charset=utf-8" });
-    var a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = def.title + "_" + todayStr() + ".csv"; a.click(); setTimeout(function(){ URL.revokeObjectURL(a.href); }, 1000);
+  async function loadRecs(cat, menu){
+    var key = cat + "." + menu;
+    if (S.recs[key]) return S.recs[key];
+    var r = await sb.from("portal_records").select("*").eq("cat", cat).eq("menu", menu).order("created_at");
+    if (r.error) throw r.error;
+    S.recs[key] = r.data || []; return S.recs[key];
   }
-  function openRecord(c, menu, x){
-    var key = c.id + "." + menu, def = REC_DEF[menu], isNew = !x, d = x ? x.data : (menu === "violations" ? { quarter: recFilter.violations.quarter && recFilter.violations.quarter !== "*" ? recFilter.violations.quarter : curQuarter(), rank: "팀원", status: "대상 확인" } : {});
-    var m = showModal('<h3>' + esc(def.title) + ' · ' + (isNew ? "추가" : "수정") + '</h3>' + (menu === "violations" ? '<p class="hint">적용 단계를 비워 두면 기준 단계(자동 계산)가 그대로 적용됩니다.</p>' : '') +
+  var REC_DEF = {
+    worktypes: { menu: "worktypes", list: "worktype", title: "근무형태 현황", noun: "근무형태",
+      fields: [["type", "구분", "select", ["모바일 출퇴근", "단시간근로자", "근로시간 단축자", "고정근무자", "재택근무자"]], ["target", "이름", "text"], ["dept", "소속", "text"],
+        ["start", "적용 시작", "date"], ["end", "적용 종료", "date"], ["weekly_hours", "1주 소정근로시간", "number"], ["tags", "태그", "text", "쉼표로 구분"], ["basis", "요청자·근거", "text"], ["content", "세부 내용", "textarea"]] },
+    exceptions: { menu: "worktypes", list: "exception", title: "예외 이력", noun: "예외 이력",
+      fields: [["type", "구분", "select", ["새벽·야간근무", "시간외근로 예외", "근무결과신청 예외", "재택·외근", "기타"]], ["target", "대상(성명·조직)", "text"], ["dept", "소속", "text"],
+        ["start", "적용일", "date"], ["end", "종료일", "date"], ["tags", "태그", "text", "쉼표로 구분"], ["basis", "요청자·근거", "text"], ["content", "세부 내용", "textarea"]] },
+    violations: { menu: "violations", title: "조치 대상", noun: "조치 대상",
+      fields: [["quarter", "분기", "text", "예: 2026-3Q"], ["name", "성명", "text"], ["dept", "소속", "text"], ["rank", "구분", "select", ["팀원", "팀장", "실장 이상"]], ["email", "이메일", "text"],
+        ["late", "지각(회)", "number"], ["short_h", "미달(시간)", "number"], ["missing", "출퇴근 누락(회)", "number"], ["step", "적용 단계", "stepsel"],
+        ["status", "진행 상태", "select", ["대상 확인", "안내 발송", "소명·정정 중", "정정 완료(제외)", "계획서 제출", "면담 완료", "경고", "종결"]],
+        ["exclude", "조치 포함 여부", "exsel"], ["exclude_reason", "제외 사유", "text"],
+        ["due", "소명 기한", "date"], ["doc", "계획서·문서", "text", "문서번호 또는 링크"], ["note", "비고", "textarea"]] }
+  };
+  function openRecord(c, defKey, x, after){
+    var def = REC_DEF[defKey], key = c.id + "." + def.menu, isNew = !x;
+    var d = x ? Object.assign({}, x.data) : (defKey === "violations" ? { quarter: violQ || curQuarter(), rank: "팀원", status: "대상 확인" } : {});
+    var m = showModal('<h3>' + esc(def.title) + ' · ' + (isNew ? "추가" : "수정") + '</h3>' + (defKey === "violations" ? '<p class="hint">적용 단계를 비워 두면 기준 단계(자동 계산)가 그대로 적용됩니다.</p>' : '') +
       '<form class="f" id="rf">' + def.fields.map(function(f){
-        var v = d[f[0]] == null ? "" : d[f[0]], full = f[2] === "textarea" ? " full" : "";
-        if (f[2] === "select") return '<label>' + f[1] + '<select name="' + f[0] + '"><option value=""></option>' + f[3].map(function(o){ return '<option' + (o === v ? " selected" : "") + '>' + esc(o) + '</option>'; }).join("") + '</select></label>';
+        var v = d[f[0]] == null ? "" : d[f[0]];
+        if (f[2] === "select") return '<label>' + f[1] + '<select name="' + f[0] + '"><option value=""></option>' + f[3].map(function(o){ return '<option' + (o === v ? " selected" : "") + '>' + esc(o) + '</option>'; }).join("") + (v && f[3].indexOf(v) < 0 ? '<option selected>' + esc(v) + '</option>' : '') + '</select></label>';
         if (f[2] === "stepsel") return '<label>' + f[1] + '<select name="step"><option value="">자동(기준 단계)</option>' + STEP.map(function(s, i){ return i ? '<option value="' + i + '"' + (String(v) === String(i) ? " selected" : "") + '>' + s + '</option>' : ''; }).join("") + '</select></label>';
+        if (f[2] === "exsel") return '<label>' + f[1] + '<select name="exclude"><option value="">포함</option><option value="1"' + (v ? " selected" : "") + '>제외</option></select></label>';
         if (f[2] === "textarea") return '<label class="full">' + f[1] + '<textarea name="' + f[0] + '" rows="4">' + esc(v) + '</textarea></label>';
-        return '<label class="' + full + '">' + f[1] + '<input name="' + f[0] + '" type="' + (f[2] === "number" ? "number\" step=\"0.01" : f[2]) + '" value="' + esc(v) + '"' + (f[3] && typeof f[3] === "string" ? ' placeholder="' + esc(f[3]) + '"' : '') + '></label>';
+        return '<label>' + f[1] + '<input name="' + f[0] + '" type="' + (f[2] === "number" ? "number\" step=\"0.01" : f[2]) + '" value="' + esc(v) + '"' + (f[3] && typeof f[3] === "string" ? ' placeholder="' + esc(f[3]) + '"' : '') + '></label>';
       }).join("") +
       '<div class="form-actions">' + (!isNew && can(key, "edit") ? '<button type="button" class="btn danger" id="rDel" style="margin-right:auto">삭제</button>' : '') + '<button type="button" class="btn ghost" id="rNo">취소</button><button class="btn primary">저장</button></div></form>', "wide");
     $("#rNo", m).onclick = closeModal;
@@ -899,23 +960,461 @@
       if (!confirm("이 항목을 삭제할까요?")) return;
       var r = await sb.from("portal_records").delete().eq("id", x.id).select("id");
       if (r.error || !r.data || !r.data.length){ alert("삭제하지 못했습니다: " + errMsg(r)); return; }
-      S.recs[key] = S.recs[key].filter(function(y){ return y.id !== x.id; }); logp(key, "delete", d.name || d.target); closeModal(); renderRecords(c, menu);
+      S.recs[key] = S.recs[key].filter(function(y){ return y.id !== x.id; }); logp(key, "delete", d.name || d.target); closeModal(); after();
     };
     $("#rf", m).addEventListener("submit", async function(e){
-      e.preventDefault(); var fd = new FormData(e.target), data = {};
-      def.fields.forEach(function(f){ var v = fd.get(f[0]); v = v == null ? "" : String(v).trim(); if (f[2] === "number" && v !== "") v = +v; if (v !== "") data[f[0]] = v; });
-      if (menu === "violations" && data.quarter && !/^\d{4}-[1-4]Q$/.test(data.quarter)){ alert("분기는 2026-3Q 형식으로 입력하세요."); return; }
-      var r = isNew ? await sb.from("portal_records").insert({ cat: c.id, menu: menu, data: data, updated_by: me.email }).select("*")
+      e.preventDefault(); var fd = new FormData(e.target), data = Object.assign({}, x ? x.data : {});
+      def.fields.forEach(function(f){ var v = fd.get(f[0]); v = v == null ? "" : String(v).trim(); if (f[2] === "number" && v !== "") v = +v; if (f[2] === "exsel") v = v ? true : ""; if (v !== "") data[f[0]] = v; else delete data[f[0]]; });
+      if (def.list) data.list = def.list;
+      if (defKey === "violations" && data.quarter && !/^\d{4}-[1-4]Q$/.test(data.quarter)){ alert("분기는 2026-3Q 형식으로 입력하세요."); return; }
+      var r = isNew ? await sb.from("portal_records").insert({ cat: c.id, menu: def.menu, data: data, updated_by: me.email }).select("*")
                     : await sb.from("portal_records").update({ data: data, updated_by: me.email, updated_at: new Date().toISOString() }).eq("id", x.id).select("*");
       if (r.error || !r.data || !r.data.length){ alert("저장하지 못했습니다: " + errMsg(r)); return; }
       if (isNew) S.recs[key].push(r.data[0]); else Object.assign(x, r.data[0]);
-      logp(key, isNew ? "add" : "edit", data.name || data.target); closeModal(); toast("저장했습니다."); renderRecords(c, menu);
+      logp(key, isNew ? "add" : "edit", data.name || data.target); closeModal(); toast("저장했습니다."); after();
     });
   }
-  function pasteRecords(c, menu){
-    var key = c.id + "." + menu;
+  function downloadCsv(name, cols, rows){
+    var lines = [cols.map(function(c){ return c[0]; }).join(",")].concat(rows.map(function(r){ return cols.map(function(c){ var v = c[1](r); return '"' + String(v == null ? "" : v).replace(/"/g, '""') + '"'; }).join(","); }));
+    var blob = new Blob(["﻿" + lines.join("\r\n")], { type: "text/csv;charset=utf-8" });
+    var a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = name + "_" + todayStr() + ".csv"; a.click(); setTimeout(function(){ URL.revokeObjectURL(a.href); }, 1000);
+  }
+
+  /* ---------- 근무형태 현황 (목록 + 팝업, 예외 이력 탭) ---------- */
+  var wtFilter = { worktypes: { q: "", type: "", ended: false }, exceptions: { q: "", type: "", ended: true } };
+  async function renderWorktypes(c, tab){
+    var host = $("#cm"), key = "att.worktypes", def = REC_DEF[tab], f = wtFilter[tab];
+    try { await loadRecs("att", "worktypes"); } catch(err){ host.innerHTML = '<div class="banner danger">불러오지 못했습니다: ' + esc(err.message) + '</div>'; return; }
+    if (!$("#cm")) return;
+    var all = S.recs[key].filter(function(x){ return (x.data.list || "worktype") === def.list; });
+    var w = can(key, "write");
+    var list = all.filter(function(x){ var d = x.data; return (f.ended || wtStatus(d) !== "종료") && (!f.type || d.type === f.type) && (!f.q || [d.target, d.dept, d.content, d.basis, d.tags].join(" ").indexOf(f.q) >= 0); })
+      .sort(function(a, b){ return def.fields[0][3].indexOf(a.data.type) - def.fields[0][3].indexOf(b.data.type) || String(a.data.target).localeCompare(String(b.data.target)); });
+    var byType = {}; all.forEach(function(x){ if (wtStatus(x.data) !== "종료") byType[x.data.type] = (byType[x.data.type] || 0) + 1; });
+    var h = '<nav class="subtabs"><a href="#/c/att/worktypes" class="' + (tab === "worktypes" ? "on" : "") + '">근무형태 현황</a><a href="#/c/att/worktypes/exceptions" class="' + (tab === "exceptions" ? "on" : "") + '">예외 이력</a></nav>' +
+      '<div class="hint" style="font-size:12.5px;margin:-4px 0 12px">' + (tab === "worktypes" ? "기본 근무형태(선택적 근로시간제)와 다르게 근무하는 인원입니다. 단시간근로자·근로시간 단축자의 1주 소정근로시간은 근태 위반자 관리 › 자동 필터링의 개인별 의무 근로시간 기준으로 쓰입니다. 휴가·휴직자는 휴가/휴직 현황에서 관리합니다." : "개인·조직별로 근태 기준과 다르게 처리한 예외 이력입니다.") + ' 행을 누르면 세부 내용이 열립니다.</div>' +
+      '<div class="mini-stats">' + def.fields[0][3].map(function(t){ return '<button class="ms ms-btn' + (f.type === t ? " on" : "") + '" data-ft="' + esc(t) + '">' + esc(t) + '<b>' + (byType[t] || 0) + '</b></button>'; }).join("") + '</div>' +
+      '<div class="rec-tools"><input type="search" id="fT" placeholder="이름·소속·내용 검색" value="' + esc(f.q) + '"><label class="hint" style="font-size:12.5px;display:flex;gap:4px;align-items:center"><input type="checkbox" id="fE"' + (f.ended ? " checked" : "") + '> 종료된 항목 포함</label><span class="grow"></span>' +
+      '<button class="btn sm" id="rCsv">CSV 내려받기</button>' + (w ? '<button class="btn sm primary" id="rAdd">+ ' + esc(def.noun) + ' 추가</button>' : '') + '</div>';
+    var cols = tab === "worktypes"
+      ? [["구분", function(d){ return '<span class="badge info">' + esc(d.type || "-") + '</span>'; }], ["이름", function(d){ return '<b>' + esc(d.target || "") + '</b>'; }], ["소속", function(d){ return esc(d.dept || ""); }],
+         ["적용기간", function(d){ return esc((d.start || "") + (d.start || d.end ? " ~ " : "") + (d.end || "")); }], ["1주 소정근로시간", function(d){ return d.weekly_hours ? esc(d.weekly_hours) + "시간" : ""; }],
+         ["태그", function(d){ return esc(d.tags || ""); }], ["상태", function(d){ var s = wtStatus(d); return '<span class="badge ' + (s === "종료" ? "neutral" : s === "예정" ? "warn" : "good") + '">' + s + '</span>'; }]]
+      : [["구분", function(d){ return '<span class="badge info">' + esc(d.type || "-") + '</span>'; }], ["대상", function(d){ return '<b>' + esc(d.target || "") + '</b>'; }], ["소속", function(d){ return esc(d.dept || ""); }],
+         ["적용일", function(d){ return esc((d.start || "") + (d.end ? " ~ " + d.end : "")); }], ["태그", function(d){ return esc(d.tags || ""); }], ["상태", function(d){ var s = wtStatus(d); return '<span class="badge ' + (s === "종료" ? "neutral" : "good") + '">' + s + '</span>'; }]];
+    h += '<div class="tbl-box"><table class="rec compact"><thead><tr>' + cols.map(function(c2){ return '<th>' + c2[0] + '</th>'; }).join("") + '</tr></thead><tbody>' +
+      (list.length ? list.map(function(x){ return '<tr class="clk' + (wtStatus(x.data) === "종료" ? " ended" : "") + '" data-rid="' + x.id + '" tabindex="0">' + cols.map(function(c2){ return '<td>' + c2[1](x.data) + '</td>'; }).join("") + '</tr>'; }).join("")
+        : '<tr><td colspan="' + cols.length + '" class="hint" style="padding:18px">해당하는 항목이 없습니다.</td></tr>') + '</tbody></table></div>';
+    host.innerHTML = h;
+    function rer(){ renderWorktypes(c, tab); }
+    $all("[data-ft]", host).forEach(function(b){ b.onclick = function(){ f.type = f.type === b.dataset.ft ? "" : b.dataset.ft; rer(); }; });
+    $("#fE").onchange = function(e){ f.ended = e.target.checked; rer(); };
+    $("#fT").addEventListener("input", function(e){ f.q = e.target.value; rer(); var i = $("#fT"); i.focus(); i.setSelectionRange(i.value.length, i.value.length); });
+    $("#rCsv").onclick = function(){ downloadCsv(def.title, def.fields.map(function(f2){ return [f2[1], function(x){ return x.data[f2[0]]; }]; }).concat([["상태", function(x){ return wtStatus(x.data); }]]), list); };
+    if ($("#rAdd")) $("#rAdd").onclick = function(){ openRecord(c, tab, null, rer); };
+    $all("tr[data-rid]", host).forEach(function(tr){
+      function open(){ wtDetail(c, tab, S.recs[key].filter(function(x){ return x.id === tr.dataset.rid; })[0], rer); }
+      tr.onclick = open; tr.onkeydown = function(e){ if (e.key === "Enter") open(); };
+    });
+  }
+  function wtDetail(c, tab, x, after){
+    var def = REC_DEF[tab], d = x.data, key = "att.worktypes";
+    var canEd = can(key, "edit") || (can(key, "write") && String(x.created_by || "").toLowerCase() === me.email);
+    var m = showModal('<div style="display:flex;justify-content:space-between;gap:10px"><div><span class="badge info">' + esc(d.type || "-") + '</span> <span class="badge ' + (wtStatus(d) === "종료" ? "neutral" : "good") + '">' + wtStatus(d) + '</span><h3 style="font-size:18px;margin-top:6px">' + esc(d.target || "") + '</h3><div class="hint" style="font-size:12.5px">' + esc(d.dept || "") + '</div></div><button class="btn sm ghost" id="dx">닫기 ✕</button></div>' +
+      '<div class="kv" style="margin-top:12px">' + def.fields.filter(function(f){ return ["type", "target", "dept", "content"].indexOf(f[0]) < 0; }).map(function(f){ var v = d[f[0]]; return '<div class="row"><span class="hint">' + f[1] + '</span><span>' + (v == null || v === "" ? '<span class="hint">-</span>' : esc(v) + (f[0] === "weekly_hours" ? "시간" : "")) + '</span></div>'; }).join("") + '</div>' +
+      '<h4 style="margin:14px 0 6px;font-size:13px">세부 내용</h4><div class="wraptext" style="font-size:13.5px;line-height:1.65;background:var(--paper-0);border-radius:10px;padding:12px 14px">' + (d.content ? esc(d.content) : '<span class="hint">-</span>') + '</div>' +
+      '<div class="modal-actions" style="margin-top:14px"><span class="hint" style="font-size:11.5px;margin-right:auto">' + esc(x.updated_by || x.created_by || "") + ' · ' + esc(String(x.updated_at || x.created_at || "").slice(0, 10)) + '</span>' + (canEd ? '<button class="btn primary" id="dEd">수정</button>' : '') + '</div>', "mid");
+    $("#dx", m).onclick = closeModal;
+    if ($("#dEd", m)) $("#dEd", m).onclick = function(){ openRecord(c, tab, x, after); };
+  }
+
+  /* =====================================================================
+     근태 위반자 관리: 대시보드 / 자동 필터링 / 원본 데이터 / 조치 대상 목록 / 메일 발송
+     (그룹웨어가 바뀌면 열 매핑·기준값만 다시 맞추면 되도록 설정은 DB에 보관)
+     ===================================================================== */
+  var VIOL_TABS = [["dash", "대시보드"], ["filter", "자동 필터링"], ["raw", "원본 데이터"], ["targets", "조치 대상 목록"], ["mail", "메일 발송"]];
+  var BUCKET = "portal-files";
+  var ATT = { loaded: false, months: [], settings: {}, mails: [] };
+  var violQ = "", violSite = "", dashYear = null, dashSite = "";
+  var DEF_PARAMS = { workdays: "", minHours: "", maxHours: "", lateTime: "10:00", stdRest: 60, excludeLeaveHours: 6, workDayValues: "", excludeAlways: "", excludeMonth: "" };
+  var FIELDS1 = [
+    ["name", "성명", true, ["성명", "이름", "name"]], ["loginId", "로그인 아이디·이메일 (메일 발송용)", false, ["로그인 아이디", "로그인아이디", "아이디", "이메일", "email"]],
+    ["dept", "부서", false, ["부서", "조직", "팀"]], ["date", "근무일", true, ["기준일", "근무일", "일자", "날짜", "date"]], ["dayType", "근무일구분", false, ["근무일구분"]],
+    ["checkin", "출근시각", true, ["출근"]], ["checkout", "퇴근시각", true, ["퇴근"]], ["leave", "연차·부재 시간", false, ["부재", "연차", "휴가"]], ["rest", "휴게시간", false, ["휴게"]]
+  ];
+  var FIELDS2 = [["name", "성명", true, ["성명", "이름", "name"]], ["actual", "실근로시간·합계", true, ["실근로", "합계", "근로시간"]]];
+  var F = { year: null, month: null, site: "", files: {}, result: null, ex: {}, restSelf: {}, savedId: null };
+
+  function setting(k, dflt){ return ATT.settings[k] !== undefined ? ATT.settings[k] : dflt; }
+  async function saveSetting(k, v){
+    var r = await sb.from("portal_att_settings").upsert({ key: k, value: v, updated_by: me.email, updated_at: new Date().toISOString() }).select("key");
+    if (r.error){ alert("설정을 저장하지 못했습니다: " + r.error.message); return false; }
+    ATT.settings[k] = v; return true;
+  }
+  function sites(){ return setting("sites", ["(주)커넥트웨이브", "몰테일 한국법인"]); }
+  async function loadAtt(force){
+    if (ATT.loaded && !force) return;
+    var r = await Promise.all([sb.from("portal_att_months").select("*").order("year").order("month"), sb.from("portal_att_settings").select("*"), sb.from("portal_att_mails").select("*").order("created_at"), loadRecs("att", "violations").catch(function(){ return []; }), loadRecs("att", "worktypes").catch(function(){ return []; })]);
+    if (r[0].error) throw r[0].error;
+    ATT.months = r[0].data || []; ATT.settings = {}; (r[1].data || []).forEach(function(s){ ATT.settings[s.key] = s.value; }); ATT.mails = r[2].data || [];
+    ATT.loaded = true;
+  }
+  async function renderViol(c, sub){
+    if (!VIOL_TABS.some(function(t){ return t[0] === sub; })) sub = "dash";
+    var host = $("#cm");
+    host.innerHTML = '<nav class="subtabs">' + VIOL_TABS.map(function(t){ return '<a href="#/c/att/violations/' + t[0] + '" class="' + (t[0] === sub ? "on" : "") + '">' + t[1] + '</a>'; }).join("") + '</nav><div id="vb"><p class="hint">불러오는 중…</p></div>';
+    try { await loadAtt(); } catch(err){ $("#vb").innerHTML = '<div class="banner danger">불러오지 못했습니다: ' + esc(err.message) + '<br>포털 DB 설정(근태 위반자 관리 테이블)이 아직 적용되지 않았을 수 있습니다.</div>'; return; }
+    if (!$("#vb")) return;
+    if (!violQ){
+      var dq = ATT.months.map(function(m){ return quarterOf(m.year, m.month); }).concat((S.recs["att.violations"] || []).map(function(x){ return x.data.quarter; })).filter(Boolean).sort();
+      violQ = dq[dq.length - 1] || curQuarter();
+    }
+    ({ dash: vDash, filter: vFilter, raw: vRaw, targets: vTargets, mail: vMail })[sub](c);
+  }
+  function allQuarters(){
+    var s = {}; ATT.months.forEach(function(m){ s[quarterOf(m.year, m.month)] = 1; });
+    (S.recs["att.violations"] || []).forEach(function(x){ if (x.data.quarter) s[x.data.quarter] = 1; });
+    s[curQuarter()] = 1;
+    return Object.keys(s).sort().reverse();
+  }
+  function monthsOf(site){ return ATT.months.filter(function(m){ return !site || m.site === site; }); }
+  function live(rows){ return (rows || []).filter(function(r){ return !r.ex; }); }
+
+  /* ---------- parsing (규칙은 기존 근태 기록 관리 페이지와 동일) ---------- */
+  function xSerial(v){ var d = new Date(Math.round((v - 25569) * 86400) * 1000); return d; }
+  function pDate(v){
+    if (v === undefined || v === null || v === "") return null;
+    if (typeof v === "number"){ var d = xSerial(v); return new Date(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()); }
+    var s = String(v).trim(), m = s.match(/(\d{4})[.\-\/](\d{1,2})[.\-\/](\d{1,2})/);
+    if (m) return new Date(+m[1], +m[2] - 1, +m[3]);
+    m = s.match(/^(\d{4})(\d{2})(\d{2})/); if (m) return new Date(+m[1], +m[2] - 1, +m[3]);
+    return null;
+  }
+  function pTime(v){
+    if (v === undefined || v === null || v === "") return null;
+    if (typeof v === "number"){ var f = v - Math.floor(v); return Math.round(f * 1440); }
+    var m = String(v).match(/(\d{1,2}):(\d{2})/); return m ? (+m[1]) * 60 + (+m[2]) : null;
+  }
+  function pMin(v){
+    if (v === undefined || v === null || v === "") return null;
+    if (typeof v === "number") return v > 12 ? Math.round(v) : Math.round(v * 60);
+    var s = String(v).trim(), m = s.match(/(\d{1,2}):(\d{2})/); if (m) return (+m[1]) * 60 + (+m[2]);
+    var n = s.match(/(\d+(\.\d+)?)/); if (n) return s.indexOf("시간") >= 0 ? Math.round(parseFloat(n[1]) * 60) : Math.round(parseFloat(n[1]));
+    return null;
+  }
+  function pHours(v){
+    if (v === undefined || v === null || v === "") return 0;
+    if (typeof v === "number") return v;
+    var s = String(v).trim(), m = s.match(/^(\d{1,4}):(\d{2})(?::(\d{2}))?$/);
+    if (m) return (+m[1]) + (+m[2]) / 60 + (m[3] ? (+m[3]) / 3600 : 0);
+    var n = parseFloat(s.replace(/,/g, "")); return isNaN(n) ? 0 : n;
+  }
+  function hhmm(min){ if (min == null) return "-"; return pad(Math.floor(min / 60)) + ":" + pad(min % 60); }
+  function fmtD(d){ return ymd(d) + "(" + DOW[d.getDay()] + ")"; }
+  function guess(headers, fields, saved){
+    var map = {};
+    fields.forEach(function(f){
+      if (saved && saved[f[0]] && headers.indexOf(saved[f[0]]) >= 0){ map[f[0]] = saved[f[0]]; return; }
+      map[f[0]] = headers.filter(function(h){ return f[3].some(function(g){ return String(h).toLowerCase().indexOf(g.toLowerCase()) >= 0; }); })[0] || "";
+    });
+    return map;
+  }
+  function weekdaysIn(y, mo){ var n = 0, d = new Date(y, mo - 1, 1); while (d.getMonth() === mo - 1){ if (d.getDay() >= 1 && d.getDay() <= 5) n++; d.setDate(d.getDate() + 1); } return n; }
+  function splitList(t){ return String(t || "").split(/[,\n]/).map(function(s){ return s.trim(); }).filter(Boolean); }
+
+  function computeAll(){
+    var p = F.params, f1 = F.files.f1, f2 = F.files.f2, res = { late: [], missing: [], under: [], over: [], rest: [], people: {} };
+    var lateBase = pTime(p.lateTime) || 600, exLeave = (+p.excludeLeaveHours || 6) * 60, stdRest = +p.stdRest || 60;
+    var always = splitList(p.excludeAlways), monthEx = splitList(p.excludeMonth), dayVals = splitList(p.workDayValues);
+    var mStart = new Date(F.year, F.month - 1, 1), mEnd = new Date(F.year, F.month, 0);
+    // 근무형태 현황: 단시간근로자·근로시간 단축자 → 개인별 기준
+    var wt = {}; (S.recs["att.worktypes"] || []).forEach(function(x){ var d = x.data; if ((d.list || "worktype") !== "worktype" || !d.target) return;
+      if (d.start && parseD(d.start) > mEnd) return; if (d.end && parseD(d.end) < mStart) return; wt[d.target] = d; });
+    function mvx(r, map, k){ return map[k] ? r[map[k]] : undefined; }
+    var rows1 = f1 ? f1.rows.map(function(r){
+      var date = pDate(mvx(r, f1.map, "date")), name = String(mvx(r, f1.map, "name") || "").trim();
+      return { name: name, email: String(mvx(r, f1.map, "loginId") || "").trim(), dept: String(mvx(r, f1.map, "dept") || "").trim(), date: date,
+        dayType: String(mvx(r, f1.map, "dayType") || "").trim(), cin: pTime(mvx(r, f1.map, "checkin")), cout: pTime(mvx(r, f1.map, "checkout")),
+        leave: pMin(mvx(r, f1.map, "leave")) || 0, rest: pMin(mvx(r, f1.map, "rest")) };
+    }).filter(function(r){ return r.name && r.date; }) : [];
+    function workday(r){ var w = r.date.getDay(); if (w < 1 || w > 5) return false; if (dayVals.length && r.dayType) return dayVals.some(function(v){ return r.dayType.indexOf(v) >= 0; }); return true; }
+    function note(name){ var n = []; if (wt[name]) n.push(wt[name].type + (wt[name].weekly_hours ? " 주" + wt[name].weekly_hours + "h" : "")); if (monthEx.some(function(e){ return name.indexOf(e) >= 0; })) n.push("이번 달 제외"); return n.join(" · "); }
+    function exDefault(name){ return monthEx.some(function(e){ return name.indexOf(e) >= 0; }); }
+    rows1.forEach(function(r){ if (!res.people[r.name]) res.people[r.name] = { email: r.email, dept: r.dept }; });
+    rows1.forEach(function(r){
+      if (!workday(r)) return;
+      if (r.cin !== null && r.leave < exLeave){
+        var thr = r.leave === 120 ? 780 : r.leave === 240 ? 840 : lateBase;
+        if (r.cin > thr) res.late.push({ k: "late|" + r.name + "|" + ymd(r.date), name: r.name, dept: r.dept, email: r.email, date: fmtD(r.date), cin: hhmm(r.cin), cout: hhmm(r.cout), leave: r.leave ? hhmm(r.leave) : "-", late: hhmm(r.cin - thr), note: note(r.name), exd: exDefault(r.name) });
+      }
+      if (r.leave < exLeave && !always.some(function(e){ return r.name.indexOf(e) >= 0; }) && (r.cin === null || r.cout === null))
+        res.missing.push({ k: "miss|" + r.name + "|" + ymd(r.date), name: r.name, dept: r.dept, email: r.email, date: fmtD(r.date), cin: r.cin === null ? "기록 없음" : hhmm(r.cin), cout: r.cout === null ? "기록 없음" : hhmm(r.cout), leave: r.leave ? hhmm(r.leave) : "-", note: note(r.name), exd: exDefault(r.name) });
+    });
+    rows1.forEach(function(r){ if (r.rest !== null && r.rest > stdRest) res.rest.push({ k: "rest|" + r.name + "|" + ymd(r.date), name: r.name, date: fmtD(r.date), rest: hhmm(r.rest), excess: r.rest - stdRest }); });
+    var excess = {}; res.rest.forEach(function(r){ if (!F.restSelf[r.k]) excess[r.name] = (excess[r.name] || 0) + r.excess; });
+    var minH = +p.minHours || 0, maxH = +p.maxHours || 0;
+    if (f2 && minH){
+      f2.rows.forEach(function(r){
+        var name = String(r[f2.map.name] || "").trim(); if (!name) return;
+        var actual = pHours(r[f2.map.actual]), base = minH, w = wt[name];
+        if (w && w.weekly_hours && (w.type === "단시간근로자" || w.type === "근로시간 단축자")) base = Math.round(minH * (+w.weekly_hours) / 40 * 100) / 100;
+        var adj = actual + (excess[name] || 0) / 60;
+        if (adj < base) res.under.push({ k: "under|" + name, name: name, dept: (res.people[name] || {}).dept || "", email: (res.people[name] || {}).email || "", actual: Math.round(actual * 100) / 100, excess: Math.round((excess[name] || 0) / 60 * 100) / 100, adj: Math.round(adj * 100) / 100, base: base, short_h: Math.round((base - adj) * 100) / 100, note: note(name), exd: exDefault(name) });
+      });
+    }
+    if (maxH && rows1.length){
+      var wk = {};
+      rows1.forEach(function(r){ var w = r.date.getDay(); if (w < 1 || w > 5 || r.cin === null || r.cout === null) return; var t = r.cout - r.cin; if (t < 0) t += 1440; wk[r.name] = (wk[r.name] || 0) + Math.max(0, t - (r.rest || 0)) / 60; });
+      Object.keys(wk).forEach(function(name){ var adj = wk[name] + (excess[name] || 0) / 60; if (adj > maxH) res.over.push({ k: "over|" + name, name: name, dept: (res.people[name] || {}).dept || "", email: (res.people[name] || {}).email || "", weekday: Math.round(wk[name] * 100) / 100, adj: Math.round(adj * 100) / 100, base: maxH, over_h: Math.round((adj - maxH) * 100) / 100, note: note(name), exd: exDefault(name) }); });
+    }
+    ["late", "missing", "under", "over"].forEach(function(k){ res[k].sort(function(a, b){ return a.name.localeCompare(b.name) || String(a.date || "").localeCompare(String(b.date || "")); }); });
+    return res;
+  }
+
+  /* ---------- 자동 필터링 ---------- */
+  function vFilter(c){
+    var host = $("#vb"), w = can("att.violations", "write"), now = new Date();
+    if (F.year == null){ F.year = now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear(); F.month = now.getMonth() === 0 ? 12 : now.getMonth(); F.site = sites()[0]; }
+    if (!F.params){ F.params = Object.assign({}, DEF_PARAMS, setting("params", {})); }
+    var saved = ATT.months.filter(function(m){ return m.year === F.year && m.month === F.month && m.site === F.site; })[0];
+    var wd = weekdaysIn(F.year, F.month);
+    var h = '<div class="hint" style="font-size:12.5px;margin-bottom:12px">WORKS에서 내려받은 출퇴근 현황·근로시간 현황 엑셀을 올리면 지각·출퇴근 누락·의무 근로시간 미달·최대 근로시간 초과 대상을 자동으로 뽑습니다. 계산은 이 브라우저 안에서 하고, 「월 결과 저장」을 누르면 결과와 원본 파일이 포털에 보관됩니다. 그룹웨어가 바뀌면 「열 매핑」만 다시 맞추면 됩니다.</div>' +
+      '<section class="panel" style="margin-top:0"><div class="step-h"><span class="n">1</span><b>기간·사업장</b></div><div class="rec-tools">' +
+      '<select id="fy">' + [now.getFullYear() - 1, now.getFullYear(), now.getFullYear() + 1].map(function(y){ return '<option' + (y === F.year ? " selected" : "") + '>' + y + '</option>'; }).join("") + '</select>' +
+      '<select id="fm">' + [1,2,3,4,5,6,7,8,9,10,11,12].map(function(m){ return '<option value="' + m + '"' + (m === F.month ? " selected" : "") + '>' + m + '월</option>'; }).join("") + '</select>' +
+      '<select id="fs">' + sites().map(function(s){ return '<option' + (s === F.site ? " selected" : "") + '>' + esc(s) + '</option>'; }).join("") + '</select>' +
+      (can("att.violations", "edit") ? '<button class="btn sm ghost" id="siteEd">사업장 목록 편집</button>' : '') +
+      (saved ? '<span class="badge good">저장된 결과 있음 · ' + esc(String(saved.saved_at || "").slice(0, 10)) + ' ' + esc(saved.saved_by || "") + '</span>' + (F.savedId !== saved.id ? '<button class="btn sm" id="loadSaved">저장된 결과 불러오기</button>' : '') : '<span class="hint" style="font-size:12px">이 달은 아직 저장된 결과가 없습니다.</span>') + '</div></section>' +
+      '<section class="panel"><div class="step-h"><span class="n">2</span><b>기준값</b><span class="hint" style="font-size:12px">이 달 평일 ' + wd + '일 · 공휴일은 빼고 소정근로일을 입력하면 의무(8H×소정근로일)·최대(+10H)가 자동 계산됩니다.</span></div>' +
+      '<div class="pgrid">' +
+      '<label>소정근로일<input id="pw" type="number" value="' + esc(F.params.workdays) + '" placeholder="' + wd + '"></label>' +
+      '<label>월 의무 근로시간(h)<input id="pmin" type="number" step="0.01" value="' + esc(F.params.minHours) + '"></label>' +
+      '<label>월 최대 근로시간(h)<input id="pmax" type="number" step="0.01" value="' + esc(F.params.maxHours) + '"></label>' +
+      '<label>지각 기준 시각<input id="plate" value="' + esc(F.params.lateTime) + '"></label>' +
+      '<label>표준 휴게(분)<input id="prest" type="number" value="' + esc(F.params.stdRest) + '"></label>' +
+      '<label>누락 확인 제외 부재(시간 이상)<input id="pexl" type="number" value="' + esc(F.params.excludeLeaveHours) + '"></label>' +
+      '<label>근무일구분 값(선택)<input id="pdv" value="' + esc(F.params.workDayValues) + '" placeholder="비우면 평일 전체"></label>' +
+      '<label class="wide">누락 확인에서 항상 제외(퇴사예정·환경미화 등)<input id="pea" value="' + esc(F.params.excludeAlways) + '" placeholder="쉼표로 구분"></label>' +
+      '<label class="wide">이번 달 제외(입사·복직 등)<input id="pem" value="' + esc(F.params.excludeMonth) + '" placeholder="쉼표로 구분 — 결과에 \'제외\'가 기본 체크"></label></div>' +
+      '<p class="hint" style="font-size:12px;margin:8px 0 0">단시간근로자·근로시간 단축자는 <a href="#/c/att/worktypes">근무형태 현황</a>의 1주 소정근로시간 비율로 개인 의무 근로시간을 자동 계산합니다(예: 주 30시간 → 의무 × 30/40).</p></section>' +
+      ['f1', 'f2'].map(function(k, i){
+        var fl = F.files[k], title = k === "f1" ? "출퇴근 현황 업로드" : "근로시간 현황 업로드", desc = k === "f1" ? "WORKS 관리자서비스 › 근태 › 근태현황 › 출퇴근 현황 (지각·누락·최대 근로시간)" : "WORKS 관리자서비스 › 근태 › 근태현황 › 근로시간 현황 (의무 근로시간)";
+        var fields = k === "f1" ? FIELDS1 : FIELDS2;
+        return '<section class="panel"><div class="step-h"><span class="n">' + (i + 3) + '</span><b>' + title + '</b><span class="hint" style="font-size:12px">' + desc + '</span></div><div class="rec-tools">' +
+          (w ? '<label class="btn sm primary" style="cursor:pointer">파일 선택<input type="file" accept=".xlsx,.xls,.csv" data-up="' + k + '" hidden></label>' : '') +
+          (fl ? '<span><b>' + esc(fl.name) + '</b> · ' + fl.rows.length + '행</span>' : '<span class="hint" style="font-size:12.5px">아직 파일이 없습니다.</span>') + '</div>' +
+          (fl ? '<details class="mapbox"><summary>열 매핑 확인·변경' + (fields.some(function(f){ return f[2] && !fl.map[f[0]]; }) ? ' <span class="badge danger">필수 열 미지정</span>' : '') + '</summary><div class="pgrid">' + fields.map(function(f){
+            return '<label>' + esc(f[1]) + (f[2] ? " *" : "") + '<select data-map="' + k + '" data-f="' + f[0] + '"><option value="">(없음)</option>' + fl.headers.map(function(hd){ return '<option' + (hd === fl.map[f[0]] ? " selected" : "") + '>' + esc(hd) + '</option>'; }).join("") + '</select></label>'; }).join("") +
+            '</div><p class="hint" style="font-size:12px">바꾼 매핑은 저장되어 다음 업로드에도 쓰입니다.</p></details>' : '') + '</section>';
+      }).join("") +
+      '<div id="fres"></div>';
+    host.innerHTML = h;
+    function readParams(){
+      F.params.workdays = $("#pw").value; F.params.minHours = $("#pmin").value; F.params.maxHours = $("#pmax").value; F.params.lateTime = $("#plate").value;
+      F.params.stdRest = $("#prest").value; F.params.excludeLeaveHours = $("#pexl").value; F.params.workDayValues = $("#pdv").value; F.params.excludeAlways = $("#pea").value; F.params.excludeMonth = $("#pem").value;
+    }
+    $("#fy").onchange = function(e){ F.year = +e.target.value; F.result = null; F.savedId = null; vFilter(c); };
+    $("#fm").onchange = function(e){ F.month = +e.target.value; F.result = null; F.savedId = null; vFilter(c); };
+    $("#fs").onchange = function(e){ F.site = e.target.value; F.result = null; F.savedId = null; vFilter(c); };
+    if ($("#siteEd")) $("#siteEd").onclick = function(){ var v = window.prompt("사업장 목록 (쉼표로 구분)", sites().join(", ")); if (v == null) return; var l = splitList(v); if (!l.length) return; saveSetting("sites", l).then(function(ok){ if (ok){ F.site = l[0]; vFilter(c); } }); };
+    $("#pw").addEventListener("input", function(){ var n = +$("#pw").value; if (n){ $("#pmin").value = n * 8; $("#pmax").value = n * 8 + 10; } });
+    $all(".pgrid input", host).forEach(function(i){ i.addEventListener("change", function(){ readParams(); if (F.files.f1 || F.files.f2){ F.result = computeAll(); drawResult(c); } }); });
+    $all("[data-up]", host).forEach(function(inp){ inp.onchange = function(){ var file = inp.files[0]; if (file) readUpload(c, inp.dataset.up, file); }; });
+    $all("select[data-map]", host).forEach(function(s){ s.onchange = function(){ var fl = F.files[s.dataset.map]; fl.map[s.dataset.f] = s.value; saveSetting("map_" + s.dataset.map, fl.map); readParams(); F.result = computeAll(); vFilter(c); }; });
+    if ($("#loadSaved")) $("#loadSaved").onclick = function(){ loadSavedMonth(saved); vFilter(c); };
+    if (F.result) drawResult(c);
+  }
+  function loadSavedMonth(m){
+    F.files = {}; F.savedId = m.id; F.params = Object.assign({}, DEF_PARAMS, m.params || {}); F.ex = {}; F.restSelf = {};
+    F.result = { late: m.late || [], missing: m.missing || [], under: m.under || [], over: m.over || [], rest: [], people: {}, fromSaved: true };
+    ["late", "missing", "under", "over"].forEach(function(k){ F.result[k].forEach(function(r){ F.ex[r.k] = !!r.ex; }); });
+  }
+  function readUpload(c, k, file){
+    if (!window.XLSX){ alert("엑셀 읽기 도구를 불러오지 못했습니다. 새로고침 후 다시 시도하세요."); return; }
+    var rd = new FileReader();
+    rd.onload = function(e){
+      try {
+        var wb = XLSX.read(new Uint8Array(e.target.result), { type: "array" });
+        var rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: "" });
+        if (!rows.length){ alert("데이터가 없는 파일입니다."); return; }
+        var headers = Object.keys(rows[0]);
+        F.files[k] = { name: file.name, file: file, rows: rows, headers: headers, map: guess(headers, k === "f1" ? FIELDS1 : FIELDS2, setting("map_" + k, null)) };
+        if (F.savedId){ F.savedId = null; F.ex = {}; }
+        F.result = computeAll(); vFilter(c);
+      } catch(err){ alert("파일을 읽지 못했습니다: " + err.message); }
+    };
+    rd.readAsArrayBuffer(file);
+  }
+  var RES_DEF = {
+    late: ["지각", [["성명", "name"], ["부서", "dept"], ["근무일", "date"], ["출근", "cin"], ["퇴근", "cout"], ["부재", "leave"], ["지각시간", "late"], ["비고", "note"]]],
+    missing: ["출퇴근 체크 누락", [["성명", "name"], ["부서", "dept"], ["근무일", "date"], ["출근", "cin"], ["퇴근", "cout"], ["부재", "leave"], ["비고", "note"]]],
+    under: ["의무 근로시간 미달", [["성명", "name"], ["부서", "dept"], ["실근로(h)", "actual"], ["과다휴게 보정(h)", "excess"], ["보정 후(h)", "adj"], ["기준(h)", "base"], ["미달(h)", "short_h"], ["비고", "note"]]],
+    over: ["최대 근로시간 초과", [["성명", "name"], ["부서", "dept"], ["평일 근로(h)", "weekday"], ["보정 후(h)", "adj"], ["기준(h)", "base"], ["초과(h)", "over_h"], ["비고", "note"]]]
+  };
+  function isEx(r){ return Object.prototype.hasOwnProperty.call(F.ex, r.k) ? F.ex[r.k] : !!r.exd; }
+  function drawResult(c){
+    var host = $("#fres"), R = F.result, w = can("att.violations", "write"); if (!host || !R) return;
+    var cnt = function(k){ return R[k].filter(function(r){ return !isEx(r); }).length; };
+    var lateP = {}; R.late.forEach(function(r){ if (!isEx(r)) lateP[r.name] = 1; });
+    var h = '<section class="panel"><div class="step-h"><span class="n">5</span><b>' + F.year + '년 ' + F.month + '월 · ' + esc(F.site) + ' 결과</b>' + (R.fromSaved ? '<span class="badge info">저장된 결과</span>' : '') + '</div>' +
+      '<div class="kpis" style="margin:6px 0 12px">' +
+      '<div class="kpi"><div class="k">지각</div><div class="v">' + cnt("late") + '<small>건</small></div><div class="s">' + Object.keys(lateP).length + '명</div></div>' +
+      '<div class="kpi"><div class="k">출퇴근 누락</div><div class="v">' + cnt("missing") + '<small>건</small></div><div class="s">대상자 확인용</div></div>' +
+      '<div class="kpi"><div class="k">의무 근로시간 미달</div><div class="v">' + cnt("under") + '<small>명</small></div><div class="s">' + (F.params.minHours ? "기준 " + F.params.minHours + "h" : '<span style="color:var(--danger-700)">기준값 미입력</span>') + '</div></div>' +
+      '<div class="kpi"><div class="k">최대 근로시간 초과</div><div class="v">' + cnt("over") + '<small>명</small></div><div class="s">' + (F.params.maxHours ? "기준 " + F.params.maxHours + "h" : '<span style="color:var(--danger-700)">기준값 미입력</span>') + '</div></div></div>' +
+      '<p class="hint" style="font-size:12px;margin:0 0 10px">확인 후 대상이 아니면 「제외」를 체크하세요. 제외한 건은 저장·분기 집계에서 빠집니다.</p>';
+    ["late", "missing", "under", "over"].forEach(function(k){
+      var d = RES_DEF[k], rows = R[k];
+      h += '<details class="res-sec"' + (rows.length && k !== "missing" ? " open" : "") + '><summary><b>' + d[0] + '</b> <span class="hint">' + rows.length + '건 · 제외 ' + rows.filter(isEx).length + '</span></summary><div class="tbl-box" style="max-height:420px"><table class="rec compact"><thead><tr>' + d[1].map(function(cc){ return '<th>' + cc[0] + '</th>'; }).join("") + '<th>제외</th></tr></thead><tbody>' +
+        (rows.length ? rows.map(function(r){ return '<tr class="' + (isEx(r) ? "ended" : "") + '">' + d[1].map(function(cc){ return '<td>' + esc(r[cc[1]] == null ? "" : r[cc[1]]) + '</td>'; }).join("") + '<td><input type="checkbox" data-ex="' + esc(r.k) + '"' + (isEx(r) ? " checked" : "") + (w ? "" : " disabled") + '></td></tr>'; }).join("") : '<tr><td colspan="' + (d[1].length + 1) + '" class="hint">대상이 없습니다.</td></tr>') +
+        '</tbody></table></div></details>';
+    });
+    if (R.rest.length) h += '<details class="res-sec"><summary><b>과다 휴게시간 보정 확인</b> <span class="hint">' + R.rest.length + '건 — 표준 휴게(' + esc(F.params.stdRest) + '분)를 넘는 휴게는 근로시간으로 되돌려 미달·초과를 판단합니다. 본인이 직접 추가한 휴게는 체크하면 보정에서 뺍니다.</span></summary><div class="tbl-box" style="max-height:360px"><table class="rec compact"><thead><tr><th>성명</th><th>근무일</th><th>휴게시간</th><th>보정분</th><th>본인 추가(보정 안 함)</th></tr></thead><tbody>' +
+      R.rest.map(function(r){ return '<tr><td>' + esc(r.name) + '</td><td>' + esc(r.date) + '</td><td>' + esc(r.rest) + '</td><td>' + r.excess + '분</td><td><input type="checkbox" data-rs="' + esc(r.k) + '"' + (F.restSelf[r.k] ? " checked" : "") + '></td></tr>'; }).join("") + '</tbody></table></div></details>';
+    h += (w ? '<div class="modal-actions" style="margin-top:14px"><span class="hint" style="font-size:12px;margin-right:auto">저장하면 같은 연·월·사업장 결과를 덮어씁니다' + (R.fromSaved ? "" : " · 올린 원본 파일도 함께 보관합니다") + '.</span><button class="btn primary" id="saveMonth">월 결과 저장</button></div>' : '') + '</section>';
+    host.innerHTML = h;
+    $all("[data-ex]", host).forEach(function(cb){ cb.onchange = function(){ F.ex[cb.dataset.ex] = cb.checked; drawResult(c); }; });
+    $all("[data-rs]", host).forEach(function(cb){ cb.onchange = function(){ F.restSelf[cb.dataset.rs] = cb.checked; F.result = computeAll(); drawResult(c); }; });
+    if ($("#saveMonth")) $("#saveMonth").onclick = function(){ saveMonth(c, this); };
+  }
+  async function saveMonth(c, btn){
+    var R = F.result, p = F.params;
+    if (!R.fromSaved && (!p.minHours || !p.maxHours) && !confirm("의무·최대 근로시간 기준값이 비어 있어 미달·초과 결과가 없습니다. 그래도 저장할까요?")) return;
+    btn.disabled = true; btn.textContent = "저장 중…";
+    var prev = ATT.months.filter(function(m){ return m.year === F.year && m.month === F.month && m.site === F.site; })[0];
+    var files = (prev && prev.files) || [], siteIdx = Math.max(0, sites().indexOf(F.site));
+    for (var k in F.files){
+      var fl = F.files[k]; if (!fl || !fl.file) continue;
+      var ext = (fl.name.split(".").pop() || "xlsx").toLowerCase().replace(/[^a-z0-9]/g, "");
+      var path = "att/" + F.year + "/" + pad(F.month) + "/site" + siteIdx + "/" + k + "-" + Date.now() + "." + ext;
+      var up = await sb.storage.from(BUCKET).upload(path, fl.file, { upsert: false });
+      if (up.error){ alert("원본 파일을 보관하지 못했습니다: " + up.error.message); btn.disabled = false; btn.textContent = "월 결과 저장"; return; }
+      files = files.concat([{ kind: k === "f1" ? "출퇴근 현황" : "근로시간 현황", path: path, name: fl.name, size: fl.file.size, at: new Date().toISOString(), by: me.email }]);
+      fl.file = null;
+    }
+    function pack(k){ return R[k].map(function(r){ var o = Object.assign({}, r); o.ex = isEx(r); delete o.exd; return o; }); }
+    var rec = { year: F.year, month: F.month, site: F.site, params: p, late: pack("late"), missing: pack("missing"), under: pack("under"), over: pack("over"), files: files, saved_by: me.email, saved_at: new Date().toISOString() };
+    var r = await sb.from("portal_att_months").upsert(rec, { onConflict: "year,month,site" }).select("*");
+    btn.disabled = false; btn.textContent = "월 결과 저장";
+    if (r.error || !r.data || !r.data.length){ alert("저장하지 못했습니다: " + errMsg(r)); return; }
+    ATT.months = ATT.months.filter(function(m){ return !(m.year === F.year && m.month === F.month && m.site === F.site); }).concat([r.data[0]]);
+    var keepParams = Object.assign({}, p); delete keepParams.workdays; delete keepParams.minHours; delete keepParams.maxHours; delete keepParams.excludeMonth;
+    saveSetting("params", keepParams);
+    loadSavedMonth(r.data[0]); violQ = quarterOf(F.year, F.month); logp("att.violations", "month", F.year + "-" + F.month + " " + F.site);
+    toast(F.month + "월 결과를 저장했습니다. 조치 대상 목록에서 분기 집계에 반영하세요."); vFilter(c);
+  }
+
+  /* ---------- 원본 데이터 ---------- */
+  function vRaw(c){
+    var host = $("#vb"), list = ATT.months.slice().sort(function(a, b){ return b.year - a.year || b.month - a.month || a.site.localeCompare(b.site); });
+    var rows = []; list.forEach(function(m){ (m.files || []).forEach(function(f){ rows.push({ m: m, f: f }); }); });
+    host.innerHTML = '<div class="hint" style="font-size:12.5px;margin-bottom:12px">자동 필터링에서 「월 결과 저장」할 때 올린 원본 엑셀을 그대로 보관합니다. 권한이 있는 사람만 내려받을 수 있습니다.</div>' +
+      '<div class="tbl-box"><table class="rec compact"><thead><tr><th>연월</th><th>사업장</th><th>종류</th><th>원본 파일명</th><th>크기</th><th>올린 사람</th><th>올린 날짜</th><th></th></tr></thead><tbody>' +
+      (rows.length ? rows.map(function(x, i){ return '<tr><td>' + x.m.year + '-' + pad(x.m.month) + '</td><td>' + esc(x.m.site) + '</td><td>' + esc(x.f.kind) + '</td><td>' + esc(x.f.name) + '</td><td class="n">' + Math.round((x.f.size || 0) / 1024) + ' KB</td><td>' + esc(x.f.by || "") + '</td><td>' + esc(String(x.f.at || "").slice(0, 10)) + '</td><td><button class="btn sm" data-dl="' + i + '">내려받기</button></td></tr>'; }).join("")
+        : '<tr><td colspan="8" class="hint" style="padding:18px">보관된 원본 파일이 없습니다.</td></tr>') + '</tbody></table></div>' +
+      '<h3 style="margin:22px 0 8px;font-size:15px">저장된 월별 결과</h3><div class="tbl-box"><table class="rec compact"><thead><tr><th>연월</th><th>사업장</th><th>지각(건)</th><th>누락(건)</th><th>미달(명)</th><th>초과(명)</th><th>저장</th><th></th></tr></thead><tbody>' +
+      (list.length ? list.map(function(m){ return '<tr><td>' + m.year + '-' + pad(m.month) + '</td><td>' + esc(m.site) + '</td><td class="n">' + live(m.late).length + '</td><td class="n">' + live(m.missing).length + '</td><td class="n">' + live(m.under).length + '</td><td class="n">' + live(m.over).length + '</td><td>' + esc(String(m.saved_at || "").slice(0, 10)) + ' ' + esc(m.saved_by || "") + '</td><td><button class="btn sm" data-open-m="' + m.id + '">결과 보기</button>' + (can("att.violations", "edit") ? ' <button class="btn sm danger" data-del-m="' + m.id + '">삭제</button>' : '') + '</td></tr>'; }).join("")
+        : '<tr><td colspan="8" class="hint" style="padding:18px">저장된 결과가 없습니다.</td></tr>') + '</tbody></table></div>';
+    $all("[data-dl]", host).forEach(function(b){ b.onclick = async function(){ var x = rows[+b.dataset.dl]; var r = await sb.storage.from(BUCKET).createSignedUrl(x.f.path, 120, { download: x.f.name }); if (r.error){ alert("내려받지 못했습니다: " + r.error.message); return; } window.open(r.data.signedUrl, "_blank"); }; });
+    $all("[data-open-m]", host).forEach(function(b){ b.onclick = function(){ var m = ATT.months.filter(function(x){ return x.id === b.dataset.openM; })[0]; F.year = m.year; F.month = m.month; F.site = m.site; loadSavedMonth(m); location.hash = "#/c/att/violations/filter"; }; });
+    $all("[data-del-m]", host).forEach(function(b){ b.onclick = async function(){
+      var m = ATT.months.filter(function(x){ return x.id === b.dataset.delM; })[0];
+      if (!confirm(m.year + "년 " + m.month + "월 " + m.site + " 저장 결과를 삭제할까요? 보관된 원본 파일 " + (m.files || []).length + "개도 함께 지웁니다.")) return;
+      if ((m.files || []).length){ var rm = await sb.storage.from(BUCKET).remove(m.files.map(function(f){ return f.path; })); if (rm.error){ alert("원본 파일을 지우지 못했습니다: " + rm.error.message); return; } }
+      var r = await sb.from("portal_att_months").delete().eq("id", m.id).select("id");
+      if (r.error || !r.data || !r.data.length){ alert("삭제하지 못했습니다: " + errMsg(r)); return; }
+      ATT.months = ATT.months.filter(function(x){ return x.id !== m.id; }); vRaw(c); }; });
+  }
+
+  /* ---------- 조치 대상 목록 (분기 집계 + 포함 여부) ---------- */
+  function aggregateQuarter(q, site){
+    var per = {};
+    qMonths(q).forEach(function(ym){
+      ATT.months.filter(function(m){ return m.year === ym[0] && m.month === ym[1] && (!site || m.site === site); }).forEach(function(m){
+        function P(r){ var x = per[r.name] = per[r.name] || { name: r.name, dept: r.dept || "", email: r.email || "", site: m.site, late: 0, short_h: 0, missing: 0, over: 0, months: {} }; if (!x.email && r.email) x.email = r.email; if (!x.dept && r.dept) x.dept = r.dept; var mm = x.months[ym[1]] = x.months[ym[1]] || { late: 0, short_h: 0 }; return [x, mm]; }
+        live(m.late).forEach(function(r){ var a = P(r); a[0].late++; a[1].late++; });
+        live(m.missing).forEach(function(r){ P(r)[0].missing++; });
+        live(m.under).forEach(function(r){ var a = P(r); a[0].short_h = Math.round((a[0].short_h + (+r.short_h || 0)) * 100) / 100; a[1].short_h = Math.round((a[1].short_h + (+r.short_h || 0)) * 100) / 100; });
+        live(m.over).forEach(function(r){ P(r)[0].over++; });
+      });
+    });
+    return per;
+  }
+  async function syncQuarter(c, q, site){
+    var per = aggregateQuarter(q, site), key = "att.violations", recs = S.recs[key], n = 0, u = 0;
+    var names = Object.keys(per).filter(function(k){ return per[k].late > 0 || per[k].short_h > 0; });
+    for (var i = 0; i < names.length; i++){
+      var a = per[names[i]], x = recs.filter(function(y){ return y.data.quarter === q && y.data.name === a.name; })[0];
+      var auto = { late: a.late, short_h: a.short_h, missing: a.missing, months: a.months, site: a.site, synced_at: new Date().toISOString() };
+      if (x){
+        var d = Object.assign({}, x.data, { late: a.late, short_h: a.short_h, missing: a.missing, auto: auto });
+        if (!d.email && a.email) d.email = a.email; if (!d.dept && a.dept) d.dept = a.dept;
+        var r = await sb.from("portal_records").update({ data: d, updated_by: me.email, updated_at: new Date().toISOString() }).eq("id", x.id).select("*");
+        if (r.error || !r.data || !r.data.length){ alert("반영하지 못했습니다: " + errMsg(r)); return; } Object.assign(x, r.data[0]); u++;
+      } else {
+        var d2 = { quarter: q, name: a.name, dept: a.dept, email: a.email, rank: "팀원", late: a.late, short_h: a.short_h, missing: a.missing, status: "대상 확인", auto: auto };
+        var r2 = await sb.from("portal_records").insert({ cat: "att", menu: "violations", data: d2, updated_by: me.email }).select("*");
+        if (r2.error || !r2.data || !r2.data.length){ alert("반영하지 못했습니다: " + errMsg(r2)); return; } recs.push(r2.data[0]); n++;
+      }
+    }
+    logp(key, "sync", q + " 신규 " + n + " · 갱신 " + u); toast(qLabel(q) + " 집계 반영: 신규 " + n + "명 · 갱신 " + u + "명");
+  }
+  var tFilter = { q: "", status: "", inc: "" };
+  function vTargets(c){
+    var host = $("#vb"), key = "att.violations", rows = S.recs[key] || [], w = can(key, "write"), e = can(key, "edit"), today = todayStr();
+    function canEditRow(x){ return e || (w && String(x.created_by || "").toLowerCase() === me.email); }
+    var qs = allQuarters(); if (qs.indexOf(violQ) < 0) violQ = qs[0];
+    var per = aggregateQuarter(violQ, ""), savedM = qMonths(violQ).map(function(ym){ return ATT.months.filter(function(m){ return m.year === ym[0] && m.month === ym[1]; }).length; });
+    var list = rows.filter(function(x){ var d = x.data; return d.quarter === violQ && (!tFilter.status || d.status === tFilter.status) && (!tFilter.inc || (tFilter.inc === "in" ? !d.exclude : !!d.exclude)) && (!tFilter.q || [d.name, d.dept, d.note, d.doc].join(" ").indexOf(tFilter.q) >= 0); })
+      .sort(function(a, b){ return appliedStep(b.data) - appliedStep(a.data) || String(a.data.name).localeCompare(String(b.data.name)); });
+    var inc = list.filter(function(x){ return !x.data.exclude; }), cnt = [0, 0, 0, 0, 0, 0, 0]; inc.forEach(function(x){ cnt[appliedStep(x.data)]++; });
+    var notSynced = Object.keys(per).filter(function(n){ var a = per[n]; if (!(a.late > 0 || a.short_h > 0)) return false; var x = rows.filter(function(y){ return y.data.quarter === violQ && y.data.name === n; })[0]; return !x || !x.data.auto || x.data.late !== a.late || x.data.short_h !== a.short_h; }).length;
+    var h = '<div class="rec-tools"><select id="tq">' + qs.map(function(q){ return '<option value="' + q + '"' + (q === violQ ? " selected" : "") + '>' + qLabel(q) + '</option>'; }).join("") + '</select>' +
+      '<span class="hint" style="font-size:12px">저장된 월 결과: ' + qMonths(violQ).map(function(ym, i){ return ym[1] + "월 " + (savedM[i] ? "✓" : "–"); }).join(" · ") + '</span><span class="grow"></span>' +
+      (w ? '<button class="btn sm primary" id="tSync"' + (Object.keys(per).length ? "" : " disabled") + '>월 결과로 분기 집계 반영' + (notSynced ? ' (' + notSynced + ')' : '') + '</button>' : '') + '</div>' +
+      '<div class="hint" style="font-size:12.5px;margin-bottom:10px">자동 필터링에서 저장한 3개월 결과를 사람별로 합산해 지각 횟수·미달 시간을 채우고, 운영 기준에 따라 기준 단계를 계산합니다. 조치하지 않을 사람은 「포함」 체크를 풀고 사유를 남기세요. 수기 추가·엑셀 붙여넣기도 됩니다.</div>' +
+      '<div class="mini-stats"><div class="ms">조치 대상(포함)<b>' + inc.length + '</b></div>' + [1, 2, 3, 4].map(function(i){ return '<div class="ms">' + STEP[i] + '<b>' + cnt[i] + '</b></div>'; }).join("") + '<div class="ms">제외<b>' + (list.length - inc.length) + '</b></div><div class="ms">정정 완료<b>' + list.filter(function(x){ return x.data.status === "정정 완료(제외)"; }).length + '</b></div></div>' +
+      '<div class="rec-tools"><select id="tInc"><option value="">포함·제외 전체</option><option value="in"' + (tFilter.inc === "in" ? " selected" : "") + '>조치 포함만</option><option value="out"' + (tFilter.inc === "out" ? " selected" : "") + '>제외만</option></select>' +
+      '<select id="tS"><option value="">전체 상태</option>' + REC_DEF.violations.fields[9][3].map(function(s){ return '<option' + (s === tFilter.status ? " selected" : "") + '>' + s + '</option>'; }).join("") + '</select>' +
+      '<input type="search" id="tT" placeholder="성명·소속 검색" value="' + esc(tFilter.q) + '"><span class="grow"></span><button class="btn sm" id="tCsv">CSV 내려받기</button>' +
+      (w ? '<button class="btn sm" id="tPaste">엑셀 붙여넣기</button><button class="btn sm" id="tAdd">+ 수기 추가</button>' : '') + '</div>' +
+      '<div class="tbl-box"><table class="rec compact"><thead><tr><th>포함</th><th>성명</th><th>소속</th><th>구분</th>' + qMonths(violQ).map(function(ym){ return '<th>' + ym[1] + '월 지각</th>'; }).join("") + '<th>지각 계</th><th>미달 계</th><th>기준 단계</th><th>적용 단계</th><th>조치 주체</th><th>진행 상태</th><th>소명 기한</th><th>출처</th></tr></thead><tbody>' +
+      (list.length ? list.map(function(x){
+        var d = x.data, b = baseStep(d), s = appliedStep(d), months = (d.auto && d.auto.months) || {};
+        var prev = rows.filter(function(y){ return y.data.name === d.name && y.data.quarter === prevQuarter(d.quarter); })[0];
+        var overdue = d.due && d.due < today && ["대상 확인", "안내 발송", "소명·정정 중"].indexOf(d.status) >= 0;
+        return '<tr class="clk' + (d.exclude ? " ended" : "") + '" data-rid="' + x.id + '"><td><input type="checkbox" data-inc="' + x.id + '"' + (d.exclude ? "" : " checked") + (canEditRow(x) ? "" : " disabled") + ' title="' + esc(d.exclude_reason || "") + '"></td><td><b>' + esc(d.name) + '</b></td><td>' + esc(d.dept || "") + '</td><td>' + esc(d.rank || "") + '</td>' +
+          qMonths(violQ).map(function(ym){ var mm = months[ym[1]]; return '<td class="n">' + (mm ? mm.late : "") + '</td>'; }).join("") +
+          '<td class="n"><b>' + esc(d.late == null ? "" : d.late) + '</b></td><td class="n">' + (d.short_h ? hm(d.short_h) : "") + '</td><td>' + stepBadge(b) + '</td><td>' + stepBadge(s) + (s > b ? ' <span class="hint" style="font-size:11px">상향</span>' : '') + (prev ? '<div class="hint" style="font-size:11px">직전: ' + STEP[appliedStep(prev.data)] + '</div>' : '') + '</td>' +
+          '<td style="font-size:12px">' + esc(actor(d, s)) + '</td><td>' + esc(d.status || "") + '</td><td' + (overdue ? ' style="color:var(--danger-700);font-weight:700"' : '') + '>' + esc(d.due || "") + '</td><td>' + (d.auto ? '<span class="badge info">자동</span>' : '<span class="badge neutral">수기</span>') + '</td></tr>';
+      }).join("") : '<tr><td colspan="16" class="hint" style="padding:18px">이 분기 조치 대상이 없습니다. 자동 필터링에서 월 결과를 저장한 뒤 「월 결과로 분기 집계 반영」을 누르세요.</td></tr>') + '</tbody></table></div>';
+    host.innerHTML = h;
+    function rer(){ vTargets(c); }
+    $("#tq").onchange = function(ev){ violQ = ev.target.value; rer(); };
+    $("#tInc").onchange = function(ev){ tFilter.inc = ev.target.value; rer(); };
+    $("#tS").onchange = function(ev){ tFilter.status = ev.target.value; rer(); };
+    $("#tT").addEventListener("input", function(ev){ tFilter.q = ev.target.value; rer(); var i = $("#tT"); i.focus(); i.setSelectionRange(i.value.length, i.value.length); });
+    if ($("#tSync")) $("#tSync").onclick = async function(){ this.disabled = true; await syncQuarter(c, violQ, ""); rer(); };
+    if ($("#tAdd")) $("#tAdd").onclick = function(){ openRecord(c, "violations", null, rer); };
+    if ($("#tPaste")) $("#tPaste").onclick = function(){ pasteRecords(c, rer); };
+    $("#tCsv").onclick = function(){ downloadCsv("근태 조치 대상_" + violQ, [["포함", function(x){ return x.data.exclude ? "제외" : "포함"; }], ["제외 사유", function(x){ return x.data.exclude_reason; }], ["분기", function(x){ return x.data.quarter; }], ["성명", function(x){ return x.data.name; }], ["소속", function(x){ return x.data.dept; }], ["구분", function(x){ return x.data.rank; }], ["이메일", function(x){ return x.data.email; }], ["지각", function(x){ return x.data.late; }], ["미달(h)", function(x){ return x.data.short_h; }], ["누락", function(x){ return x.data.missing; }], ["기준 단계", function(x){ return STEP[baseStep(x.data)]; }], ["적용 단계", function(x){ return STEP[appliedStep(x.data)]; }], ["진행 상태", function(x){ return x.data.status; }], ["소명 기한", function(x){ return x.data.due; }], ["계획서·문서", function(x){ return x.data.doc; }], ["비고", function(x){ return x.data.note; }]], list); };
+    $all("[data-inc]", host).forEach(function(cb){
+      cb.onclick = function(ev){ ev.stopPropagation(); };
+      cb.onchange = async function(){
+        var x = rows.filter(function(y){ return y.id === cb.dataset.inc; })[0], d = Object.assign({}, x.data);
+        if (!cb.checked){ var why = window.prompt(d.name + " 님을 조치 대상에서 제외하는 사유", d.exclude_reason || ""); if (why == null){ cb.checked = true; return; } d.exclude = true; d.exclude_reason = why; }
+        else { delete d.exclude; }
+        var r = await sb.from("portal_records").update({ data: d, updated_by: me.email, updated_at: new Date().toISOString() }).eq("id", x.id).select("*");
+        if (r.error || !r.data || !r.data.length){ alert("저장하지 못했습니다: " + errMsg(r)); rer(); return; }
+        Object.assign(x, r.data[0]); rer();
+      };
+    });
+    $all("tr[data-rid]", host).forEach(function(tr){ tr.onclick = function(){ var x = rows.filter(function(y){ return y.id === tr.dataset.rid; })[0]; if (canEditRow(x)) openRecord(c, "violations", x, rer); }; });
+  }
+  function pasteRecords(c, after){
+    var key = "att.violations";
     var m = showModal('<h3>엑셀에서 붙여넣기</h3><p class="hint">엑셀에서 아래 순서의 열을 복사해 붙여넣으세요(머리글 행은 있어도 됩니다).<br><b>성명 · 소속 · 구분(팀원/팀장/실장 이상) · 지각(회) · 미달(시간)</b></p>' +
-      '<label class="hint" style="font-size:12.5px">분기<input id="pQ" value="' + esc(recFilter.violations.quarter && recFilter.violations.quarter !== "*" ? recFilter.violations.quarter : curQuarter()) + '"></label>' +
+      '<label class="hint" style="font-size:12.5px">분기<input id="pQ" value="' + esc(violQ || curQuarter()) + '"></label>' +
       '<textarea id="pT" rows="10" placeholder="홍길동&#9;개발팀&#9;팀원&#9;3&#9;2.5"></textarea><div id="pPrev" class="hint" style="font-size:12.5px"></div>' +
       '<div class="modal-actions"><button class="btn ghost" id="pNo">취소</button><button class="btn primary" id="pOk">추가</button></div>', "wide");
     function parse(){
@@ -924,16 +1423,130 @@
         return { name: c2[0].trim(), dept: (c2[1] || "").trim(), rank: (c2[2] || "팀원").trim() || "팀원", late: num(c2[3]), short_h: num(c2[4]) };
       });
     }
-    $("#pT", m).addEventListener("input", function(){ var p = parse(); $("#pPrev", m).textContent = p.length + "명 인식됨" + (p.length ? " (예: " + p[0].name + " / 지각 " + (p[0].late || 0) + "회 / 미달 " + (p[0].short_h || 0) + "h)" : ""); });
+    $("#pT", m).addEventListener("input", function(){ var p = parse(); $("#pPrev", m).textContent = p.length + "명 인식됨"; });
     $("#pNo", m).onclick = closeModal;
     $("#pOk", m).onclick = async function(){
       var q = $("#pQ", m).value.trim(); if (!/^\d{4}-[1-4]Q$/.test(q)){ alert("분기는 2026-3Q 형식으로 입력하세요."); return; }
       var p = parse(); if (!p.length){ alert("붙여넣은 내용이 없습니다."); return; }
-      var ins = p.map(function(d){ d.quarter = q; d.status = "대상 확인"; Object.keys(d).forEach(function(k){ if (d[k] === undefined) delete d[k]; }); return { cat: c.id, menu: menu, data: d, updated_by: me.email }; });
+      var ins = p.map(function(d){ d.quarter = q; d.status = "대상 확인"; Object.keys(d).forEach(function(k){ if (d[k] === undefined) delete d[k]; }); return { cat: "att", menu: "violations", data: d, updated_by: me.email }; });
       var r = await sb.from("portal_records").insert(ins).select("*");
       if (r.error){ alert("추가하지 못했습니다: " + r.error.message); return; }
-      S.recs[key] = S.recs[key].concat(r.data || []); recFilter.violations.quarter = q; logp(key, "paste", p.length + "명"); closeModal(); toast(p.length + "명을 추가했습니다."); renderRecords(c, menu);
+      S.recs[key] = S.recs[key].concat(r.data || []); violQ = q; logp(key, "paste", p.length + "명"); closeModal(); toast(p.length + "명을 추가했습니다."); after();
     };
+  }
+
+  /* ---------- 메일 발송 (1단계: 초안 자동 생성 + 발송·회신 기록) ---------- */
+  var DEF_SUBJECT = "[HRM팀] {분기} 근태 현황 확인 및 정정 요청 안내";
+  var DEF_TPL = "안녕하세요, {이름}님. HRM팀입니다.\n\n회사는 선택적 근로시간제를 운영하고 있으며, 구성원 여러분의 자유와 책임을 기반으로 근태를 관리하고 있습니다.\n\n최근 근태 현황을 점검한 결과, 아래와 같이 근태 미준수 내역이 확인되어 안내드립니다.\n\n<근태 현황>\n\n■ 지각\n{월별지각}\n- {분기} 누적 지각: {분기지각}회\n\n■ 의무 근로시간 미달\n{월별미달}\n- {분기} 누적 미달 시간: {분기미달}\n\n출퇴근 기록의 누락 또는 기타 불가피한 사유로 발생하였을 가능성을 고려하여 사실 확인 및 정정 기간을 부여하고자 합니다.\n\n근태 미준수 사유가 출퇴근 기록 누락인 경우에는 {정정기한}까지 \"근무 결과 신청\" 문서를 상신하여 정정해 주시기 바랍니다.\n\n기한 내 근태 정정이 이루어지는 경우, 해당 건은 근태 미준수에서 제외됩니다.\n\n정정이 이루어지지 않는 경우, 근태 미준수 대응 프로세스에 따라 단계별 조치가 진행될 수 있습니다.\n\n근태관리와 관련하여 개인적·업무적 사유가 있거나 회사 차원의 지원이 필요한 사항이 있다면 함께 검토할 수 있도록 공유 바랍니다.\n\n감사합니다.\n\nHRM팀 드림";
+  function mailOf(q, name){ var l = ATT.mails.filter(function(m){ return m.quarter === q && m.name === name; }); return l[l.length - 1]; }
+  function fillTpl(tpl, d, q, due){
+    var ms = qMonths(q), mo = (d.auto && d.auto.months) || {};
+    var qShort = q.slice(2, 4) + "년 " + q.slice(5, 6) + "분기";
+    return tpl.replace(/\{이름\}/g, d.name || "").replace(/\{분기\}/g, qShort)
+      .replace(/\{월별지각\}/g, ms.map(function(ym){ return "- " + ym[0] + "년 " + ym[1] + "월 : " + ((mo[ym[1]] && mo[ym[1]].late) || 0) + "회"; }).join("\n"))
+      .replace(/\{분기지각\}/g, String(d.late || 0))
+      .replace(/\{월별미달\}/g, ms.map(function(ym){ return "- " + ym[0] + "년 " + ym[1] + "월 : " + hm((mo[ym[1]] && mo[ym[1]].short_h) || 0); }).join("\n"))
+      .replace(/\{분기미달\}/g, hm(d.short_h || 0))
+      .replace(/\{정정기한\}/g, due ? md(due).replace(/^(\d+)\/(\d+)/, function(_, a, b){ return (+a) + "/" + (+b); }).replace(" (", "(") : "(정정 기한)");
+  }
+  function vMail(c){
+    var host = $("#vb"), key = "att.violations", w = can(key, "write"), qs = allQuarters(); if (qs.indexOf(violQ) < 0) violQ = qs[0];
+    var due = setting("due_" + violQ, ""), tpl = setting("mail_tpl", DEF_TPL), subj = setting("mail_subject", DEF_SUBJECT);
+    var list = (S.recs[key] || []).filter(function(x){ return x.data.quarter === violQ && !x.data.exclude && appliedStep(x.data) >= 1; }).sort(function(a, b){ return String(a.data.name).localeCompare(String(b.data.name)); });
+    var st = { none: 0, draft: 0, sent: 0, replied: 0 }; list.forEach(function(x){ var m = mailOf(violQ, x.data.name); st[!m ? "none" : m.status === "회신" ? "replied" : m.status === "발송" ? "sent" : "draft"]++; });
+    var h = '<div class="rec-tools"><select id="mq">' + qs.map(function(q){ return '<option value="' + q + '"' + (q === violQ ? " selected" : "") + '>' + qLabel(q) + '</option>'; }).join("") + '</select>' +
+      '<label class="hint" style="font-size:12.5px;display:flex;gap:6px;align-items:center">정정 기한<input type="date" id="mdue" value="' + esc(due) + '"' + (w ? "" : " disabled") + '></label><span class="grow"></span>' +
+      (w ? '<button class="btn sm" id="mTpl">메일 양식 편집</button>' : '') + '<button class="btn sm" id="mTo">받는 사람 복사</button></div>' +
+      '<div class="hint" style="font-size:12.5px;margin-bottom:10px">조치 대상 목록에서 「포함」인 사람에게 보낼 정정 요청 메일 본문을 자동으로 만듭니다. 「메일 열기」로 메일 프로그램에서 보내거나 「본문 복사」로 그룹웨어 메일에 붙여넣은 뒤, 보냈으면 「발송 완료」를 눌러 기록하세요. (자동 발송은 다음 단계에서 연결 예정)</div>' +
+      '<div class="mini-stats"><div class="ms">메일 대상<b>' + list.length + '</b></div><div class="ms">미작성<b>' + st.none + '</b></div><div class="ms">초안<b>' + st.draft + '</b></div><div class="ms">발송<b>' + st.sent + '</b></div><div class="ms">회신<b>' + st.replied + '</b></div></div>' +
+      '<div class="tbl-box"><table class="rec compact"><thead><tr><th>성명</th><th>소속</th><th>이메일</th><th>지각</th><th>미달</th><th>적용 단계</th><th>메일 상태</th><th></th></tr></thead><tbody>' +
+      (list.length ? list.map(function(x){
+        var d = x.data, ml = mailOf(violQ, d.name), s = !ml ? "미작성" : ml.status;
+        return '<tr><td><b>' + esc(d.name) + '</b></td><td>' + esc(d.dept || "") + '</td><td>' + (w ? '<input class="em" data-em="' + x.id + '" value="' + esc(d.email || "") + '" placeholder="이메일 입력">' : esc(d.email || "")) + '</td>' +
+          '<td class="n">' + esc(d.late || 0) + '회</td><td class="n">' + hm(d.short_h || 0) + '</td><td>' + stepBadge(appliedStep(d)) + '</td>' +
+          '<td><span class="badge ' + (s === "회신" ? "good" : s === "발송" ? "info" : s === "초안" ? "warn" : "neutral") + '">' + s + '</span>' + (ml && ml.sent_at ? '<div class="hint" style="font-size:11px">' + esc(String(ml.sent_at).slice(0, 10)) + '</div>' : '') + '</td>' +
+          '<td style="white-space:nowrap"><button class="btn sm" data-mv="' + x.id + '">초안 보기</button></td></tr>';
+      }).join("") : '<tr><td colspan="8" class="hint" style="padding:18px">이 분기 메일 대상이 없습니다. 조치 대상 목록에서 대상을 확정하세요.</td></tr>') + '</tbody></table></div>';
+    host.innerHTML = h;
+    function rer(){ vMail(c); }
+    $("#mq").onchange = function(e){ violQ = e.target.value; rer(); };
+    $("#mdue").onchange = function(e){ saveSetting("due_" + violQ, e.target.value).then(rer); };
+    $("#mTo").onclick = function(){ var t = list.map(function(x){ return x.data.email; }).filter(Boolean).join("; "); if (!t){ alert("이메일이 입력된 대상이 없습니다."); return; } navigator.clipboard.writeText(t).then(function(){ toast("받는 사람 " + t.split("; ").length + "명을 복사했습니다."); }); };
+    if ($("#mTpl")) $("#mTpl").onclick = function(){
+      var m = showModal('<h3>메일 양식 편집</h3><p class="hint">치환 항목: {이름} {분기} {월별지각} {분기지각} {월별미달} {분기미달} {정정기한}</p><label class="hint" style="font-size:12.5px">제목</label><input id="tS" value="' + esc(subj) + '"><label class="hint" style="font-size:12.5px">본문</label><textarea id="tB" rows="18" style="min-height:360px">' + esc(tpl) + '</textarea>' +
+        '<div class="modal-actions"><button class="btn ghost" id="tR" style="margin-right:auto">기본 양식으로</button><button class="btn ghost" id="tN">취소</button><button class="btn primary" id="tO">저장</button></div>', "wide");
+      $("#tN", m).onclick = closeModal; $("#tR", m).onclick = function(){ $("#tS", m).value = DEF_SUBJECT; $("#tB", m).value = DEF_TPL; };
+      $("#tO", m).onclick = async function(){ if (await saveSetting("mail_subject", $("#tS", m).value) && await saveSetting("mail_tpl", $("#tB", m).value)){ closeModal(); toast("메일 양식을 저장했습니다."); rer(); } };
+    };
+    $all("input[data-em]", host).forEach(function(i){ i.onchange = async function(){ var x = list.filter(function(y){ return y.id === i.dataset.em; })[0], d = Object.assign({}, x.data, { email: i.value.trim() });
+      var r = await sb.from("portal_records").update({ data: d, updated_by: me.email, updated_at: new Date().toISOString() }).eq("id", x.id).select("*"); if (r.error || !r.data || !r.data.length){ alert("저장하지 못했습니다: " + errMsg(r)); return; } Object.assign(x, r.data[0]); toast("이메일을 저장했습니다."); }; });
+    $all("[data-mv]", host).forEach(function(b){ b.onclick = function(){ mailModal(c, list.filter(function(y){ return y.id === b.dataset.mv; })[0], rer); }; });
+  }
+  async function upsertMail(ml, patch){
+    var r = ml ? await sb.from("portal_att_mails").update(Object.assign({ updated_at: new Date().toISOString() }, patch)).eq("id", ml.id).select("*")
+               : await sb.from("portal_att_mails").insert(patch).select("*");
+    if (r.error || !r.data || !r.data.length){ alert("메일 기록을 저장하지 못했습니다: " + errMsg(r)); return null; }
+    if (ml) Object.assign(ml, r.data[0]); else ATT.mails.push(r.data[0]);
+    return r.data[0];
+  }
+  function mailModal(c, x, after){
+    var d = x.data, q = violQ, ml = mailOf(q, d.name), due = setting("due_" + q, ""), w = can("att.violations", "write");
+    var subj = ml && ml.subject ? ml.subject : fillTpl(setting("mail_subject", DEF_SUBJECT), d, q, due);
+    var body = ml && ml.body ? ml.body : fillTpl(setting("mail_tpl", DEF_TPL), d, q, due);
+    var m = showModal('<div style="display:flex;justify-content:space-between;gap:10px"><h3>' + esc(d.name) + ' · 정정 요청 메일</h3><button class="btn sm ghost" id="mx">닫기 ✕</button></div>' +
+      '<p class="hint">받는 사람: ' + esc(d.email || "이메일 없음 — 목록에서 입력하세요") + (ml ? ' · 상태: ' + esc(ml.status) + (ml.sent_at ? " (" + esc(String(ml.sent_at).slice(0, 10)) + ")" : "") : "") + '</p>' +
+      '<label class="hint" style="font-size:12.5px">제목</label><input id="mS" value="' + esc(subj) + '"' + (w ? "" : " readonly") + '><label class="hint" style="font-size:12.5px">본문</label><textarea id="mB" rows="18" style="min-height:360px"' + (w ? "" : " readonly") + '>' + esc(body) + '</textarea>' +
+      (ml && ml.reply_note ? '<div class="banner info" style="margin:0 0 10px">회신 내용: ' + esc(ml.reply_note) + '</div>' : '') +
+      '<div class="modal-actions" style="flex-wrap:wrap">' + (ml && ml.body ? '<button class="btn ghost" id="mRe" style="margin-right:auto">양식으로 다시 만들기</button>' : '') +
+      '<button class="btn" id="mCopy">본문 복사</button><button class="btn" id="mOpen"' + (d.email ? "" : " disabled") + '>메일 열기</button>' +
+      (w ? '<button class="btn" id="mDraft">초안 저장</button><button class="btn primary" id="mSent">발송 완료 기록</button><button class="btn" id="mReply">회신 기록</button>' : '') + '</div>', "wide");
+    function cur(){ return { subject: $("#mS", m).value, body: $("#mB", m).value }; }
+    $("#mx", m).onclick = closeModal;
+    if ($("#mRe", m)) $("#mRe", m).onclick = function(){ $("#mS", m).value = fillTpl(setting("mail_subject", DEF_SUBJECT), d, q, due); $("#mB", m).value = fillTpl(setting("mail_tpl", DEF_TPL), d, q, due); };
+    $("#mCopy", m).onclick = function(){ navigator.clipboard.writeText(cur().body).then(function(){ toast("본문을 복사했습니다."); }); };
+    $("#mOpen", m).onclick = function(){ var v = cur(); window.location.href = "mailto:" + encodeURIComponent(d.email) + "?subject=" + encodeURIComponent(v.subject) + "&body=" + encodeURIComponent(v.body); };
+    var base = { quarter: q, name: d.name, email: d.email || "", kind: "정정 요청", record_id: x.id };
+    if ($("#mDraft", m)) $("#mDraft", m).onclick = async function(){ var v = cur(); if (await upsertMail(ml, Object.assign({}, base, v, { status: ml && ml.status !== "초안" ? ml.status : "초안" }))){ toast("초안을 저장했습니다."); closeModal(); after(); } };
+    if ($("#mSent", m)) $("#mSent", m).onclick = async function(){
+      var v = cur(); if (!(await upsertMail(ml, Object.assign({}, base, v, { status: "발송", sent_at: new Date().toISOString(), sent_by: me.email })))) return;
+      var nd = Object.assign({}, d); if (!nd.status || nd.status === "대상 확인") nd.status = "안내 발송"; if (due && !nd.due) nd.due = due;
+      var r = await sb.from("portal_records").update({ data: nd, updated_by: me.email, updated_at: new Date().toISOString() }).eq("id", x.id).select("*"); if (!r.error && r.data && r.data.length) Object.assign(x, r.data[0]);
+      logp("att.violations", "mail", d.name); toast("발송 완료로 기록했습니다."); closeModal(); after();
+    };
+    if ($("#mReply", m)) $("#mReply", m).onclick = async function(){
+      var note = window.prompt("회신 내용 요약", (ml && ml.reply_note) || ""); if (note == null) return;
+      var v = cur(); if (await upsertMail(ml, Object.assign({}, base, v, { status: "회신", replied_at: new Date().toISOString(), reply_note: note }))){ toast("회신을 기록했습니다."); closeModal(); after(); }
+    };
+  }
+
+  /* ---------- 대시보드 ---------- */
+  function vDash(c){
+    var host = $("#vb"), years = {}; ATT.months.forEach(function(m){ years[m.year] = 1; }); var now = new Date(); years[now.getFullYear()] = 1;
+    var ys = Object.keys(years).map(Number).sort().reverse(); if (dashYear == null) dashYear = ys[0];
+    var ms = monthsOf(dashSite).filter(function(m){ return m.year === dashYear; });
+    var by = {}; for (var i = 1; i <= 12; i++) by[i] = { late: 0, missing: 0, under: 0, over: 0, has: false };
+    ms.forEach(function(m){ var b = by[m.month]; b.has = true; b.late += live(m.late).length; b.missing += live(m.missing).length; b.under += live(m.under).length; b.over += live(m.over).length; });
+    var lastM = 0; for (var j = 12; j >= 1; j--) if (by[j].has){ lastM = j; break; }
+    var prevM = 0; for (var k2 = lastM - 1; k2 >= 1; k2--) if (by[k2].has){ prevM = k2; break; }
+    function kpi(label, key, unit){ var v = lastM ? by[lastM][key] : 0, pv = prevM ? by[prevM][key] : null, dl = pv == null ? "" : v - pv;
+      return '<div class="kpi"><div class="k">' + label + '</div><div class="v">' + (lastM ? v : "-") + '<small>' + unit + '</small></div><div class="s">' + (lastM ? lastM + "월 기준" + (pv == null ? "" : " · " + prevM + "월 대비 " + (dl === 0 ? "변동 없음" : (dl > 0 ? "▲ " + dl : "▼ " + (-dl)))) : "저장된 결과 없음") + '</div></div>'; }
+    function chart(title, key, unit){ var mx = Math.max.apply(null, [1].concat(Object.keys(by).map(function(x){ return by[x][key]; })));
+      return '<section class="panel" style="margin-top:0"><div class="panel-head"><h2 style="font-size:15px">' + title + '</h2></div><div class="cols" style="--n:12;height:160px">' +
+        Object.keys(by).map(function(mo){ var v = by[mo][key]; return '<div class="col" title="' + mo + '월: ' + (by[mo].has ? v + unit : "결과 없음") + '"><span class="cv2">' + (by[mo].has && v ? v : "") + '</span><i style="height:' + (v / mx * 100) + '%' + (by[mo].has ? "" : ";background:transparent") + '"></i><span class="cl">' + mo + '월</span></div>'; }).join("") + '</div></section>'; }
+    var recs = (S.recs["att.violations"] || []);
+    var qrows = [1, 2, 3, 4].map(function(n){ var q = dashYear + "-" + n + "Q", l = recs.filter(function(x){ return x.data.quarter === q && !x.data.exclude; }), cnt = [0, 0, 0, 0, 0, 0, 0]; l.forEach(function(x){ cnt[appliedStep(x.data)]++; });
+      var sent = ATT.mails.filter(function(m){ return m.quarter === q && (m.status === "발송" || m.status === "회신"); }).length;
+      return '<tr><td><b>' + n + '분기</b></td><td class="n">' + l.length + '</td>' + [1, 2, 3, 4].map(function(i){ return '<td class="n">' + cnt[i] + '</td>'; }).join("") + '<td class="n">' + l.filter(function(x){ return x.data.status === "정정 완료(제외)"; }).length + '</td><td class="n">' + sent + '</td></tr>'; }).join("");
+    host.innerHTML = '<div class="rec-tools"><select id="dy">' + ys.map(function(y){ return '<option' + (y === dashYear ? " selected" : "") + '>' + y + '</option>'; }).join("") + '</select>' +
+      '<select id="ds"><option value="">전체 사업장</option>' + sites().map(function(s){ return '<option' + (s === dashSite ? " selected" : "") + '>' + esc(s) + '</option>'; }).join("") + '</select>' +
+      '<span class="hint" style="font-size:12px">자동 필터링에서 저장한 월별 결과(제외 건 빼고)를 기준으로 합니다.</span></div>' +
+      '<div class="kpis">' + kpi("지각", "late", "건") + kpi("출퇴근 누락", "missing", "건") + kpi("의무 근로시간 미달", "under", "명") + kpi("최대 근로시간 초과", "over", "명") + '</div>' +
+      '<div class="dash-grid">' + chart("월별 지각 건수", "late", "건") + chart("월별 출퇴근 누락 건수", "missing", "건") + chart("월별 의무 근로시간 미달 인원", "under", "명") + chart("월별 최대 근로시간 초과 인원", "over", "명") + '</div>' +
+      '<section class="panel"><div class="panel-head"><div><h2 style="font-size:15px">분기별 조치 현황</h2><div class="desc">조치 대상 목록에서 「포함」인 인원 · 적용 단계 기준</div></div></div><div class="scrollx"><table class="tbl" style="min-width:560px"><thead><tr><th>분기</th><th>대상</th><th>안내</th><th>계획서 제출</th><th>면담</th><th>경고</th><th>정정 완료</th><th>메일 발송</th></tr></thead><tbody>' + qrows + '</tbody></table></div></section>' +
+      '<section class="panel"><div class="panel-head"><h2 style="font-size:15px">월별 표</h2></div><div class="scrollx"><table class="tbl" style="min-width:560px"><thead><tr><th>월</th><th>지각(건)</th><th>출퇴근 누락(건)</th><th>의무 미달(명)</th><th>최대 초과(명)</th></tr></thead><tbody>' +
+      Object.keys(by).map(function(mo){ var b = by[mo]; return '<tr><td>' + mo + '월</td>' + (b.has ? '<td class="n">' + b.late + '</td><td class="n">' + b.missing + '</td><td class="n">' + b.under + '</td><td class="n">' + b.over + '</td>' : '<td colspan="4" class="hint">저장된 결과 없음</td>') + '</tr>'; }).join("") + '</tbody></table></div></section>';
+    $("#dy").onchange = function(e){ dashYear = +e.target.value; vDash(c); };
+    $("#ds").onchange = function(e){ dashSite = e.target.value; vDash(c); };
   }
 
   /* =====================================================================
