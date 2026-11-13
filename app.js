@@ -539,7 +539,19 @@
   }
 
   /* ---------- FAQ ---------- */
-  var faqQ = "", faqKind = "", faqPeriod = "12m", faqType = "", faqStatus = "", faqAns = "";
+  var faqQ = "", faqKind = "", faqPeriod = "12m", faqType = "", faqStatus = "", faqAns = "", faqSrc = "", homeFaqCat = "근태";
+  var FAQ_SRC = ["반복 문의", "특수 문의"];
+  var HOME_FAQ_CATS = ["근태", "시간외근로", "휴가", "휴직", "복리후생", "기타"];
+  function srcOf(f){ return f.source === "특수 문의" ? "특수 문의" : "반복 문의"; }
+  function srcBadge(f){ var s = srcOf(f); return '<span class="badge ' + (s === "반복 문의" ? "src-rep" : "src-sp") + '">' + s + '</span>'; }
+  // 같은 질문(공백·문장부호·끝말 정리 후 같은 문장)을 묶어 문의 건수를 셉니다.
+  function qKey(q){ return String(q || "").toLowerCase().replace(/\(예\)/g, "").replace(/[\s\-_.,·?!~()\[\]"'“”‘’/]+/g, "").replace(/(문의|여부|방법|관련|요청|가능|확인)+$/g, ""); }
+  function faqGroups(list){
+    var g = {};
+    list.forEach(function(f){ var k = qKey(f.question) || f.id; var x = g[k] = g[k] || { key: k, items: [], latest: null }; x.items.push(f); if (!x.latest || faqDate(f) > faqDate(x.latest)) x.latest = f; });
+    return Object.keys(g).map(function(k){ return g[k]; }).sort(function(a, b){
+      return b.items.length - a.items.length || (srcOf(b.latest) === "반복 문의") - (srcOf(a.latest) === "반복 문의") || (faqDate(b.latest) > faqDate(a.latest) ? 1 : faqDate(b.latest) < faqDate(a.latest) ? -1 : 0); });
+  }
   var FAQ_TYPES = ["근로시간", "재택근무", "출퇴근체크", "휴게시간", "단축근무", "외근", "출장", "교육", "입사", "퇴사", "파견직",
     "시간외근로", "초과(연장)근무", "휴(무)일근무", "야간근무", "보상휴가", "택시비지원",
     "연차(휴가)", "연차촉진", "리프레쉬휴가", "무급휴가", "병가", "공가", "난임휴가",
@@ -559,30 +571,33 @@
   function statusBadge(s){ s = s || "완료"; return '<span class="badge ' + (s === "완료" ? "good" : s === "진행 중" ? "warn" : "info") + '">' + esc(s) + '</span>'; }
   function sortFaq(l){ return l.slice().sort(function(a, b){ var x = faqDate(a), y = faqDate(b); return x < y ? 1 : x > y ? -1 : (b.sort || 0) - (a.sort || 0); }); }
 
-  // home card: search + add; titles open the FAQ page
+  // home card: category tabs (근태·시간외근로·휴가·휴직·복리후생·기타), top 10 most-asked questions each
   function renderFaq(){
     var host = $("#faqCard"); if (!host) return;
-    var cats = ["전체"]; S.faq.forEach(function(f){ if (f.category && cats.indexOf(f.category) < 0) cats.push(f.category); });
-    var w = can("home.faq", "write");
-    var list = sortFaq(S.faq.filter(function(f){ return (faqCat === "전체" || f.category === faqCat) && (!faqQ || [f.question, f.answer, f.qtype].join(" ").indexOf(faqQ) >= 0); }));
+    var w = can("home.faq", "write"), q = faqQ.trim();
+    var inCat = S.faq.filter(function(f){ return (f.category || "기타") === homeFaqCat && (!q || [f.question, f.answer, f.qtype].join(" ").indexOf(q) >= 0); });
+    var groups = faqGroups(inCat).slice(0, 10);
     host.innerHTML = '<div class="sec-h"><h2><a href="#/faq" class="h-link">💬 FAQ ›</a></h2><div class="tools"><input type="search" id="fq" placeholder="질문 검색" value="' + esc(faqQ) + '" style="width:150px">' + (w ? '<button class="btn sm primary" id="fAdd">+ FAQ</button>' : '') + '</div></div>' +
-      '<div class="faq-tabs">' + cats.map(function(c){ return '<button data-fc="' + esc(c) + '" class="' + (c === faqCat ? "on" : "") + '">' + esc(c) + '</button>'; }).join("") + '</div>' +
-      '<ul class="faq-links">' + (list.length ? list.slice(0, 60).map(function(f){
-        return '<li><a href="#/faq/' + encodeURIComponent(f.id) + '"><span class="q">Q</span><span class="tx">' + esc(f.question) + '</span>' + (f.status && f.status !== "완료" ? statusBadge(f.status) : '') + (f.category ? '<span class="badge neutral">' + esc(f.category) + '</span>' : '') + '</a></li>';
-      }).join("") : '<li class="hint" style="font-size:13px;padding:8px">해당하는 FAQ가 없습니다.</li>') + '</ul>' +
+      '<div class="faq-tabs">' + HOME_FAQ_CATS.map(function(c){ var n = S.faq.filter(function(f){ return (f.category || "기타") === c; }).length; return '<button data-fc="' + esc(c) + '" class="' + (c === homeFaqCat ? "on" : "") + '">' + esc(c) + ' <span class="n">' + n + '</span></button>'; }).join("") + '</div>' +
+      '<div class="hint" style="font-size:11.5px;margin:-2px 0 6px">' + esc(homeFaqCat) + ' · 문의 건수 많은 순 상위 10개</div>' +
+      '<ol class="faq-links top">' + (groups.length ? groups.map(function(g, i){
+        var f = g.latest;
+        return '<li><a href="#/faq/' + encodeURIComponent(f.id) + '"><span class="rk">' + (i + 1) + '</span><span class="tx">' + esc(f.question) + '</span>' + (g.items.length > 1 ? '<span class="badge info">' + g.items.length + '건</span>' : '') + srcBadge(f) + '</a></li>';
+      }).join("") : '<li class="hint" style="font-size:13px;padding:8px">해당하는 FAQ가 없습니다.</li>') + '</ol>' +
       '<a class="btn sm" href="#/faq" style="margin-top:8px;align-self:flex-end">FAQ 화면에서 전체 보기 · 문의 분석 →</a>';
-    $all("[data-fc]", host).forEach(function(b){ b.onclick = function(){ faqCat = b.dataset.fc; renderFaq(); }; });
+    $all("[data-fc]", host).forEach(function(b){ b.onclick = function(){ homeFaqCat = b.dataset.fc; renderFaq(); }; });
     $("#fq").addEventListener("input", function(e){ faqQ = e.target.value; renderFaq(); var i = $("#fq"); i.focus(); i.setSelectionRange(i.value.length, i.value.length); });
     if ($("#fAdd")) $("#fAdd").onclick = function(){ openFaq(null, renderFaq); };
   }
   function openFaq(f, after){
-    var isNew = !f; f = f || { question: "", answer: "", kind: "", asked_on: todayStr(), status: "진행 중", answerer: me.name };
+    var isNew = !f; f = f || { question: "", answer: "", kind: "", asked_on: todayStr(), status: "진행 중", answerer: me.name, source: "특수 문의" };
     var types = String(f.qtype || "").split(",").map(function(s){ return s.trim(); }).filter(Boolean);
     var m = showModal('<h3>' + (isNew ? "FAQ 추가" : "FAQ 수정") + '</h3><p class="hint">유형을 고르면 분석용 분류(근태·시간외근로·휴가·휴직·복리후생·기타)가 자동으로 정해집니다. 문의 날짜·분류는 FAQ 문의 분석에 바로 반영됩니다.</p><form class="f" id="ff">' +
       '<label class="full">질문<input name="question" value="' + esc(f.question) + '" required></label>' +
       '<div class="full"><div class="hint" style="font-size:12.5px;font-weight:600;margin-bottom:6px">유형 (여러 개 선택)</div><div class="type-picks">' + FAQ_TYPES.map(function(t){ return '<label><input type="checkbox" name="qt" value="' + esc(t) + '"' + (types.indexOf(t) >= 0 ? " checked" : "") + '>' + esc(t) + '</label>'; }).join("") + '</div></div>' +
       '<label>분류(분석용)<select name="category">' + ["", "근태", "시간외근로", "휴가", "휴직", "복리후생", "기타"].map(function(c){ return '<option' + (c === (f.category || "") ? " selected" : "") + ' value="' + c + '">' + (c || "자동(유형 기준)") + '</option>'; }).join("") + '</select></label>' +
-      '<label>구분<select name="kind">' + ["", "단순 반복", "개별 판단", "FAQ 미수록"].map(function(k){ return '<option' + (f.kind === k ? " selected" : "") + '>' + k + '</option>'; }).join("") + '</select></label>' +
+      '<label>문의 구분<select name="source">' + FAQ_SRC.map(function(k){ return '<option' + (srcOf(f) === k ? " selected" : "") + '>' + k + '</option>'; }).join("") + '</select></label>' +
+      '<label>반복 문의 세부 구분<select name="kind">' + ["", "단순 반복", "개별 판단", "FAQ 미수록"].map(function(k){ return '<option' + (f.kind === k ? " selected" : "") + '>' + k + '</option>'; }).join("") + '</select></label>' +
       '<label>질문자 이름<input name="asker_name" value="' + esc(f.asker_name || "") + '"></label>' +
       '<label>질문자 소속<input name="asker_dept" value="' + esc(f.asker_dept || "") + '" placeholder="예: CC사업부 광고성과운영팀"></label>' +
       '<label>질문자 직책<select name="asker_title">' + ["", "팀원", "파트장", "팀장", "실장", "본부장", "담당"].map(function(k){ return '<option' + ((f.asker_title || "") === k ? " selected" : "") + '>' + k + '</option>'; }).join("") + '</select></label>' +
@@ -608,10 +623,10 @@
       e.preventDefault(); var fd = new FormData(e.target);
       var qt = fd.getAll("qt").join(", ");
       function v(k){ var x = String(fd.get(k) || "").trim(); return x || null; }
-      var rec = { question: v("question"), qtype: qt || null, category: v("category") || catFromTypes(qt) || null, kind: v("kind"), asker_name: v("asker_name"), asker_dept: v("asker_dept"), asker_title: v("asker_title"),
+      var rec = { question: v("question"), qtype: qt || null, category: v("category") || catFromTypes(qt) || null, source: v("source") || "특수 문의", kind: v("source") === "반복 문의" ? v("kind") : null, asker_name: v("asker_name"), asker_dept: v("asker_dept"), asker_title: v("asker_title"),
         channel: v("channel"), asked_on: v("asked_on"), done_on: v("done_on"), status: v("status") || "완료", answerer: v("answerer"), caution: !!fd.get("caution"), detail: v("detail"), answer: v("answer") || "", updated_by: me.email, updated_at: new Date().toISOString() };
       if (rec.done_on && rec.asked_on && rec.done_on < rec.asked_on){ alert("완료 날짜가 문의 날짜보다 빠릅니다."); return; }
-      if (isNew){ rec.sort = S.faq.length ? Math.max.apply(null, S.faq.map(function(z){ return z.sort || 0; })) + 1 : 1; rec.source = "포털"; }
+      if (isNew){ rec.sort = S.faq.length ? Math.max.apply(null, S.faq.map(function(z){ return z.sort || 0; })) + 1 : 1; }
       var x = isNew ? await sb.from("portal_faq").insert(rec).select("*") : await sb.from("portal_faq").update(rec).eq("id", f.id).select("*");
       if (x.error || !x.data || !x.data.length){ alert("저장하지 못했습니다: " + errMsg(x)); return; }
       if (isNew) S.faq.push(x.data[0]); else Object.assign(f, x.data[0]);
@@ -620,16 +635,24 @@
   }
   function faqDetail(f, after){
     var w = can("home.faq", "write");
-    var m = showModal('<div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start"><div><div style="display:flex;gap:6px;flex-wrap:wrap">' + (f.category ? '<span class="badge info">' + esc(f.category) + '</span>' : '') + statusBadge(f.status) + (f.kind ? '<span class="badge neutral">' + esc(f.kind) + '</span>' : '') + (f.caution ? '<span class="badge danger">주의</span>' : '') + '</div>' +
+    var m = showModal('<div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start"><div><div style="display:flex;gap:6px;flex-wrap:wrap">' + srcBadge(f) + (f.category ? '<span class="badge info">' + esc(f.category) + '</span>' : '') + statusBadge(f.status) + (f.kind ? '<span class="badge neutral">' + esc(f.kind) + '</span>' : '') + (f.caution ? '<span class="badge danger">주의</span>' : '') + '</div>' +
       '<h3 style="font-size:18px;margin-top:8px">' + esc(f.question) + '</h3></div><button class="btn sm ghost" id="fx">닫기 ✕</button></div>' +
       '<div class="faq-meta"><div><span class="hint">유형</span>' + (f.qtype ? String(f.qtype).split(",").map(function(t){ return '<span class="chip">' + esc(t.trim()) + '</span>'; }).join(" ") : '-') + '</div>' +
       '<div><span class="hint">질문자</span>' + asker(f) + '</div><div><span class="hint">문의 수단</span>' + esc(f.channel || "-") + '</div>' +
       '<div><span class="hint">문의 날짜</span>' + esc(f.asked_on || "-") + '</div><div><span class="hint">완료 날짜</span>' + esc(f.done_on || "-") + '</div><div><span class="hint">답변자</span>' + (f.answerer ? chip(f.answerer) : "-") + '</div></div>' +
       (f.detail ? '<h4 class="faq-h">문의 내용</h4><div class="faq-box wraptext">' + esc(f.detail) + '</div>' : '') +
       '<h4 class="faq-h">답변</h4><div class="faq-box wraptext">' + (f.answer ? esc(f.answer) : '<span class="hint">답변 준비 중</span>') + '</div>' +
-      '<div class="modal-actions" style="margin-top:14px">' + (f.source_url ? '<a class="btn sm ghost" href="' + esc(f.source_url) + '" target="_blank" rel="noopener" style="margin-right:auto">노션 원문 ↗</a>' : '') + (w ? '<button class="btn primary" id="fEd">수정</button>' : '') + '</div>', "wide");
+      '<div class="modal-actions" style="margin-top:14px">' + (w ? '<button class="btn danger" id="fRm">삭제</button>' : '') + '<span style="margin-right:auto"></span>' + (f.source_url ? '<a class="btn sm ghost" href="' + esc(f.source_url) + '" target="_blank" rel="noopener">노션 원문 ↗</a>' : '') + (w ? '<button class="btn primary" id="fEd">수정</button>' : '') + '</div>', "wide");
     $("#fx", m).onclick = closeModal;
     if ($("#fEd", m)) $("#fEd", m).onclick = function(){ openFaq(f, after); };
+    if ($("#fRm", m)) $("#fRm", m).onclick = async function(){
+      if (!confirm("'" + f.question + "' FAQ를 삭제할까요? 되돌릴 수 없습니다.")) return;
+      var x = await sb.from("portal_faq").delete().eq("id", f.id).select("id");
+      if (x.error || !x.data || !x.data.length){ alert("삭제하지 못했습니다: " + errMsg(x)); return; }
+      S.faq = S.faq.filter(function(z){ return z.id !== f.id; }); logp("faq", "delete", f.question); closeModal(); toast("FAQ를 삭제했습니다.");
+      if (location.hash.indexOf("#/faq/") === 0) history.replaceState(null, "", "#/faq");
+      after && after();
+    };
   }
 
   /* ---------- FAQ page (inner page with inquiry analysis) ---------- */
@@ -692,21 +715,38 @@
     // list
     var cats = ["전체"]; S.faq.forEach(function(f){ if (f.category && cats.indexOf(f.category) < 0) cats.push(f.category); });
     var answerers = []; S.faq.forEach(function(f){ if (f.answerer && answerers.indexOf(f.answerer) < 0) answerers.push(f.answerer); });
-    var list = sortFaq(S.faq.filter(function(f){ return (faqCat === "전체" || f.category === faqCat) && (!faqKind || f.kind === faqKind) && (!faqStatus || (f.status || "완료") === faqStatus) && (!faqAns || f.answerer === faqAns) &&
+    // 반복·특수 문의 추이 (월별)
+    var rs = months.map(function(k){ var l = dated.filter(function(f){ return faqDate(f).slice(0, 7) === k; }); var r = l.filter(function(f){ return srcOf(f) === "반복 문의"; }).length; return { k: k, rep: r, sp: l.length - r, n: l.length }; });
+    function share(arr){ var n = 0, r = 0; arr.forEach(function(x){ n += x.n; r += x.rep; }); return n ? r / n * 100 : null; }
+    var last3 = share(rs.slice(-3)), prev3 = share(rs.slice(-6, -3));
+    var repAll = inP.filter(function(f){ return srcOf(f) === "반복 문의"; }).length;
+    function trendTxt(cur, prev, label){ if (cur == null) return label + " 데이터 없음"; if (prev == null) return label + " " + Math.round(cur) + "% (비교할 직전 기간 없음)"; var d = Math.round((cur - prev) * 10) / 10; return label + " " + Math.round(cur) + "% · 직전 3개월 " + Math.round(prev) + "% 대비 " + (d === 0 ? "변동 없음" : (d > 0 ? '<b class="up">▲ ' + d + '%p 증가</b>' : '<b class="down">▼ ' + (-d) + '%p 감소</b>')); }
+    var maxN = Math.max.apply(null, rs.map(function(x){ return x.n; }).concat([1]));
+    h += '<section class="panel"><div class="panel-head"><div><h2>반복 문의 · 특수 문의 추이</h2><div class="desc">' + esc(plabel) + ' 반복 ' + repAll + '건 · 특수 ' + (inP.length - repAll) + '건' + (inP.length ? ' (반복 ' + Math.round(repAll / inP.length * 100) + '%)' : '') + '</div></div>' +
+      '<div class="legend"><span class="lg rep"></span>반복 문의<span class="lg sp"></span>특수 문의</div></div>' +
+      '<div class="trend-note">' + trendTxt(last3, prev3, "최근 3개월 반복 문의 비율") + '<br>' + trendTxt(last3 == null ? null : 100 - last3, prev3 == null ? null : 100 - prev3, "최근 3개월 특수 문의 비율") + '</div>' +
+      '<div class="cols stack" style="--n:' + rs.length + '">' + rs.map(function(x){
+        var tip = x.k + ": 반복 " + x.rep + "건 · 특수 " + x.sp + "건" + (x.n ? " (반복 " + Math.round(x.rep / x.n * 100) + "%)" : "");
+        return '<div class="col" title="' + tip + '"><span class="cv2">' + (x.n ? Math.round(x.rep / x.n * 100) + "%" : "") + '</span><div class="stk" style="height:' + (x.n / maxN * 100) + '%"><i class="sp" style="flex:' + x.sp + '"></i><i class="rep" style="flex:' + x.rep + '"></i></div><span class="cl">' + (x.k.slice(5) === "01" || x.k === rs[0].k ? x.k.slice(2, 4) + "." : "") + +x.k.slice(5) + '월</span></div>'; }).join("") + '</div>' +
+      '<p class="hint" style="font-size:11.5px;margin:6px 0 0">막대 높이 = 월별 전체 문의 건수, 막대 위 % = 그 달의 반복 문의 비율. 반복 문의 비율이 늘면 FAQ로 해결할 수 있는 문의가 많다는 뜻입니다.</p>' +
+      '<div class="scrollx" style="margin-top:10px"><table class="tbl" style="min-width:0"><thead><tr><th>월</th>' + rs.map(function(x){ return '<th class="n">' + +x.k.slice(5) + '월</th>'; }).join("") + '</tr></thead><tbody>' +
+      '<tr><td>반복</td>' + rs.map(function(x){ return '<td class="n">' + x.rep + '</td>'; }).join("") + '</tr><tr><td>특수</td>' + rs.map(function(x){ return '<td class="n">' + x.sp + '</td>'; }).join("") + '</tr>' +
+      '<tr><td>반복 비율</td>' + rs.map(function(x){ return '<td class="n">' + (x.n ? Math.round(x.rep / x.n * 100) + "%" : "-") + '</td>'; }).join("") + '</tr></tbody></table></div></section>';
+    var list = sortFaq(S.faq.filter(function(f){ return (faqCat === "전체" || f.category === faqCat) && (!faqSrc || srcOf(f) === faqSrc) && (!faqKind || f.kind === faqKind) && (!faqStatus || (f.status || "완료") === faqStatus) && (!faqAns || f.answerer === faqAns) &&
       (!faqType || String(f.qtype || "").split(",").map(function(t){ return t.trim(); }).indexOf(faqType) >= 0) &&
       (!faqQ || [f.question, f.answer, f.detail, f.asker_name, f.asker_dept, f.qtype].join(" ").indexOf(faqQ) >= 0); }));
     h += '<section class="panel"><div class="panel-head"><div><h2>FAQ 목록</h2><div class="desc">' + list.length + '건 · 행을 누르면 문의 내용과 답변이 열립니다</div></div>' +
-      '<div class="rec-tools" style="margin:0"><select id="ftSel"><option value="">전체 유형</option>' + FAQ_TYPES.map(function(t){ return '<option' + (t === faqType ? " selected" : "") + '>' + t + '</option>'; }).join("") + '</select>' +
+      '<div class="rec-tools" style="margin:0"><select id="fsrcSel"><option value="">반복·특수 전체</option>' + FAQ_SRC.map(function(s){ return '<option' + (s === faqSrc ? " selected" : "") + '>' + s + '</option>'; }).join("") + '</select><select id="ftSel"><option value="">전체 유형</option>' + FAQ_TYPES.map(function(t){ return '<option' + (t === faqType ? " selected" : "") + '>' + t + '</option>'; }).join("") + '</select>' +
       '<select id="fsSel"><option value="">전체 진행현황</option>' + FAQ_STATUS.map(function(s){ return '<option' + (s === faqStatus ? " selected" : "") + '>' + s + '</option>'; }).join("") + '</select>' +
       '<select id="faSel"><option value="">전체 답변자</option>' + answerers.map(function(s){ return '<option' + (s === faqAns ? " selected" : "") + '>' + esc(s) + '</option>'; }).join("") + '</select>' +
-      '<select id="fkSel"><option value="">전체 구분</option>' + ["단순 반복", "개별 판단", "FAQ 미수록"].map(function(k){ return '<option' + (k === faqKind ? " selected" : "") + '>' + k + '</option>'; }).join("") + '</select>' +
+      '<select id="fkSel"><option value="">반복 세부 구분</option>' + ["단순 반복", "개별 판단", "FAQ 미수록"].map(function(k){ return '<option' + (k === faqKind ? " selected" : "") + '>' + k + '</option>'; }).join("") + '</select>' +
       '<input type="search" id="fpq" placeholder="질문·답변·질문자 검색" value="' + esc(faqQ) + '"><button class="btn sm" id="fpCsv">CSV</button>' + (w ? '<button class="btn sm primary" id="fpAdd">+ FAQ 추가</button>' : '') + '</div></div>' +
       '<div class="faq-tabs">' + cats.map(function(c){ return '<button data-fc="' + esc(c) + '" class="' + (c === faqCat ? "on" : "") + '">' + esc(c) + '</button>'; }).join("") + '</div>' +
-      '<div class="tbl-box" style="max-height:640px"><table class="rec compact faq-tbl"><thead><tr><th>질문</th><th>유형</th><th>질문자 (이름/소속/직책)</th><th>문의날짜</th><th>완료날짜</th><th>진행현황</th><th>답변자</th></tr></thead><tbody>' +
+      '<div class="tbl-box" style="max-height:640px"><table class="rec compact faq-tbl"><thead><tr><th>문의 구분</th><th>질문</th><th>유형</th><th>질문자 (이름/소속/직책)</th><th>문의날짜</th><th>완료날짜</th><th>진행현황</th><th>답변자</th></tr></thead><tbody>' +
       (list.length ? list.map(function(f){
-        return '<tr class="clk" data-fid="' + esc(f.id) + '" tabindex="0"><td class="fq-t">' + (f.caution ? '<span class="badge danger" style="font-size:10px">주의</span> ' : '') + esc(f.question) + '</td><td class="fq-ty">' + esc(f.qtype || "") + '</td><td>' + asker(f) + '</td>' +
+        return '<tr class="clk" data-fid="' + esc(f.id) + '" tabindex="0"><td>' + srcBadge(f) + '</td><td class="fq-t">' + (f.caution ? '<span class="badge danger" style="font-size:10px">주의</span> ' : '') + esc(f.question) + '</td><td class="fq-ty">' + esc(f.qtype || "") + '</td><td>' + asker(f) + '</td>' +
           '<td>' + esc(f.asked_on || "") + '</td><td>' + esc(f.done_on || "") + '</td><td>' + statusBadge(f.status) + '</td><td>' + (f.answerer ? chip(f.answerer) : "") + '</td></tr>';
-      }).join("") : '<tr><td colspan="7" class="hint" style="padding:18px">해당하는 FAQ가 없습니다.</td></tr>') + '</tbody></table></div></section>';
+      }).join("") : '<tr><td colspan="8" class="hint" style="padding:18px">해당하는 FAQ가 없습니다.</td></tr>') + '</tbody></table></div></section>';
     host.innerHTML = h;
     function redraw(){ drawFaqPage(); }
     $all("[data-pd]", host).forEach(function(b){ b.onclick = function(){ faqPeriod = b.dataset.pd; redraw(); }; });
@@ -715,11 +755,12 @@
     $all("[data-fc]", host).forEach(function(b){ b.onclick = function(){ faqCat = b.dataset.fc; redraw(); }; });
     if ($("#kOpen")) $("#kOpen").onclick = function(e){ e.preventDefault(); faqStatus = "진행 중"; redraw(); };
     $("#ftSel").onchange = function(e){ faqType = e.target.value; redraw(); };
+    $("#fsrcSel").onchange = function(e){ faqSrc = e.target.value; redraw(); };
     $("#fsSel").onchange = function(e){ faqStatus = e.target.value; redraw(); };
     $("#faSel").onchange = function(e){ faqAns = e.target.value; redraw(); };
     $("#fkSel").onchange = function(e){ faqKind = e.target.value; redraw(); };
     $("#fpq").addEventListener("input", function(e){ faqQ = e.target.value; redraw(); var i = $("#fpq"); i.focus(); i.setSelectionRange(i.value.length, i.value.length); });
-    $("#fpCsv").onclick = function(){ downloadCsv("FAQ", [["질문", function(f){ return f.question; }], ["유형", function(f){ return f.qtype; }], ["분류", function(f){ return f.category; }], ["구분", function(f){ return f.kind; }], ["질문자", function(f){ return f.asker_name; }], ["소속", function(f){ return f.asker_dept; }], ["직책", function(f){ return f.asker_title; }], ["문의수단", function(f){ return f.channel; }], ["문의날짜", function(f){ return f.asked_on; }], ["완료날짜", function(f){ return f.done_on; }], ["진행현황", function(f){ return f.status; }], ["답변자", function(f){ return f.answerer; }], ["주의", function(f){ return f.caution ? "Y" : ""; }], ["문의 내용", function(f){ return f.detail; }], ["답변", function(f){ return f.answer; }]], list); };
+    $("#fpCsv").onclick = function(){ downloadCsv("FAQ", [["문의 구분", function(f){ return srcOf(f); }], ["질문", function(f){ return f.question; }], ["유형", function(f){ return f.qtype; }], ["분류", function(f){ return f.category; }], ["구분", function(f){ return f.kind; }], ["질문자", function(f){ return f.asker_name; }], ["소속", function(f){ return f.asker_dept; }], ["직책", function(f){ return f.asker_title; }], ["문의수단", function(f){ return f.channel; }], ["문의날짜", function(f){ return f.asked_on; }], ["완료날짜", function(f){ return f.done_on; }], ["진행현황", function(f){ return f.status; }], ["답변자", function(f){ return f.answerer; }], ["주의", function(f){ return f.caution ? "Y" : ""; }], ["문의 내용", function(f){ return f.detail; }], ["답변", function(f){ return f.answer; }]], list); };
     if ($("#fpAdd")) $("#fpAdd").onclick = function(){ openFaq(null, redraw); };
     $all("tr[data-fid]", host).forEach(function(tr){ function o(){ faqDetail(S.faq.filter(function(f){ return f.id === tr.dataset.fid; })[0], redraw); } tr.onclick = o; tr.onkeydown = function(e){ if (e.key === "Enter") o(); }; });
   }
