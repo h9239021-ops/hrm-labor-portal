@@ -685,6 +685,44 @@
   .rpt-h .rpt-m{font-size:12px;color:var(--ink-500);text-align:right;line-height:1.6;}
   #faqDash.printing{width:1360px;padding:8px;background:#fff;}
   #faqDash.printing .hb{cursor:default;}
+  #wsDash.printing{width:1360px;padding:8px;background:#fff;}
+  #wsDash.printing .hb,#wsDash.printing .clk{cursor:default;}
+  .kpis.k6{grid-template-columns:repeat(3,minmax(0,1fr));}
+  @media (max-width:900px){ .kpis.k6{grid-template-columns:repeat(2,minmax(0,1fr));} }
+  .kpi .s .up,.ws-grid .up,.insight .up{color:var(--danger-700);} .kpi .s .down,.insight .down{color:var(--good-700);}
+  .tbl .up{color:var(--danger-700);} .tbl .down{color:var(--good-700);}
+  .insight{background:var(--accent-050);border:1px solid var(--accent-100);border-radius:12px;padding:12px 16px;margin-bottom:16px;}
+  .insight .ih{font-weight:800;font-size:13.5px;color:var(--accent-700);margin-bottom:4px;}
+  .insight ul{margin:0;padding-left:18px;font-size:13px;line-height:1.85;color:var(--ink-700);}
+  .insight b{color:var(--ink-900);}
+  .ws-h{font-size:15px;margin:22px 0 10px;display:flex;align-items:baseline;gap:8px;}
+  .ws-h span{font-size:12px;color:var(--ink-500);font-weight:500;}
+  .ws-h4{font-size:12.5px;margin:12px 0 4px;color:var(--ink-700);}
+  .ws-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;}
+  .ws-grid .panel.wide{grid-column:1/-1;}
+  @media (max-width:1100px){ .ws-grid{grid-template-columns:repeat(2,minmax(0,1fr));} }
+  @media (max-width:720px){ .ws-grid{grid-template-columns:1fr;} }
+  .ws-grid .hb{grid-template-columns:84px 1fr 96px;}
+  .panel.ws-up{margin-top:16px !important;}
+  .hb.static{cursor:default;} .hb.static:hover{background:transparent;}
+  .hb .ht.stk{display:flex;gap:1px;background:transparent;}
+  .hb .ht.stk i{display:block;height:100%;border-radius:0;}
+  .s1,.lg.s1{background:var(--accent-700);} .s2,.lg.s2{background:#e8833a;} .s3,.lg.s3{background:#8e5cc9;} .s4,.lg.s4{background:var(--ink-300);}
+  .hb .ht.stk i.s1{background:var(--accent-700);} .hb .ht.stk i.s2{background:#e8833a;} .hb .ht.stk i.s3{background:#8e5cc9;} .hb .ht.stk i.s4{background:var(--ink-300);}
+  .cols.short{height:160px;}
+  .col .stk2{width:min(70%,34px);display:flex;flex-direction:column;gap:1px;min-height:0;}
+  .col .stk2 i{display:block;width:100%;min-height:0;border-radius:0;}
+  .col .stk2 i.s1{background:var(--accent-700);} .col .stk2 i.s2{background:#e8833a;} .col .stk2 i.s3{background:#8e5cc9;} .col .stk2 i.s4{background:var(--ink-300);}
+  .ws-num{display:flex;gap:10px;margin-bottom:10px;}
+  .ws-num>div{flex:1;background:var(--paper-0);border-radius:10px;padding:8px 10px;text-align:center;font-size:12px;color:var(--ink-500);}
+  .ws-num b{font-family:var(--font-mono);font-size:20px;color:var(--ink-900);margin-right:2px;}
+  .ws-num span{display:block;font-size:11px;margin-top:2px;}
+  table.tbl.mini{min-width:0;margin-top:10px;font-size:12.5px;}
+  table.tbl.mini td,table.tbl.mini th{padding:5px 8px;}
+  table.tbl .n{text-align:right;font-family:var(--font-mono);}
+  table.heat td.clk{cursor:pointer;} table.heat td.clk:hover{outline:2px solid var(--accent-500);outline-offset:-2px;}
+  table.heat tr.sum td{border-top:1px solid var(--line);background:var(--paper-0);}
+  table.tbl tr.clk{cursor:pointer;} table.tbl tr.clk:hover td{background:var(--accent-050);}
 
   /* ===== v8: FAQ images ===== */
   .img-drop{border:1.5px dashed var(--line);border-radius:10px;padding:10px;display:flex;flex-direction:column;gap:8px;align-items:flex-start;}
@@ -717,6 +755,6 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="config.js?v=202611131730"></script>
 <script src="logo.js?v=202611131730"></script>
-<script src="app.js?v=202611132000"></script>
+<script src="app.js?v=202611141200"></script>
 </body>
 </html>

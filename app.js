@@ -268,8 +268,8 @@
       (await get("att", "worktypes")).forEach(function(x){
         var d = x.data || {}; if ((d.list || "worktype") !== "worktype") return;
         var label = wtTypes(d).map(function(t){ return CHG_LABEL[t] || t; }).join("·") || "근무형태";
-        if (d.start && d.start === d.end){ push(x, d.start, "1일", "one", label, "#/c/att/worktypes"); return; }
-        push(x, d.start, "시작", "start", label, "#/c/att/worktypes"); push(x, d.end, "종료", "end", label, "#/c/att/worktypes");
+        if (d.start && d.start === d.end){ push(x, d.start, "1일", "one", label, "#/c/att/worktypes/list"); return; }
+        push(x, d.start, "시작", "start", label, "#/c/att/worktypes/list"); push(x, d.end, "종료", "end", label, "#/c/att/worktypes/list");
       });
     }
     var other = [];
@@ -821,8 +821,10 @@
     XLSX.writeFile(wb, "FAQ_문의현황_" + D.plabel.replace(/\s/g, "") + "_" + today + ".xlsx");
     logp("faq", "export", "xlsx " + D.plabel);
   }
-  async function faqExportPdf(btn){
-    var el = $("#faqDash"); if (!el) return;
+  function faqExportPdf(btn){ return exportPdf(btn, $("#faqDash"), "FAQ_문의현황_" + faqDash.plabel.replace(/\s/g, "") + "_" + todayStr() + ".pdf", "faq", "pdf " + faqDash.plabel); }
+  // 화면 영역을 A4 가로 PDF로 (밝은 테마로 캡처, 페이지 나눔)
+  async function exportPdf(btn, el, fileName, logArea, logMsg){
+    if (!el) return;
     var label = btn.textContent; btn.disabled = true; btn.textContent = "PDF 만드는 중…";
     var root = document.documentElement, prevTheme = root.getAttribute("data-theme");
     try {
@@ -841,8 +843,8 @@
         if (page) pdf.addPage();
         pdf.addImage(part.toDataURL("image/jpeg", 0.9), "JPEG", mg, mg, iw, h / pxPerMm);
       }
-      pdf.save("FAQ_문의현황_" + faqDash.plabel.replace(/\s/g, "") + "_" + todayStr() + ".pdf");
-      logp("faq", "export", "pdf " + faqDash.plabel);
+      pdf.save(fileName);
+      logp(logArea, "export", logMsg);
     } catch(err){ alert("PDF를 만들지 못했습니다: " + err.message); }
     finally {
       el.classList.remove("printing");
@@ -967,7 +969,7 @@
       '<nav class="tabs">' + menus.map(function(m){ var l = level(c.id + "." + m[0]); return '<a href="#/c/' + c.id + '/' + m[0] + '" class="' + (m[0] === menu ? "on" : "") + '">' + esc(m[1]) + '<span class="lv">' + LV_LABEL[Object.keys(LV)[l]] + '</span></a>'; }).join("") + '</nav></div>';
     var key = c.id + "." + menu;
     if (menu === "manual"){ app.innerHTML = shell(head + '<div class="cat-wrap" id="cw"></div>', c.name); renderManual(c, key, sub); }
-    else if (c.id === "att" && menu === "worktypes"){ app.innerHTML = shell(head + '<div class="cat-wrap"><div class="cat-main" id="cm"></div></div>', c.name); renderWorktypes(c, sub === "exceptions" ? "exceptions" : "worktypes"); }
+    else if (c.id === "att" && menu === "worktypes"){ app.innerHTML = shell(head + '<div class="cat-wrap"><div class="cat-main" id="cm"></div></div>', c.name); if (sub === "exceptions" || sub === "list") renderWorktypes(c, sub === "list" ? "worktypes" : "exceptions"); else renderWtStats(c); }
     else if (c.id === "att" && menu === "violations"){ app.innerHTML = shell(head + '<div class="cat-wrap"><div class="cat-main" id="cm"></div></div>', c.name); renderViol(c, sub); }
     else {
       app.innerHTML = shell(head + '<div class="cat-wrap"><div class="cat-main"><div class="soon-box"><div class="ic">' + c.ic + '</div><h2>' + esc(c.name) + ' 메뉴는 준비 중입니다</h2>' +
@@ -1267,7 +1269,7 @@
   }
   var REC_DEF = {
     worktypes: { menu: "worktypes", list: "worktype", title: "근무형태 현황", noun: "근무형태",
-      fields: [["type", "구분", "multi", ["모바일 출퇴근", "단시간근로자", "근로시간 단축자", "고정근무자", "재택근무 예외자"]], ["target", "이름", "text"], ["org", "소속", "text"], ["team", "팀", "text"],
+      fields: [["type", "구분", "multi", ["모바일 출퇴근", "단시간근로자", "근로시간 단축자", "고정근무자", "재택근무 예외자"]], ["target", "이름", "text"], ["gender", "성별", "select", ["", "여", "남"]], ["org", "소속", "text"], ["team", "팀", "text"],
         ["start", "적용 시작", "date"], ["end", "적용 종료", "date"], ["weekly_hours", "1주 소정근로시간", "number"], ["tags", "태그", "text", "쉼표로 구분"], ["basis", "요청자·근거", "text"], ["content", "세부 내용", "textarea"]] },
     exceptions: { menu: "worktypes", list: "exception", title: "예외 이력", noun: "예외 이력",
       fields: [["type", "구분", "select", ["새벽·야간근무", "시간외근로 예외", "근무결과신청 예외", "재택·외근", "기타"]], ["target", "대상(성명·조직)", "text"], ["org", "소속", "text"], ["team", "팀", "text"],
@@ -1338,6 +1340,246 @@
     });
     return out;
   }
+  /* ---------- 근무형태 현황 통계 (근무형태 현황 + 예외 이력 분석) ---------- */
+  function wtNav(cur){
+    return '<nav class="subtabs"><a href="#/c/att/worktypes" class="' + (cur === "stats" ? "on" : "") + '">📊 통계</a><a href="#/c/att/worktypes/list" class="' + (cur === "worktypes" ? "on" : "") + '">근무형태 현황</a><a href="#/c/att/worktypes/exceptions" class="' + (cur === "exceptions" ? "on" : "") + '">예외 이력</a></nav>';
+  }
+  var wsPeriod = "all", wsOrgF = "", wsDash = null, wsC = null;
+  var WS_PERIODS = [["all", "전체"], ["year", "올해"], ["12m", "최근 12개월"], ["36m", "최근 3년"]];
+  var SHORT_R = ["육아기", "임신기", "고위험임신부", "기타"], REMOTE_R = ["전염병", "질병·부상 등", "고위험 임신부", "기타"];
+  function wsFrom(p){ var n = new Date(); if (p === "all") return null; if (p === "year") return n.getFullYear() + "-01-01"; return ymd(new Date(n.getFullYear(), n.getMonth() - (p === "12m" ? 11 : 35), 1)); }
+  function shortReason(d){ var t = String(d.tags || ""); if (/고위험/.test(t)) return "고위험임신부"; if (/육아기/.test(t)) return "육아기"; if (/임신기/.test(t)) return "임신기"; t = String(d.content || ""); return /육아기/.test(t) ? "육아기" : /임신기/.test(t) ? "임신기" : "기타"; }
+  function remoteReason(d){ var t = String(d.tags || ""); return /전염/.test(t) ? "전염병" : /임신/.test(t) ? "고위험 임신부" : t ? "질병·부상 등" : "기타"; }
+  function dDays(d){ var a = parseD(d.start), b = parseD(d.end); if (!a || !b || b < a) return null; return Math.round((b - a) / 864e5) + 1; }
+  function pc(a, b){ return b ? Math.round(a / b * 1000) / 10 : 0; }
+  function tally(list, fn){ var m = {}; list.forEach(function(x){ var k = fn(x); if (k == null || k === "") return; (Array.isArray(k) ? k : [k]).forEach(function(kk){ m[kk] = (m[kk] || 0) + 1; }); }); return m; }
+  function pairs(m, order){
+    var ks = Object.keys(m);
+    ks.sort(order ? function(a, b){ var ia = order.indexOf(a), ib = order.indexOf(b); return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib) || m[b] - m[a]; } : function(a, b){ return m[b] - m[a] || a.localeCompare(b); });
+    return ks.map(function(k){ return [k, m[k]]; });
+  }
+  function uniq(list){ var o = {}; list.forEach(function(x){ var k = String(x.data.target || "").trim(); if (k) o[k] = 1; }); return Object.keys(o).length; }
+  function median(a){ if (!a.length) return null; a = a.slice().sort(function(x, y){ return x - y; }); var m = Math.floor(a.length / 2); return a.length % 2 ? a[m] : Math.round((a[m - 1] + a[m]) / 2); }
+  function avg(a){ return a.length ? Math.round(a.reduce(function(s, v){ return s + v; }, 0) / a.length) : null; }
+  function deltaTxt(cur, prev){ if (!prev) return cur ? "전년 동기 0건" : "전년 동기와 같음"; var d = Math.round((cur - prev) / prev * 100); return "전년 동기 " + prev + "건 대비 " + (d === 0 ? "변동 없음" : (d > 0 ? '<b class="up">▲ ' + d : '<b class="down">▼ ' + (-d)) + "%</b>"); }
+  function wsBars(list, total, o){
+    o = o || {};
+    if (!list.length) return '<p class="hint" style="font-size:12.5px">데이터 없음</p>';
+    var mx = Math.max.apply(null, list.map(function(p){ return p[1]; }));
+    return '<div class="hbars">' + list.map(function(p){
+      var t = o.attr ? "button" : "div", a = o.attr ? ' ' + o.attr + '="' + esc(p[0]) + '"' : '';
+      return '<' + t + ' class="hb' + (o.attr ? "" : " static") + '"' + a + ' title="' + esc(p[0]) + ': ' + p[1] + (o.unit || "건") + (total ? " (" + pc(p[1], total) + "%)" : "") + (o.attr ? " · 눌러서 목록 보기" : "") + '"><span class="hl">' + esc(p[0]) + '</span><span class="ht"><i style="width:' + Math.max(2, p[1] / mx * 100) + '%"></i></span><span class="hv"><b>' + p[1] + '</b>' + (o.unit || "건") + (total ? " · " + pc(p[1], total) + "%" : "") + '</span></' + t + '>';
+    }).join("") + '</div>';
+  }
+  // rows: [label, [v1, v2, …], attrValue?] — stacked horizontal bars, segment colors s1…s4
+  function wsStack(rows, names, o){
+    o = o || {};
+    if (!rows.length) return '<p class="hint" style="font-size:12.5px">데이터 없음</p>';
+    var mx = Math.max.apply(null, rows.map(function(r){ return r[1].reduce(function(s, v){ return s + v; }, 0); }).concat([1]));
+    return '<div class="legend" style="margin-bottom:6px">' + names.map(function(n, i){ return '<span class="lg s' + (i + 1) + '"></span>' + esc(n); }).join("") + '</div><div class="hbars">' + rows.map(function(r){
+      var tot = r[1].reduce(function(s, v){ return s + v; }, 0), t = o.attr ? "button" : "div";
+      return '<' + t + ' class="hb' + (o.attr ? "" : " static") + '"' + (o.attr ? ' ' + o.attr + '="' + esc(r[2] || r[0]) + '"' : '') + ' title="' + esc(r[0]) + ' · ' + names.map(function(n, i){ return n + " " + r[1][i]; }).join(" · ") + '"><span class="hl">' + esc(r[0]) + '</span><span class="ht stk" style="width:' + Math.max(2, tot / mx * 100) + '%">' +
+        r[1].map(function(v, i){ return v ? '<i class="s' + (i + 1) + '" style="flex:' + v + '"></i>' : ''; }).join("") + '</span><span class="hv"><b>' + tot + '</b>' + (o.unit || "건") + (o.note ? " · " + o.note(r) : "") + '</span></' + t + '>';
+    }).join("") + '</div>';
+  }
+  // cols: [{k, label, v} or {k, label, parts:[…]}]
+  function wsCols(items, o){
+    o = o || {};
+    if (!items.length) return '<p class="hint" style="font-size:12.5px">데이터 없음</p>';
+    var tot = function(x){ return x.parts ? x.parts.reduce(function(s, v){ return s + v; }, 0) : x.v; };
+    var mx = Math.max.apply(null, items.map(tot).concat([1]));
+    return '<div class="cols' + (o.h ? " short" : "") + '" style="--n:' + items.length + '">' + items.map(function(x){
+      var v = tot(x);
+      return '<div class="col" title="' + esc(x.label) + ': ' + v + (o.unit || "건") + (x.parts && o.names ? " (" + o.names.map(function(n, i){ return n + " " + x.parts[i]; }).join(" · ") + ")" : "") + '"><span class="cv2">' + (v || "") + '</span>' +
+        (x.parts ? '<div class="stk2" style="height:' + (v / mx * 100) + '%">' + x.parts.slice().reverse().map(function(p, j){ return p ? '<i class="s' + (x.parts.length - j) + '" style="flex:' + p + '"></i>' : ''; }).join("") + '</div>' : '<i style="height:' + (v / mx * 100) + '%"></i>') +
+        '<span class="cl">' + esc(x.short || x.label) + '</span></div>';
+    }).join("") + '</div>';
+  }
+  function wsPanel(title, desc, body, extra){ return '<section class="panel' + (extra || "") + '" style="margin-top:0"><div class="panel-head"><div><h2>' + title + '</h2>' + (desc ? '<div class="desc">' + desc + '</div>' : '') + '</div></div>' + body + '</section>'; }
+  async function renderWtStats(c){
+    var host = $("#cm"); wsC = c;
+    host.innerHTML = wtNav("stats") + '<p class="hint">불러오는 중…</p>';
+    try { await loadRecs("att", "worktypes"); } catch(err){ host.innerHTML = wtNav("stats") + '<div class="banner danger">불러오지 못했습니다: ' + esc(err.message) + '</div>'; return; }
+    drawWtStats();
+  }
+  function drawWtStats(){
+    var host = $("#cm"); if (!host) return;
+    var recs = S.recs["att.worktypes"] || [], today = todayStr(), now = new Date(), Y = now.getFullYear(), md = today.slice(5);
+    var orgs = []; recs.forEach(function(x){ var o = wtOrg(x.data); if (o && orgs.indexOf(o) < 0) orgs.push(o); }); orgs.sort();
+    if (wsOrgF && orgs.indexOf(wsOrgF) < 0) wsOrgF = "";
+    var from = wsFrom(wsPeriod), plabel = WS_PERIODS.filter(function(p){ return p[0] === wsPeriod; })[0][1];
+    function inOrg(x){ return !wsOrgF || wtOrg(x.data) === wsOrgF; }
+    function inP(x){ return !from || (x.data.start && x.data.start >= from); }
+    var wtAll = recs.filter(function(x){ return (x.data.list || "worktype") === "worktype" && inOrg(x); });
+    var exAll = recs.filter(function(x){ return x.data.list === "exception" && inOrg(x); });
+    var wt = wtAll.filter(inP), ex = exAll.filter(inP);
+    function of(list, t){ return list.filter(function(x){ return wtHas(x.data, t); }); }
+    var short = of(wt, SHORT_T), remote = of(wt, "재택근무 예외자"), mobile = of(wt, "모바일 출퇴근");
+    var shortAll = of(wtAll, SHORT_T), remoteAll = of(wtAll, "재택근무 예외자");
+    var TYPES = REC_DEF.worktypes.fields[0][3];
+    var sheets = [];
+
+    // ① KPI
+    var active = wtAll.filter(function(x){ return wtStatus(x.data) === "적용 중"; }), planned = wtAll.filter(function(x){ return wtStatus(x.data) === "예정"; });
+    var ym = today.slice(0, 7);
+    var mStart = wtAll.filter(function(x){ return String(x.data.start || "").slice(0, 7) === ym; }).length, mEnd = wtAll.filter(function(x){ return String(x.data.end || "").slice(0, 7) === ym; }).length;
+    function ytd(list, y){ return list.filter(function(x){ var s = String(x.data.start || ""); return s.slice(0, 4) === String(y) && s.slice(5) <= md; }).length; }
+    var sThis = ytd(shortAll, Y), sPrev = ytd(shortAll, Y - 1), rThis = ytd(remoteAll, Y), rPrev = ytd(remoteAll, Y - 1);
+    var sReason = tally(short, function(x){ return shortReason(x.data); }), sTot = short.length;
+    var exType = pairs(tally(ex, function(x){ return x.data.type || "기타"; }));
+    var kpis = [
+      ["현재 적용 중", uniq(active) + "<small>명</small>", active.length + "건 · 예정 " + uniq(planned) + "명"],
+      ["이번 달 시작 · 종료", mStart + "<small>시작</small> " + mEnd + "<small>종료</small>", "근무형태 변경 " + (mStart + mEnd) + "건"],
+      ["근로시간 단축 (" + plabel + ")", sTot + "<small>건</small>", "사용자 " + uniq(short) + "명 · 올해 신규 " + sThis + "건, " + deltaTxt(sThis, sPrev)],
+      ["육아기 단축 비율", pc(sReason["육아기"] || 0, sTot) + "<small>%</small>", "임신기 " + pc(sReason["임신기"] || 0, sTot) + "% · 고위험임신부 " + pc(sReason["고위험임신부"] || 0, sTot) + "%"],
+      ["재택근무 예외 (올해)", rThis + "<small>건</small>", deltaTxt(rThis, rPrev)],
+      ["예외 이력 (" + plabel + ")", ex.length + "<small>건</small>", exType[0] ? "가장 많은 구분: " + esc(exType[0][0]) + " " + exType[0][1] + "건" : "등록된 이력 없음"]
+    ];
+
+    // ④ 단축 세부
+    var gShort = short.filter(function(x){ return x.data.gender; }), gM = tally(short, function(x){ return x.data.gender || "미기재"; });
+    var cross = SHORT_R.filter(function(r){ return sReason[r]; }).map(function(r){ var l = short.filter(function(x){ return shortReason(x.data) === r; }); return [r, l.filter(function(x){ return x.data.gender === "여"; }).length, l.filter(function(x){ return x.data.gender === "남"; }).length, l.filter(function(x){ return !x.data.gender; }).length]; });
+    var cut = tally(short, function(x){ var h = +x.data.weekly_hours; return h && h < 40 ? ((40 - h) / 5) + "시간" : "미기재"; });
+    var durBy = {}; short.forEach(function(x){ var d = dDays(x.data); if (d == null) return; var r = shortReason(x.data); (durBy[r] = durBy[r] || []).push(d); });
+    var durAll = []; Object.keys(durBy).forEach(function(k){ durAll = durAll.concat(durBy[k]); });
+    var rounds = shortRounds(shortAll), perUser = {};
+    Object.keys(rounds).forEach(function(id){ var r = rounds[id]; perUser[r.key] = r.total; });
+    var users = Object.keys(perUser), reuse = users.filter(function(k){ return perUser[k] >= 2; }).length, maxR = users.length ? Math.max.apply(null, users.map(function(k){ return perUser[k]; })) : 0;
+    var rDist = tally(users, function(k){ var n = perUser[k]; return n >= 3 ? "3회 이상" : n + "회"; });
+
+    // 연도별 신규 시작 (사유별 스택)
+    var years = []; shortAll.forEach(function(x){ var y = String(x.data.start || "").slice(0, 4); if (y && years.indexOf(y) < 0) years.push(y); }); years.sort();
+    var yItems = years.map(function(y){ var l = shortAll.filter(function(x){ return String(x.data.start || "").slice(0, 4) === y; }); return { k: y, label: y + "년", short: y.slice(2) + "년", parts: SHORT_R.slice(0, 3).map(function(r){ return l.filter(function(x){ return shortReason(x.data) === r; }).length; }).concat([l.filter(function(x){ return SHORT_R.slice(0, 3).indexOf(shortReason(x.data)) < 0; }).length]) }; });
+    var yRows = yItems.map(function(x, i){ var n = x.parts.reduce(function(s, v){ return s + v; }, 0), p = i ? yItems[i - 1].parts.reduce(function(s, v){ return s + v; }, 0) : null; return [x.k, n, p ? Math.round((n - p) / p * 100) : null]; });
+
+    // 월별 동시 적용 인원 (최근 24개월)
+    var conc = [];
+    for (var i = 23; i >= 0; i--){
+      var ms = new Date(Y, now.getMonth() - i, 1), me2 = new Date(Y, now.getMonth() - i + 1, 0), a = ymd(ms), b = ymd(me2);
+      var on = function(l){ var o = {}; l.forEach(function(x){ var d = x.data; if (d.start && d.start <= b && (!d.end || d.end >= a)) o[String(d.target || "").trim()] = 1; }); return Object.keys(o).length; };
+      conc.push({ k: a.slice(0, 7), label: a.slice(0, 7), short: (ms.getMonth() === 0 || i === 23 ? String(ms.getFullYear()).slice(2) + "." : "") + (ms.getMonth() + 1) + "월", parts: [on(shortAll), on(remoteAll)] });
+    }
+
+    // ⑤ 사업부별
+    var HEAT_T = [["근로시간 단축", SHORT_T], ["재택근무 예외", "재택근무 예외자"], ["모바일 출퇴근", "모바일 출퇴근"], ["단시간근로", "단시간근로자"], ["고정근무", "고정근무자"]];
+    var hOrgs = []; wt.concat(ex).forEach(function(x){ var o = wtOrg(x.data) || "(소속 없음)"; if (hOrgs.indexOf(o) < 0) hOrgs.push(o); });
+    var heat = hOrgs.map(function(o){ var lw = wt.filter(function(x){ return (wtOrg(x.data) || "(소속 없음)") === o; }); var cells = HEAT_T.map(function(t){ return lw.filter(function(x){ return wtHas(x.data, t[1]); }).length; }); cells.push(ex.filter(function(x){ return (wtOrg(x.data) || "(소속 없음)") === o; }).length); return [o, cells]; })
+      .sort(function(a, b){ return b[1].reduce(function(s, v){ return s + v; }, 0) - a[1].reduce(function(s, v){ return s + v; }, 0); });
+    var hMax = Math.max.apply(null, heat.map(function(r){ return Math.max.apply(null, r[1]); }).concat([1]));
+    var colTot = HEAT_T.map(function(t, j){ return heat.reduce(function(s, r){ return s + r[1][j]; }, 0); }).concat([heat.reduce(function(s, r){ return s + r[1][HEAT_T.length]; }, 0)]);
+    var orgShort = pairs(tally(short, function(x){ return wtOrg(x.data) || "(소속 없음)"; })).map(function(p){ var l = short.filter(function(x){ return (wtOrg(x.data) || "(소속 없음)") === p[0]; }); return [p[0], SHORT_R.slice(0, 3).map(function(r){ return l.filter(function(x){ return shortReason(x.data) === r; }).length; }), p[0]]; });
+    var teams = pairs(tally(wt, function(x){ var t = wtTeam(x.data); return t ? (wtOrg(x.data) ? wtOrg(x.data) + " " : "") + t : null; })).slice(0, 10);
+
+    // ⑥ 재택 예외
+    var rReason = tally(remote, function(x){ return remoteReason(x.data); });
+    var season = []; for (var mo = 1; mo <= 12; mo++){ (function(mo){ var l = remote.filter(function(x){ return +String(x.data.start || "").slice(5, 7) === mo; }); season.push({ k: mo, label: mo + "월", parts: REMOTE_R.slice(0, 3).map(function(r){ return l.filter(function(x){ return remoteReason(x.data) === r; }).length; }) }); })(mo); }
+    var peak = season.slice().sort(function(a, b){ return b.parts.reduce(function(s, v){ return s + v; }, 0) - a.parts.reduce(function(s, v){ return s + v; }, 0); })[0];
+    var rDays = remote.map(function(x){ return dDays(x.data); }).filter(function(v){ return v != null; });
+    var rOrg = pairs(tally(remote, function(x){ return wtOrg(x.data) || "(소속 없음)"; }));
+
+    // ⑦ 모바일
+    var mOrg = pairs(tally(mobile, function(x){ return wtOrg(x.data) || "(소속 없음)"; }));
+    var mMonths = pairs(tally(mobile, function(x){ return String(x.data.start || "").slice(0, 7) || null; })).sort(function(a, b){ return a[0].localeCompare(b[0]); });
+    var acc = 0, mCum = mMonths.map(function(p){ acc += p[1]; return { k: p[0], label: p[0] + " (신규 " + p[1] + ")", short: p[0].slice(2).replace("-", "."), v: acc }; });
+
+    // ⑧ 예외 이력
+    var exOrg = pairs(tally(ex, function(x){ return wtOrg(x.data) || "(소속 없음)"; }));
+    var exTags = pairs(tally(ex, function(x){ return String(x.data.tags || "").split(",").map(function(s){ return s.trim(); }).filter(Boolean); })).slice(0, 8);
+
+    // ⑨ 다가오는 변경 30일
+    var in30 = ymd(new Date(Y, now.getMonth(), now.getDate() + 30)), up = [];
+    wtAll.forEach(function(x){ var d = x.data; if (d.ended) return; if (d.start && d.start >= today && d.start <= in30) up.push([d.start, "시작", x]); if (d.end && d.end >= today && d.end <= in30 && d.end !== d.start) up.push([d.end, "종료", x]); });
+    up.sort(function(a, b){ return a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0; });
+
+    // ② 인사이트
+    var ins = [];
+    if (sTot) ins.push("근로시간 단축 " + sTot + "건 중 <b>육아기 " + pc(sReason["육아기"] || 0, sTot) + "%</b>, 임신기 " + pc(sReason["임신기"] || 0, sTot) + "%" + (sReason["고위험임신부"] ? ", 고위험임신부 " + pc(sReason["고위험임신부"], sTot) + "%" : "") + "입니다.");
+    ins.push("올해(1월 1일~" + (+md.slice(0, 2)) + "월 " + (+md.slice(3)) + "일) 근로시간 단축 신규 시작은 <b>" + sThis + "건</b>으로 " + deltaTxt(sThis, sPrev) + "입니다.");
+    if (gShort.length) { var men = gShort.filter(function(x){ return x.data.gender === "남"; }), ccL = short.filter(function(x){ return shortReason(x.data) === "육아기" && x.data.gender; }); ins.push("단축 사용 중 남성은 <b>" + men.length + "건(" + pc(men.length, gShort.length) + "%)</b>" + (ccL.length ? "이며, 육아기 단축의 남성 비율은 " + pc(ccL.filter(function(x){ return x.data.gender === "남"; }).length, ccL.length) + "%" : "") + "입니다." + (short.length - gShort.length ? " (성별 미기재 " + (short.length - gShort.length) + "건 제외)" : "")); }
+    if (users.length) ins.push("단축 사용자 " + users.length + "명 중 <b>" + pc(reuse, users.length) + "%(" + reuse + "명)</b>가 2회 이상 연장·재사용했고, 최다 " + maxR + "회입니다.");
+    if (orgShort.length && sTot) ins.push("단축 사용은 <b>" + esc(orgShort[0][0]) + "</b>가 " + pc(orgShort[0][1].reduce(function(s, v){ return s + v; }, 0), sTot) + "%로 가장 많습니다.");
+    if (remote.length) ins.push("재택근무 예외의 <b>" + pc(rReason["전염병"] || 0, remote.length) + "%가 전염병</b> 사유이며, 시작 월 기준 <b>" + peak.label + "</b>에 가장 많이 발생합니다" + (rDays.length ? " (평균 " + avg(rDays) + "일)" : "") + ".");
+    if (mobile.length) ins.push("모바일 출퇴근 허용은 " + mobile.length + "건이며 " + esc(mOrg[0][0]) + "가 " + mOrg[0][1] + "건으로 가장 많습니다.");
+    if (up.length) ins.push("앞으로 30일 안에 근무형태 시작 " + up.filter(function(u){ return u[1] === "시작"; }).length + "건 · 종료 " + up.filter(function(u){ return u[1] === "종료"; }).length + "건이 예정되어 있습니다.");
+
+    // ---------- HTML ----------
+    var h = wtNav("stats");
+    h += '<div class="rec-tools" role="group" aria-label="분석 조건">' + WS_PERIODS.map(function(p){ return '<button class="btn sm' + (p[0] === wsPeriod ? " primary" : "") + '" data-wp="' + p[0] + '">' + p[1] + '</button>'; }).join("") +
+      '<select id="wsOrg"><option value="">전체 사업부</option>' + orgs.map(function(o){ return '<option' + (o === wsOrgF ? " selected" : "") + '>' + esc(o) + '</option>'; }).join("") + '</select>' +
+      '<span class="grow"></span><span class="hint" style="font-size:12px">시작일 기준 · 막대를 누르면 해당 목록으로 이동</span><button class="btn sm" id="wsPdf">⬇ PDF 다운로드</button><button class="btn sm" id="wsXls">⬇ 엑셀 다운로드</button></div>';
+    h += '<div id="wsDash"><div class="rpt-h"><div><b>근무형태 현황 통계</b><span>HRM팀 노무관리파트 · 근태</span></div><div class="rpt-m">기간: ' + esc(plabel) + (from ? " (" + from + " ~ " + today + ")" : "") + (wsOrgF ? " · 사업부: " + esc(wsOrgF) : "") + '<br>기준일 ' + today + ' · 작성 ' + esc(me.name) + '</div></div>';
+    h += '<div class="kpis k6">' + kpis.map(function(k){ return '<div class="kpi"><div class="k">' + esc(k[0]) + '</div><div class="v">' + k[1] + '</div><div class="s">' + k[2] + '</div></div>'; }).join("") + '</div>';
+    h += '<div class="insight"><div class="ih">💡 한눈에 보기</div><ul>' + ins.map(function(s){ return '<li>' + s + '</li>'; }).join("") + '</ul></div>';
+    // ③ + 연도별
+    var typeRows = TYPES.map(function(t){ var l = wtAll.filter(function(x){ return wtHas(x.data, t); }); return [t, [l.filter(function(x){ return wtStatus(x.data) === "적용 중"; }).length, l.filter(function(x){ return wtStatus(x.data) === "예정"; }).length, l.filter(function(x){ return wtStatus(x.data) === "종료"; }).length]]; }).filter(function(r){ return r[1][0] + r[1][1] + r[1][2]; });
+    h += '<div class="an-grid">' + wsPanel("근무형태별 현황", "전체 등록 " + wtAll.length + "건 · 상태별", wsStack(typeRows, ["적용 중", "예정", "종료"], { attr: "data-wst", note: function(r){ return "적용 " + r[1][0]; } })) +
+      wsPanel("근로시간 단축 신규 시작 추이", "연도별 · 사유별 (" + (years[0] || "-") + "~" + (years[years.length - 1] || "-") + ")",
+        '<div class="legend" style="margin-bottom:4px"><span class="lg s1"></span>육아기<span class="lg s2"></span>임신기<span class="lg s3"></span>고위험임신부</div>' + wsCols(yItems, { names: SHORT_R }) +
+        '<div class="scrollx" style="margin-top:8px"><table class="tbl" style="min-width:0"><thead><tr><th>연도</th>' + yRows.map(function(r){ return '<th class="n">' + r[0] + '</th>'; }).join("") + '</tr></thead><tbody><tr><td>신규</td>' + yRows.map(function(r){ return '<td class="n">' + r[1] + '</td>'; }).join("") + '</tr><tr><td>전년 대비</td>' + yRows.map(function(r){ return '<td class="n">' + (r[2] == null ? "-" : (r[2] > 0 ? '<span class="up">+' + r[2] + '%</span>' : '<span class="down">' + r[2] + '%</span>')) + '</td>'; }).join("") + '</tr></tbody></table></div>' +
+        '<p class="hint" style="font-size:11.5px;margin:6px 0 0">' + Y + '년 수치에는 앞으로 시작 예정인 건도 포함됩니다.</p>') + '</div>';
+    // ④ 단축 상세
+    h += '<h3 class="ws-h">근로시간 단축 분석 <span>' + esc(plabel) + ' · ' + sTot + '건 · 사용자 ' + uniq(short) + '명</span></h3><div class="ws-grid">' +
+      wsPanel("단축 사유", "육아기·임신기·고위험임신부", wsBars(pairs(sReason, SHORT_R), sTot)) +
+      wsPanel("성별", gShort.length ? "성별 기재 " + gShort.length + "건" : "성별 데이터 없음", wsBars(pairs(gM, ["여", "남", "미기재"]), sTot) +
+        (cross.length ? '<table class="tbl mini"><thead><tr><th>사유</th><th class="n">여</th><th class="n">남</th><th class="n">미기재</th><th class="n">남성 비율</th></tr></thead><tbody>' + cross.map(function(r){ return '<tr><td>' + r[0] + '</td><td class="n">' + r[1] + '</td><td class="n">' + r[2] + '</td><td class="n">' + r[3] + '</td><td class="n">' + (r[1] + r[2] ? pc(r[2], r[1] + r[2]) + "%" : "-") + '</td></tr>'; }).join("") + '</tbody></table>' : '')) +
+      wsPanel("1일 단축 시간", "1주 소정근로시간 기준 (40 − 주 시간) ÷ 5", wsBars(pairs(cut, ["1시간", "2시간", "3시간", "4시간", "5시간", "미기재"]), sTot)) +
+      wsPanel("사용 기간", "적용 시작~종료 일수", durAll.length ? '<div class="ws-num"><div><b>' + avg(durAll) + '</b>일<span>평균</span></div><div><b>' + median(durAll) + '</b>일<span>중앙값</span></div><div><b>' + Math.max.apply(null, durAll) + '</b>일<span>최장</span></div></div>' +
+        '<table class="tbl mini"><thead><tr><th>사유</th><th class="n">건수</th><th class="n">평균</th><th class="n">중앙값</th></tr></thead><tbody>' + SHORT_R.filter(function(r){ return durBy[r]; }).map(function(r){ return '<tr><td>' + r + '</td><td class="n">' + durBy[r].length + '</td><td class="n">' + avg(durBy[r]) + '일</td><td class="n">' + median(durBy[r]) + '일</td></tr>'; }).join("") + '</tbody></table>' : '<p class="hint">데이터 없음</p>') +
+      wsPanel("연장·재사용", "사용자별 단축 횟수 (전체 기간)", users.length ? '<div class="ws-num"><div><b>' + pc(reuse, users.length) + '</b>%<span>2회 이상 사용</span></div><div><b>' + (Math.round(Object.keys(rounds).length / users.length * 10) / 10) + '</b>회<span>1인 평균</span></div><div><b>' + maxR + '</b>회<span>최다</span></div></div>' + wsBars(pairs(rDist, ["1회", "2회", "3회 이상"]), users.length, { unit: "명" }) : '<p class="hint">데이터 없음</p>') +
+      wsPanel("월별 동시 적용 인원", "최근 24개월 · 그 달에 하루라도 적용된 실인원", '<div class="legend" style="margin-bottom:4px"><span class="lg s1"></span>근로시간 단축<span class="lg s2"></span>재택근무 예외</div>' + wsCols(conc, { names: ["근로시간 단축", "재택근무 예외"], unit: "명", h: 1 }), " wide") + '</div>';
+    // ⑤ 사업부별
+    h += '<h3 class="ws-h">사업부별 통계 <span>' + esc(plabel) + '</span></h3>' +
+      wsPanel("사업부 × 근무형태", "칸이 진할수록 많음 · 칸을 누르면 목록으로 이동", heat.length ? '<div class="scrollx"><table class="tbl heat"><thead><tr><th>사업부</th>' + HEAT_T.map(function(t){ return '<th class="n">' + t[0] + '</th>'; }).join("") + '<th class="n">예외 이력</th><th class="n">합계</th></tr></thead><tbody>' +
+        heat.map(function(r){ var tot = r[1].reduce(function(s, v){ return s + v; }, 0); return '<tr><td><b>' + esc(r[0]) + '</b></td>' + r[1].map(function(v, j){ var a = v ? (0.08 + 0.62 * v / hMax).toFixed(2) : 0; return '<td class="n' + (v ? " clk" : "") + '"' + (v ? ' data-heat="' + esc(r[0]) + '|' + (j < HEAT_T.length ? HEAT_T[j][1] : "@ex") + '"' : '') + ' style="' + (v ? "background:rgba(0,114,206," + a + ")" + (a > 0.45 ? ";color:#fff" : "") : "") + '">' + (v || '<span class="hint">-</span>') + '</td>'; }).join("") + '<td class="n"><b>' + tot + '</b></td></tr>'; }).join("") +
+        '<tr class="sum"><td>합계</td>' + colTot.map(function(v){ return '<td class="n"><b>' + v + '</b></td>'; }).join("") + '<td class="n"><b>' + colTot.reduce(function(s, v){ return s + v; }, 0) + '</b></td></tr></tbody></table></div>' : '<p class="hint">데이터 없음</p>') +
+      '<div class="an-grid" style="margin-top:16px">' + wsPanel("사업부별 근로시간 단축 사유", "육아기 · 임신기 · 고위험임신부", wsStack(orgShort, ["육아기", "임신기", "고위험임신부"], { attr: "data-wso" })) +
+      wsPanel("근무형태 등록이 많은 팀 (상위 10)", "모든 근무형태 합계", wsBars(teams, 0)) + '</div>';
+    // ⑥ 재택 예외 · ⑦ 모바일 · ⑧ 예외 이력
+    h += '<h3 class="ws-h">재택근무 예외 · 모바일 출퇴근 · 예외 이력 <span>' + esc(plabel) + '</span></h3><div class="ws-grid">' +
+      wsPanel("재택근무 예외 사유", remote.length + "건" + (rDays.length ? " · 평균 " + avg(rDays) + "일, 최장 " + Math.max.apply(null, rDays) + "일" : ""), wsBars(pairs(rReason, REMOTE_R), remote.length)) +
+      wsPanel("재택근무 예외 발생 시기", "시작 월 기준 (계절성)", '<div class="legend" style="margin-bottom:4px"><span class="lg s1"></span>전염병<span class="lg s2"></span>질병·부상<span class="lg s3"></span>고위험 임신부</div>' + wsCols(season, { names: REMOTE_R.slice(0, 3), h: 1 })) +
+      wsPanel("재택근무 예외 사업부별", "", wsBars(rOrg, remote.length)) +
+      wsPanel("모바일 출퇴근 사업부별", mobile.length + "건", wsBars(mOrg, mobile.length)) +
+      wsPanel("모바일 출퇴근 누적 추이", "적용 시작 월 기준", wsCols(mCum, { h: 1 })) +
+      wsPanel("예외 이력 구분", ex.length + "건 · 누르면 예외 이력으로 이동", wsBars(exType, ex.length, { attr: "data-wsx" }) + (exOrg.length ? '<h4 class="ws-h4">사업부별</h4>' + wsBars(exOrg, ex.length) : '') + (exTags.length ? '<h4 class="ws-h4">태그</h4>' + wsBars(exTags, 0) : '')) + '</div>';
+    // ⑨ 다가오는 변경
+    h += wsPanel("앞으로 30일 근무형태 변경", today + " ~ " + in30 + " · 행을 누르면 세부 내용", up.length ? '<div class="scrollx"><table class="tbl"><thead><tr><th>날짜</th><th>구분</th><th>이름</th><th>소속 · 팀</th><th>근무형태</th><th>사유·태그</th></tr></thead><tbody>' +
+      up.map(function(u){ var d = u[2].data; return '<tr class="clk" data-wsr="' + u[2].id + '"><td>' + u[0] + '</td><td><span class="badge ' + (u[1] === "시작" ? "good" : "neutral") + '">' + u[1] + '</span></td><td><b>' + esc(d.target || "") + '</b></td><td>' + esc([wtOrg(d), wtTeam(d)].filter(Boolean).join(" · ")) + '</td><td>' + typeBadges(d) + '</td><td>' + esc(d.tags || "") + '</td></tr>'; }).join("") + '</tbody></table></div>' : '<p class="hint">30일 안에 예정된 변경이 없습니다.</p>', " ws-up");
+    h += '</div>';
+    host.innerHTML = h;
+
+    // ---------- 엑셀용 표 ----------
+    sheets.push(["요약", [["근무형태 현황 통계"], [], ["기간", plabel + (from ? " (" + from + " ~ " + today + ")" : "")], ["사업부", wsOrgF || "전체"], ["기준일", today], ["작성", me.name], [], ["항목", "값", "비고"]]
+      .concat(kpis.map(function(k){ return [k[0], k[1].replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim(), k[2].replace(/<[^>]+>/g, "")]; })).concat([[], ["한눈에 보기"]]).concat(ins.map(function(s){ return [s.replace(/<[^>]+>/g, "")]; })), [30, 24, 60]]);
+    sheets.push(["근무형태별", [["근무형태", "적용 중", "예정", "종료", "합계"]].concat(typeRows.map(function(r){ return [r[0]].concat(r[1]).concat([r[1][0] + r[1][1] + r[1][2]]); })), [18, 10, 10, 10, 10]]);
+    sheets.push(["단축 사유·성별", [["사유", "건수", "비율(%)"]].concat(pairs(sReason, SHORT_R).map(function(p){ return [p[0], p[1], pc(p[1], sTot)]; })).concat([[], ["사유", "여", "남", "미기재", "남성 비율(%)"]]).concat(cross.map(function(r){ return [r[0], r[1], r[2], r[3], r[1] + r[2] ? pc(r[2], r[1] + r[2]) : ""]; }))
+      .concat([[], ["1일 단축 시간", "건수"]]).concat(pairs(cut, ["1시간", "2시간", "3시간", "4시간", "5시간", "미기재"])).concat([[], ["사용 기간(일)", "평균", "중앙값"], ["전체", avg(durAll), median(durAll)]]).concat(SHORT_R.filter(function(r){ return durBy[r]; }).map(function(r){ return [r, avg(durBy[r]), median(durBy[r])]; }))
+      .concat([[], ["사용 횟수", "사용자 수"]]).concat(pairs(rDist, ["1회", "2회", "3회 이상"])), [16, 10, 10, 10, 12]]);
+    sheets.push(["연도별 추이", [["연도", "육아기", "임신기", "고위험임신부", "기타", "합계", "전년 대비(%)"]].concat(yItems.map(function(x, i){ return [x.k].concat(x.parts).concat([yRows[i][1], yRows[i][2] == null ? "" : yRows[i][2]]); })).concat([[], ["월", "단축 적용 인원", "재택 예외 적용 인원"]]).concat(conc.map(function(x){ return [x.k].concat(x.parts); })), [10, 10, 10, 12, 8, 8, 12]]);
+    sheets.push(["사업부×근무형태", [["사업부"].concat(HEAT_T.map(function(t){ return t[0]; })).concat(["예외 이력", "합계"])].concat(heat.map(function(r){ return [r[0]].concat(r[1]).concat([r[1].reduce(function(s, v){ return s + v; }, 0)]); })).concat([["합계"].concat(colTot).concat([colTot.reduce(function(s, v){ return s + v; }, 0)])]), [14, 12, 12, 12, 10, 10, 10, 8]]);
+    sheets.push(["재택 예외", [["사유", "건수", "비율(%)"]].concat(pairs(rReason, REMOTE_R).map(function(p){ return [p[0], p[1], pc(p[1], remote.length)]; })).concat([[], ["시작 월", "전염병", "질병·부상 등", "고위험 임신부"]]).concat(season.map(function(x){ return [x.label].concat(x.parts); })).concat([[], ["사업부", "건수"]]).concat(rOrg), [14, 10, 12, 12]]);
+    sheets.push(["모바일·예외 이력", [["모바일 출퇴근 사업부", "건수"]].concat(mOrg).concat([[], ["예외 이력 구분", "건수"]]).concat(exType).concat([[], ["예외 이력 사업부", "건수"]]).concat(exOrg), [22, 10]]);
+    sheets.push(["다가오는 변경", [["날짜", "구분", "이름", "소속", "팀", "근무형태", "사유·태그"]].concat(up.map(function(u){ var d = u[2].data; return [u[0], u[1], d.target || "", wtOrg(d), wtTeam(d), d.type || "", d.tags || ""]; })), [12, 8, 10, 10, 20, 24, 24]]);
+    wsDash = { plabel: plabel, sheets: sheets };
+
+    // ---------- 이벤트 ----------
+    function toList(type, org){ wtFilter.worktypes = { q: "", type: type || "", ended: true, org: org || "", team: "" }; location.hash = "#/c/att/worktypes/list"; }
+    $all("[data-wp]", host).forEach(function(b){ b.onclick = function(){ wsPeriod = b.dataset.wp; drawWtStats(); }; });
+    $("#wsOrg").onchange = function(e){ wsOrgF = e.target.value; drawWtStats(); };
+    $all("[data-wst]", host).forEach(function(b){ b.onclick = function(){ toList(b.dataset.wst, wsOrgF); }; });
+    $all("[data-wso]", host).forEach(function(b){ b.onclick = function(){ toList(SHORT_T, b.dataset.wso === "(소속 없음)" ? "" : b.dataset.wso); }; });
+    $all("[data-wsx]", host).forEach(function(b){ b.onclick = function(){ wtFilter.exceptions = { q: "", type: b.dataset.wsx, ended: true, org: wsOrgF, team: "" }; location.hash = "#/c/att/worktypes/exceptions"; }; });
+    $all("[data-heat]", host).forEach(function(td){ td.onclick = function(){ var p = td.dataset.heat.split("|"), o = p[0] === "(소속 없음)" ? "" : p[0]; if (p[1] === "@ex"){ wtFilter.exceptions = { q: "", type: "", ended: true, org: o, team: "" }; location.hash = "#/c/att/worktypes/exceptions"; } else toList(p[1], o); }; });
+    $all("[data-wsr]", host).forEach(function(tr){ tr.onclick = function(){ var x = recs.filter(function(r){ return r.id === tr.dataset.wsr; })[0]; if (x) wtDetail(wsC, "worktypes", x, drawWtStats); }; });
+    $("#wsXls").onclick = function(){
+      if (!window.XLSX){ alert("엑셀 도구를 불러오지 못했습니다. 새로고침 후 다시 시도하세요."); return; }
+      var wb = XLSX.utils.book_new();
+      wsDash.sheets.forEach(function(s){ var ws = XLSX.utils.aoa_to_sheet(s[1]); ws["!cols"] = s[2].map(function(w){ return { wch: w }; }); XLSX.utils.book_append_sheet(wb, ws, s[0]); });
+      XLSX.writeFile(wb, "근무형태현황_통계_" + wsDash.plabel.replace(/\s/g, "") + (wsOrgF ? "_" + wsOrgF : "") + "_" + todayStr() + ".xlsx");
+      logp("worktypes", "export", "xlsx " + wsDash.plabel);
+    };
+    $("#wsPdf").onclick = function(){ exportPdf(this, $("#wsDash"), "근무형태현황_통계_" + wsDash.plabel.replace(/\s/g, "") + (wsOrgF ? "_" + wsOrgF : "") + "_" + todayStr() + ".pdf", "worktypes", "pdf " + wsDash.plabel); };
+  }
   async function renderWorktypes(c, tab){
     var host = $("#cm"), key = "att.worktypes", def = REC_DEF[tab], f = wtFilter[tab];
     try { await loadRecs("att", "worktypes"); } catch(err){ host.innerHTML = '<div class="banner danger">불러오지 못했습니다: ' + esc(err.message) + '</div>'; return; }
@@ -1349,7 +1591,7 @@
     var orgs = []; all.forEach(function(x){ var o = wtOrg(x.data); if (o && orgs.indexOf(o) < 0) orgs.push(o); }); orgs.sort();
     var teams = []; all.forEach(function(x){ var t = wtTeam(x.data); if (t && (!f.org || wtOrg(x.data) === f.org) && teams.indexOf(t) < 0) teams.push(t); }); teams.sort();
     if (f.team && teams.indexOf(f.team) < 0) f.team = "";
-    host.innerHTML = '<nav class="subtabs"><a href="#/c/att/worktypes" class="' + (tab === "worktypes" ? "on" : "") + '">근무형태 현황</a><a href="#/c/att/worktypes/exceptions" class="' + (tab === "exceptions" ? "on" : "") + '">예외 이력</a></nav>' +
+    host.innerHTML = wtNav(tab) +
       '<div class="hint" style="font-size:12.5px;margin:-4px 0 12px">' + (tab === "worktypes" ? "기본 근무형태(선택적 근로시간제)와 다르게 근무하는 인원입니다. 단시간근로자·근로시간 단축자의 1주 소정근로시간은 근태 위반자 관리 › 자동 필터링의 개인별 의무 근로시간 기준으로 쓰입니다. 근로시간 단축을 여러 번 쓴 사람은 한 줄로 묶이고 ▸를 누르면 이전 사용 내역이 펼쳐집니다." : "개인·조직별로 근태 기준과 다르게 처리한 예외 이력입니다.") + ' 행을 누르면 세부 내용이 열립니다.</div>' +
       '<div class="mini-stats">' + def.fields[0][3].map(function(t){ return '<button class="ms ms-btn' + (f.type === t ? " on" : "") + '" data-ft="' + esc(t) + '">' + esc(t) + '<b>' + (byType[t] || 0) + '</b><small class="hint" style="display:block;font-size:10.5px;font-weight:500">적용 중 · 전체 ' + (byTypeAll[t] || 0) + '</small></button>'; }).join("") + '</div>' +
       '<div class="rec-tools"><select id="fOrg"><option value="">전체 소속</option>' + orgs.map(function(o){ return '<option' + (o === f.org ? " selected" : "") + '>' + esc(o) + '</option>'; }).join("") + '</select>' +
@@ -1592,7 +1834,7 @@
       '<label>근무일구분 값(선택)<input id="pdv" value="' + esc(F.params.workDayValues) + '" placeholder="비우면 평일 전체"></label>' +
       '<label class="wide">누락 확인에서 항상 제외(퇴사예정·환경미화 등)<input id="pea" value="' + esc(F.params.excludeAlways) + '" placeholder="쉼표로 구분"></label>' +
       '<label class="wide">이번 달 제외(입사·복직 등)<input id="pem" value="' + esc(F.params.excludeMonth) + '" placeholder="쉼표로 구분 — 결과에 \'제외\'가 기본 체크"></label></div>' +
-      '<p class="hint" style="font-size:12px;margin:8px 0 0">단시간근로자·근로시간 단축자는 <a href="#/c/att/worktypes">근무형태 현황</a>의 1주 소정근로시간 비율로 개인 의무 근로시간을 자동 계산합니다(예: 주 30시간 → 의무 × 30/40).</p></section>' +
+      '<p class="hint" style="font-size:12px;margin:8px 0 0">단시간근로자·근로시간 단축자는 <a href="#/c/att/worktypes/list">근무형태 현황</a>의 1주 소정근로시간 비율로 개인 의무 근로시간을 자동 계산합니다(예: 주 30시간 → 의무 × 30/40).</p></section>' +
       ['f1', 'f2'].map(function(k, i){
         var fl = F.files[k], title = k === "f1" ? "출퇴근 현황 업로드" : "근로시간 현황 업로드", desc = k === "f1" ? "WORKS 관리자서비스 › 근태 › 근태현황 › 출퇴근 현황 (지각·누락·최대 근로시간)" : "WORKS 관리자서비스 › 근태 › 근태현황 › 근로시간 현황 (의무 근로시간)";
         var fields = k === "f1" ? FIELDS1 : FIELDS2;
