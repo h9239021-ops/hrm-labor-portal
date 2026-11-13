@@ -1264,7 +1264,7 @@
   }
 
   /* ---------- 근무형태 현황 (목록 + 팝업, 예외 이력 탭) ---------- */
-  var wtFilter = { worktypes: { q: "", type: "", ended: false, org: "", team: "" }, exceptions: { q: "", type: "", ended: true, org: "", team: "" } };
+  var wtFilter = { worktypes: { q: "", type: "", ended: true, org: "", team: "" }, exceptions: { q: "", type: "", ended: true, org: "", team: "" } };
   function wtOrg(d){ return d.org || ""; }
   function wtTeam(d){ return d.team || (d.org ? "" : d.dept || ""); }
   async function renderWorktypes(c, tab){
@@ -1273,13 +1273,13 @@
     if (!$("#cm")) return;
     var all = S.recs[key].filter(function(x){ return (x.data.list || "worktype") === def.list; });
     var w = can(key, "write");
-    var byType = {}; all.forEach(function(x){ if (wtStatus(x.data) !== "종료") byType[x.data.type] = (byType[x.data.type] || 0) + 1; });
+    var byType = {}, byTypeAll = {}; all.forEach(function(x){ byTypeAll[x.data.type] = (byTypeAll[x.data.type] || 0) + 1; if (wtStatus(x.data) !== "종료") byType[x.data.type] = (byType[x.data.type] || 0) + 1; });
     var orgs = []; all.forEach(function(x){ var o = wtOrg(x.data); if (o && orgs.indexOf(o) < 0) orgs.push(o); }); orgs.sort();
     var teams = []; all.forEach(function(x){ var t = wtTeam(x.data); if (t && (!f.org || wtOrg(x.data) === f.org) && teams.indexOf(t) < 0) teams.push(t); }); teams.sort();
     if (f.team && teams.indexOf(f.team) < 0) f.team = "";
     host.innerHTML = '<nav class="subtabs"><a href="#/c/att/worktypes" class="' + (tab === "worktypes" ? "on" : "") + '">근무형태 현황</a><a href="#/c/att/worktypes/exceptions" class="' + (tab === "exceptions" ? "on" : "") + '">예외 이력</a></nav>' +
       '<div class="hint" style="font-size:12.5px;margin:-4px 0 12px">' + (tab === "worktypes" ? "기본 근무형태(선택적 근로시간제)와 다르게 근무하는 인원입니다. 단시간근로자·근로시간 단축자의 1주 소정근로시간은 근태 위반자 관리 › 자동 필터링의 개인별 의무 근로시간 기준으로 쓰입니다. 휴가·휴직자는 휴가/휴직 현황에서 관리합니다." : "개인·조직별로 근태 기준과 다르게 처리한 예외 이력입니다.") + ' 행을 누르면 세부 내용이 열립니다.</div>' +
-      '<div class="mini-stats">' + def.fields[0][3].map(function(t){ return '<button class="ms ms-btn' + (f.type === t ? " on" : "") + '" data-ft="' + esc(t) + '">' + esc(t) + '<b>' + (byType[t] || 0) + '</b><small class="hint" style="display:block;font-size:10.5px;font-weight:500">적용 중</small></button>'; }).join("") + '</div>' +
+      '<div class="mini-stats">' + def.fields[0][3].map(function(t){ return '<button class="ms ms-btn' + (f.type === t ? " on" : "") + '" data-ft="' + esc(t) + '">' + esc(t) + '<b>' + (byType[t] || 0) + '</b><small class="hint" style="display:block;font-size:10.5px;font-weight:500">적용 중 · 전체 ' + (byTypeAll[t] || 0) + '</small></button>'; }).join("") + '</div>' +
       '<div class="rec-tools"><select id="fOrg"><option value="">전체 소속</option>' + orgs.map(function(o){ return '<option' + (o === f.org ? " selected" : "") + '>' + esc(o) + '</option>'; }).join("") + '</select>' +
       '<select id="fTeam"><option value="">전체 팀</option>' + teams.map(function(t){ return '<option' + (t === f.team ? " selected" : "") + '>' + esc(t) + '</option>'; }).join("") + '</select>' +
       '<input type="search" id="fT" placeholder="이름·소속·팀·내용 검색" value="' + esc(f.q) + '"><label class="hint" style="font-size:12.5px;display:flex;gap:4px;align-items:center"><input type="checkbox" id="fE"' + (f.ended ? " checked" : "") + '> 종료된 항목 포함</label><span class="grow"></span>' +
