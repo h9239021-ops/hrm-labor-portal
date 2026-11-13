@@ -852,8 +852,8 @@
       '<tr><td>반복</td>' + rs.map(function(x){ return '<td class="n">' + x.rep + '</td>'; }).join("") + '</tr><tr><td>특수</td>' + rs.map(function(x){ return '<td class="n">' + x.sp + '</td>'; }).join("") + '</tr>' +
       '<tr><td>반복 비율</td>' + rs.map(function(x){ return '<td class="n">' + (x.n ? Math.round(x.rep / x.n * 100) + "%" : "-") + '</td>'; }).join("") + '</tr></tbody></table></div></section></div>';
     var cats = ["전체"]; S.faq.forEach(function(f){ if (f.category && cats.indexOf(f.category) < 0) cats.push(f.category); });
-    var answerers = []; S.faq.forEach(function(f){ if (f.answerer && answerers.indexOf(f.answerer) < 0) answerers.push(f.answerer); });
-    var list = sortFaq(S.faq.filter(function(f){ return (faqCat === "전체" || f.category === faqCat) && (!faqSrc || srcOf(f) === faqSrc) && (!faqKind || f.kind === faqKind) && (!faqStatus || (f.status || "완료") === faqStatus) && (!faqAns || f.answerer === faqAns) &&
+    var answerers = ["이혜린", "김고은", "김보결", "전현주"];
+    var list = sortFaq(S.faq.filter(function(f){ return (faqCat === "전체" || f.category === faqCat) && (!faqSrc || srcOf(f) === faqSrc) && (!faqKind || f.kind === faqKind) && (!faqStatus || (f.status || "완료") === faqStatus) && (!faqAns || String(f.answerer || "").split(",").map(function(s){ return s.trim(); }).indexOf(faqAns) >= 0) &&
       (!faqType || String(f.qtype || "").split(",").map(function(t){ return t.trim(); }).indexOf(faqType) >= 0) &&
       (!faqQ || [f.question, f.answer, f.detail, f.asker_name, f.asker_dept, f.qtype].join(" ").indexOf(faqQ) >= 0); }));
     if (faqTab === "list")
@@ -1201,7 +1201,7 @@
   }
   var REC_DEF = {
     worktypes: { menu: "worktypes", list: "worktype", title: "근무형태 현황", noun: "근무형태",
-      fields: [["type", "구분", "select", ["모바일 출퇴근", "단시간근로자", "근로시간 단축자", "고정근무자", "재택근무자"]], ["target", "이름", "text"], ["dept", "소속", "text"],
+      fields: [["type", "구분", "select", ["모바일 출퇴근", "단시간근로자", "근로시간 단축자", "고정근무자", "재택근무 예외자"]], ["target", "이름", "text"], ["dept", "소속", "text"],
         ["start", "적용 시작", "date"], ["end", "적용 종료", "date"], ["weekly_hours", "1주 소정근로시간", "number"], ["tags", "태그", "text", "쉼표로 구분"], ["basis", "요청자·근거", "text"], ["content", "세부 내용", "textarea"]] },
     exceptions: { menu: "worktypes", list: "exception", title: "예외 이력", noun: "예외 이력",
       fields: [["type", "구분", "select", ["새벽·야간근무", "시간외근로 예외", "근무결과신청 예외", "재택·외근", "기타"]], ["target", "대상(성명·조직)", "text"], ["dept", "소속", "text"],
