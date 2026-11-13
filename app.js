@@ -609,48 +609,100 @@
       '<label class="full" style="flex-direction:row;align-items:center;gap:6px"><input type="checkbox" name="caution" style="width:auto"' + (f.caution ? " checked" : "") + '> 주의 (답변 시 유의가 필요한 문의)</label>' +
       '<label class="full">문의 내용<textarea name="detail" rows="4">' + esc(f.detail || "") + '</textarea></label>' +
       '<label class="full">답변<textarea name="answer" rows="7" style="min-height:150px">' + esc(f.answer || "") + '</textarea></label>' +
+      '<div class="full"><div class="hint" style="font-size:12.5px;font-weight:600;margin-bottom:6px">이미지 첨부 <span style="font-weight:400">(캡처 화면 등 · 여러 장 가능 · 장당 10MB 이하 · 이 칸에 붙여넣기(Ctrl+V)도 됩니다)</span></div>' +
+      '<div class="img-drop" id="imgDrop" tabindex="0"><div class="img-grid" id="imgGrid"></div><label class="btn sm" style="cursor:pointer">+ 이미지 선택<input type="file" id="imgIn" accept="image/*" multiple hidden></label></div></div>' +
       '<div class="form-actions">' + (!isNew ? '<button type="button" class="btn danger" id="fDel" style="margin-right:auto">삭제</button>' : '') + '<button type="button" class="btn ghost" id="fNo">취소</button><button class="btn primary">저장</button></div></form>', "wide");
     var done = $('[name=done_on]', m), stSel = $('[name=status]', m);
     stSel.addEventListener("change", function(){ if (stSel.value === "완료" && !done.value) done.value = todayStr(); });
-    $("#fNo", m).onclick = closeModal;
+    // images: keep = already-stored images still attached, added = new File objects to upload on save
+    var keep = (f.images || []).slice(), added = [], removed = [];
+    function drawImgs(){
+      var g = $("#imgGrid", m);
+      g.innerHTML = keep.map(function(im, i){ return '<div class="img-th" data-k="' + i + '"><img alt="' + esc(im.name || "") + '"><button type="button" class="ib" data-rk="' + i + '" title="첨부 빼기">✕</button></div>'; }).join("") +
+        added.map(function(a, i){ return '<div class="img-th new"><img src="' + a.url + '" alt="' + esc(a.file.name) + '"><button type="button" class="ib" data-ra="' + i + '" title="첨부 빼기">✕</button></div>'; }).join("") +
+        (keep.length || added.length ? "" : '<span class="hint" style="font-size:12px">첨부한 이미지가 없습니다.</span>');
+      signedUrls(keep).then(function(urls){ $all(".img-th[data-k] img", g).forEach(function(img, i){ if (urls[i]) img.src = urls[i]; }); });
+      $all("[data-rk]", g).forEach(function(b){ b.onclick = function(){ removed.push(keep[+b.dataset.rk]); keep.splice(+b.dataset.rk, 1); drawImgs(); }; });
+      $all("[data-ra]", g).forEach(function(b){ b.onclick = function(){ URL.revokeObjectURL(added[+b.dataset.ra].url); added.splice(+b.dataset.ra, 1); drawImgs(); }; });
+    }
+    function addFiles(list){
+      Array.prototype.forEach.call(list, function(file){
+        if (!/^image\//.test(file.type)){ alert(file.name + ": 이미지 파일만 첨부할 수 있습니다."); return; }
+        if (file.size > 10 * 1024 * 1024){ alert(file.name + ": 10MB를 넘는 이미지는 첨부할 수 없습니다."); return; }
+        added.push({ file: file, url: URL.createObjectURL(file) });
+      });
+      drawImgs();
+    }
+    $("#imgIn", m).onchange = function(e){ addFiles(e.target.files); e.target.value = ""; };
+    m.addEventListener("paste", function(e){ var items = (e.clipboardData && e.clipboardData.files) || []; if (items.length){ e.preventDefault(); addFiles(items); } });
+    var drop = $("#imgDrop", m);
+    drop.addEventListener("dragover", function(e){ e.preventDefault(); drop.classList.add("over"); });
+    drop.addEventListener("dragleave", function(){ drop.classList.remove("over"); });
+    drop.addEventListener("drop", function(e){ e.preventDefault(); drop.classList.remove("over"); addFiles(e.dataTransfer.files); });
+    drawImgs();
+    $("#fNo", m).onclick = function(){ added.forEach(function(a){ URL.revokeObjectURL(a.url); }); closeModal(); };
     if ($("#fDel", m)) $("#fDel", m).onclick = async function(){
       if (!confirm("이 FAQ를 삭제할까요?")) return;
-      var x = await sb.from("portal_faq").delete().eq("id", f.id).select("id");
-      if (x.error || !x.data || !x.data.length){ alert("삭제하지 못했습니다: " + errMsg(x)); return; }
-      S.faq = S.faq.filter(function(z){ return z.id !== f.id; }); closeModal(); after && after();
+      if (await deleteFaq(f)){ closeModal(); after && after(); }
     };
     $("#ff", m).addEventListener("submit", async function(e){
-      e.preventDefault(); var fd = new FormData(e.target);
+      e.preventDefault(); var fd = new FormData(e.target), btn = $(".form-actions .primary", m);
       var qt = fd.getAll("qt").join(", ");
       function v(k){ var x = String(fd.get(k) || "").trim(); return x || null; }
       var rec = { question: v("question"), qtype: qt || null, category: v("category") || catFromTypes(qt) || null, source: v("source") || "특수 문의", kind: v("source") === "반복 문의" ? v("kind") : null, asker_name: v("asker_name"), asker_dept: v("asker_dept"), asker_title: v("asker_title"),
         channel: v("channel"), asked_on: v("asked_on"), done_on: v("done_on"), status: v("status") || "완료", answerer: v("answerer"), caution: !!fd.get("caution"), detail: v("detail"), answer: v("answer") || "", updated_by: me.email, updated_at: new Date().toISOString() };
       if (rec.done_on && rec.asked_on && rec.done_on < rec.asked_on){ alert("완료 날짜가 문의 날짜보다 빠릅니다."); return; }
       if (isNew){ rec.sort = S.faq.length ? Math.max.apply(null, S.faq.map(function(z){ return z.sort || 0; })) + 1 : 1; }
+      btn.disabled = true; btn.textContent = added.length ? "이미지 올리는 중…" : "저장 중…";
+      var imgs = keep.slice();
+      for (var i = 0; i < added.length; i++){
+        var a = added[i], ext = ((a.file.name.split(".").pop() || "png").toLowerCase().replace(/[^a-z0-9]/g, "")) || "png";
+        var path = "faq/" + todayStr().slice(0, 7) + "/" + Date.now().toString(36) + "-" + i + "." + ext;
+        var up = await sb.storage.from(BUCKET).upload(path, a.file, { upsert: false, contentType: a.file.type });
+        if (up.error){ alert("이미지를 올리지 못했습니다: " + up.error.message); btn.disabled = false; btn.textContent = "저장"; return; }
+        imgs.push({ path: path, name: a.file.name, size: a.file.size });
+      }
+      rec.images = imgs;
       var x = isNew ? await sb.from("portal_faq").insert(rec).select("*") : await sb.from("portal_faq").update(rec).eq("id", f.id).select("*");
-      if (x.error || !x.data || !x.data.length){ alert("저장하지 못했습니다: " + errMsg(x)); return; }
+      if (x.error || !x.data || !x.data.length){ alert("저장하지 못했습니다: " + errMsg(x)); btn.disabled = false; btn.textContent = "저장"; return; }
+      if (removed.length) sb.storage.from(BUCKET).remove(removed.map(function(r){ return r.path; })).then(function(){});
+      added.forEach(function(a){ URL.revokeObjectURL(a.url); });
       if (isNew) S.faq.push(x.data[0]); else Object.assign(f, x.data[0]);
       logp("faq", isNew ? "add" : "edit", rec.question); closeModal(); toast("FAQ를 저장했습니다."); after && after();
     });
   }
+  async function signedUrls(list){
+    if (!list || !list.length) return [];
+    var r = await sb.storage.from(BUCKET).createSignedUrls(list.map(function(x){ return x.path; }), 600);
+    if (r.error || !r.data) return [];
+    return r.data.map(function(d){ return d.signedUrl; });
+  }
+  async function deleteFaq(f){
+    var x = await sb.from("portal_faq").delete().eq("id", f.id).select("id");
+    if (x.error || !x.data || !x.data.length){ alert("삭제하지 못했습니다: " + errMsg(x)); return false; }
+    if ((f.images || []).length) sb.storage.from(BUCKET).remove(f.images.map(function(r){ return r.path; })).then(function(){});
+    S.faq = S.faq.filter(function(z){ return z.id !== f.id; }); logp("faq", "delete", f.question);
+    return true;
+  }
   function faqDetail(f, after){
-    var w = can("home.faq", "write");
-    var m = showModal('<div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start"><div><div style="display:flex;gap:6px;flex-wrap:wrap">' + srcBadge(f) + (f.category ? '<span class="badge info">' + esc(f.category) + '</span>' : '') + statusBadge(f.status) + (f.kind ? '<span class="badge neutral">' + esc(f.kind) + '</span>' : '') + (f.caution ? '<span class="badge danger">주의</span>' : '') + '</div>' +
+    var w = can("home.faq", "write"), imgs = f.images || [];
+    var m = showModal('<div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start"><div><div style="display:flex;gap:6px;flex-wrap:wrap">' + srcBadge(f) + (f.category ? '<span class="badge info">' + esc(f.category) + '</span>' : '') + statusBadge(f.status) + (f.kind ? '<span class="badge neutral">' + esc(f.kind) + '</span>' : '') + (f.caution ? '<span class="badge danger">주의</span>' : '') + (imgs.length ? '<span class="badge neutral">🖼 ' + imgs.length + '</span>' : '') + '</div>' +
       '<h3 style="font-size:18px;margin-top:8px">' + esc(f.question) + '</h3></div><button class="btn sm ghost" id="fx">닫기 ✕</button></div>' +
       '<div class="faq-meta"><div><span class="hint">유형</span>' + (f.qtype ? String(f.qtype).split(",").map(function(t){ return '<span class="chip">' + esc(t.trim()) + '</span>'; }).join(" ") : '-') + '</div>' +
       '<div><span class="hint">질문자</span>' + asker(f) + '</div><div><span class="hint">문의 수단</span>' + esc(f.channel || "-") + '</div>' +
       '<div><span class="hint">문의 날짜</span>' + esc(f.asked_on || "-") + '</div><div><span class="hint">완료 날짜</span>' + esc(f.done_on || "-") + '</div><div><span class="hint">답변자</span>' + (f.answerer ? chip(f.answerer) : "-") + '</div></div>' +
       (f.detail ? '<h4 class="faq-h">문의 내용</h4><div class="faq-box wraptext">' + esc(f.detail) + '</div>' : '') +
       '<h4 class="faq-h">답변</h4><div class="faq-box wraptext">' + (f.answer ? esc(f.answer) : '<span class="hint">답변 준비 중</span>') + '</div>' +
+      (imgs.length ? '<h4 class="faq-h">첨부 이미지 (' + imgs.length + ')</h4><div class="img-grid view" id="fdImgs">' + imgs.map(function(im, i){ return '<a class="img-th" data-i="' + i + '" target="_blank" rel="noopener" title="' + esc(im.name || "") + ' · 눌러서 원본 보기"><img alt="' + esc(im.name || "첨부 이미지") + '"></a>'; }).join("") + '</div>' : '') +
       '<div class="modal-actions" style="margin-top:14px">' + (w ? '<button class="btn danger" id="fRm">삭제</button>' : '') + '<span style="margin-right:auto"></span>' + (f.source_url ? '<a class="btn sm ghost" href="' + esc(f.source_url) + '" target="_blank" rel="noopener">노션 원문 ↗</a>' : '') + (w ? '<button class="btn primary" id="fEd">수정</button>' : '') + '</div>', "wide");
+    if (imgs.length) signedUrls(imgs).then(function(urls){ $all("#fdImgs .img-th", m).forEach(function(a, i){ if (urls[i]){ a.href = urls[i]; a.querySelector("img").src = urls[i]; } }); });
     $("#fx", m).onclick = closeModal;
     if ($("#fEd", m)) $("#fEd", m).onclick = function(){ openFaq(f, after); };
     if ($("#fRm", m)) $("#fRm", m).onclick = async function(){
-      if (!confirm("'" + f.question + "' FAQ를 삭제할까요? 되돌릴 수 없습니다.")) return;
-      var x = await sb.from("portal_faq").delete().eq("id", f.id).select("id");
-      if (x.error || !x.data || !x.data.length){ alert("삭제하지 못했습니다: " + errMsg(x)); return; }
-      S.faq = S.faq.filter(function(z){ return z.id !== f.id; }); logp("faq", "delete", f.question); closeModal(); toast("FAQ를 삭제했습니다.");
-      if (location.hash.indexOf("#/faq/") === 0) history.replaceState(null, "", "#/faq");
+      if (!confirm("'" + f.question + "' FAQ를 삭제할까요? 되돌릴 수 없습니다." + (imgs.length ? " 첨부 이미지 " + imgs.length + "장도 함께 지워집니다." : ""))) return;
+      if (!(await deleteFaq(f))) return;
+      closeModal(); toast("FAQ를 삭제했습니다.");
+      if (location.hash.indexOf("#/faq/") === 0 && location.hash !== "#/faq/list") history.replaceState(null, "", "#/faq/list");
       after && after();
     };
   }
@@ -670,9 +722,10 @@
     var openId = arg && arg !== "list" && arg !== "dash" ? arg : null;
     faqTab = arg === "list" || openId ? "list" : "dash";
     if (openId){ faqCat = "전체"; faqQ = ""; faqKind = ""; faqType = ""; faqStatus = ""; faqAns = ""; faqSrc = ""; }
-    app.innerHTML = shell('<div class="cat-head"><div class="crumb"><a href="#/">홈</a> › FAQ</div><h1><span>💬</span>FAQ</h1><p class="hint" style="margin:4px 0 0;font-size:13px">자주 묻는 문의와 답변을 모으고, 카테고리별·기간별 문의 현황을 분석합니다. FAQ를 추가하거나 고치면 대시보드가 바로 갱신됩니다.</p>' +
-      '<nav class="tabs"><a href="#/faq" class="' + (faqTab === "dash" ? "on" : "") + '">FAQ 대시보드</a><a href="#/faq/list" class="' + (faqTab === "list" ? "on" : "") + '">FAQ 목록</a></nav></div>' +
-      '<div class="cat-wrap"><div class="cat-main" id="fqMain"></div></div>', "FAQ");
+    app.innerHTML = shell('<div class="cat-head"><div class="crumb"><a href="#/">홈</a> › FAQ</div><h1><span>💬</span>FAQ</h1><p class="hint" style="margin:4px 0 14px;font-size:13px">자주 묻는 문의와 답변을 모으고, 카테고리별·기간별 문의 현황을 분석합니다. FAQ를 추가하거나 고치면 대시보드가 바로 갱신됩니다.</p></div>' +
+      '<div class="cat-wrap"><aside class="side"><div class="side-title">FAQ</div>' +
+      '<a class="side-link' + (faqTab === "dash" ? " on" : "") + '" href="#/faq">📊 FAQ 대시보드</a><a class="side-link' + (faqTab === "list" ? " on" : "") + '" href="#/faq/list">📋 FAQ 목록 <span class="hint" style="margin-left:auto;font-size:11.5px">' + S.faq.length + '</span></a></aside>' +
+      '<div class="cat-main" id="fqMain"></div></div>', "FAQ");
     wireShell();
     drawFaqPage();
     if (openId){ var f = S.faq.filter(function(x){ return x.id === openId; })[0]; if (f) faqDetail(f, drawFaqPage); }
@@ -813,7 +866,7 @@
       '<div class="faq-tabs">' + cats.map(function(c){ return '<button data-fc="' + esc(c) + '" class="' + (c === faqCat ? "on" : "") + '">' + esc(c) + '</button>'; }).join("") + '</div>' +
       '<div class="tbl-box" style="max-height:640px"><table class="rec compact faq-tbl"><thead><tr><th>문의 구분</th><th>질문</th><th>유형</th><th>질문자 (이름/소속/직책)</th><th>문의날짜</th><th>완료날짜</th><th>진행현황</th><th>답변자</th></tr></thead><tbody>' +
       (list.length ? list.map(function(f){
-        return '<tr class="clk" data-fid="' + esc(f.id) + '" tabindex="0"><td>' + srcBadge(f) + '</td><td class="fq-t">' + (f.caution ? '<span class="badge danger" style="font-size:10px">주의</span> ' : '') + esc(f.question) + '</td><td class="fq-ty">' + esc(f.qtype || "") + '</td><td>' + asker(f) + '</td>' +
+        return '<tr class="clk" data-fid="' + esc(f.id) + '" tabindex="0"><td>' + srcBadge(f) + '</td><td class="fq-t">' + (f.caution ? '<span class="badge danger" style="font-size:10px">주의</span> ' : '') + esc(f.question) + ((f.images || []).length ? ' <span title="첨부 이미지 ' + f.images.length + '장">🖼</span>' : '') + '</td><td class="fq-ty">' + esc(f.qtype || "") + '</td><td>' + asker(f) + '</td>' +
           '<td>' + esc(f.asked_on || "") + '</td><td>' + esc(f.done_on || "") + '</td><td>' + statusBadge(f.status) + '</td><td>' + (f.answerer ? chip(f.answerer) : "") + '</td></tr>';
       }).join("") : '<tr><td colspan="8" class="hint" style="padding:18px">해당하는 FAQ가 없습니다.</td></tr>') + '</tbody></table></div></section>';
     host.innerHTML = h;

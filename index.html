@@ -656,6 +656,19 @@
   .rpt-h .rpt-m{font-size:12px;color:var(--ink-500);text-align:right;line-height:1.6;}
   #faqDash.printing{width:1360px;padding:8px;background:#fff;}
   #faqDash.printing .hb{cursor:default;}
+
+  /* ===== v8: FAQ images ===== */
+  .img-drop{border:1.5px dashed var(--line);border-radius:10px;padding:10px;display:flex;flex-direction:column;gap:8px;align-items:flex-start;}
+  .img-drop.over{border-color:var(--accent-500);background:var(--accent-050);}
+  .img-drop:focus-visible{outline:2px solid var(--accent-500);}
+  .img-grid{display:flex;flex-wrap:wrap;gap:8px;}
+  .img-th{position:relative;width:110px;height:84px;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:var(--paper-0);display:block;}
+  .img-th img{width:100%;height:100%;object-fit:cover;display:block;}
+  .img-th .ib{position:absolute;top:4px;right:4px;background:var(--surface);}
+  .img-th.new{border-color:var(--accent-500);}
+  .img-grid.view .img-th{width:160px;height:120px;cursor:zoom-in;}
+  .img-grid.view .img-th:hover{border-color:var(--accent-500);}
+  .side .side-link{margin:0 4px 2px;}
 </style>
 </head>
 <body>
