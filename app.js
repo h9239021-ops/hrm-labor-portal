@@ -1213,7 +1213,7 @@
   }
   var REC_DEF = {
     worktypes: { menu: "worktypes", list: "worktype", title: "근무형태 현황", noun: "근무형태",
-      fields: [["type", "구분", "select", ["모바일 출퇴근", "단시간근로자", "근로시간 단축자", "고정근무자", "재택근무 예외자"]], ["target", "이름", "text"], ["org", "소속", "text"], ["team", "팀", "text"],
+      fields: [["type", "구분", "multi", ["모바일 출퇴근", "단시간근로자", "근로시간 단축자", "고정근무자", "재택근무 예외자"]], ["target", "이름", "text"], ["org", "소속", "text"], ["team", "팀", "text"],
         ["start", "적용 시작", "date"], ["end", "적용 종료", "date"], ["weekly_hours", "1주 소정근로시간", "number"], ["tags", "태그", "text", "쉼표로 구분"], ["basis", "요청자·근거", "text"], ["content", "세부 내용", "textarea"]] },
     exceptions: { menu: "worktypes", list: "exception", title: "예외 이력", noun: "예외 이력",
       fields: [["type", "구분", "select", ["새벽·야간근무", "시간외근로 예외", "근무결과신청 예외", "재택·외근", "기타"]], ["target", "대상(성명·조직)", "text"], ["org", "소속", "text"], ["team", "팀", "text"],
@@ -1231,6 +1231,7 @@
     var m = showModal('<h3>' + esc(def.title) + ' · ' + (isNew ? "추가" : "수정") + '</h3>' + (defKey === "violations" ? '<p class="hint">적용 단계를 비워 두면 기준 단계(자동 계산)가 그대로 적용됩니다.</p>' : '') +
       '<form class="f" id="rf">' + def.fields.map(function(f){
         var v = d[f[0]] == null ? "" : d[f[0]];
+        if (f[2] === "multi"){ var cur = String(v || "").split(",").map(function(s){ return s.trim(); }); return '<div class="full"><div class="hint" style="font-size:12.5px;font-weight:600;margin-bottom:6px">' + f[1] + ' (여러 개 선택 가능)</div><div class="type-picks">' + f[3].map(function(o){ return '<label><input type="checkbox" name="' + f[0] + '" value="' + esc(o) + '"' + (cur.indexOf(o) >= 0 ? " checked" : "") + '>' + esc(o) + '</label>'; }).join("") + '</div></div>'; }
         if (f[2] === "select") return '<label>' + f[1] + '<select name="' + f[0] + '"><option value=""></option>' + f[3].map(function(o){ return '<option' + (o === v ? " selected" : "") + '>' + esc(o) + '</option>'; }).join("") + (v && f[3].indexOf(v) < 0 ? '<option selected>' + esc(v) + '</option>' : '') + '</select></label>';
         if (f[2] === "stepsel") return '<label>' + f[1] + '<select name="step"><option value="">자동(기준 단계)</option>' + STEP.map(function(s, i){ return i ? '<option value="' + i + '"' + (String(v) === String(i) ? " selected" : "") + '>' + s + '</option>' : ''; }).join("") + '</select></label>';
         if (f[2] === "exsel") return '<label>' + f[1] + '<select name="exclude"><option value="">포함</option><option value="1"' + (v ? " selected" : "") + '>제외</option></select></label>';
@@ -1247,8 +1248,9 @@
     };
     $("#rf", m).addEventListener("submit", async function(e){
       e.preventDefault(); var fd = new FormData(e.target), data = Object.assign({}, x ? x.data : {});
-      def.fields.forEach(function(f){ var v = fd.get(f[0]); v = v == null ? "" : String(v).trim(); if (f[2] === "number" && v !== "") v = +v; if (f[2] === "exsel") v = v ? true : ""; if (v !== "") data[f[0]] = v; else delete data[f[0]]; });
+      def.fields.forEach(function(f){ var v = f[2] === "multi" ? fd.getAll(f[0]).join(", ") : fd.get(f[0]); v = v == null ? "" : String(v).trim(); if (f[2] === "number" && v !== "") v = +v; if (f[2] === "exsel") v = v ? true : ""; if (v !== "") data[f[0]] = v; else delete data[f[0]]; });
       if (def.list) data.list = def.list;
+      if (def.fields[0][2] === "multi" && !data[def.fields[0][0]]){ alert(def.fields[0][1] + "을(를) 하나 이상 고르세요."); return; }
       if (defKey === "violations" && data.quarter && !/^\d{4}-[1-4]Q$/.test(data.quarter)){ alert("분기는 2026-3Q 형식으로 입력하세요."); return; }
       var r = isNew ? await sb.from("portal_records").insert({ cat: c.id, menu: def.menu, data: data, updated_by: me.email }).select("*")
                     : await sb.from("portal_records").update({ data: data, updated_by: me.email, updated_at: new Date().toISOString() }).eq("id", x.id).select("*");
@@ -1265,47 +1267,83 @@
 
   /* ---------- 근무형태 현황 (목록 + 팝업, 예외 이력 탭) ---------- */
   var wtFilter = { worktypes: { q: "", type: "", ended: true, org: "", team: "" }, exceptions: { q: "", type: "", ended: true, org: "", team: "" } };
+  var wtOpen = {};
+  var SHORT_T = "근로시간 단축자";
   function wtOrg(d){ return d.org || ""; }
   function wtTeam(d){ return d.team || (d.org ? "" : d.dept || ""); }
+  function wtTypes(d){ return String(d.type || "").split(",").map(function(s){ return s.trim(); }).filter(Boolean); }
+  function wtHas(d, t){ return wtTypes(d).indexOf(t) >= 0; }
+  function typeBadges(d){ var l = wtTypes(d); return l.length ? l.map(function(t){ return '<span class="badge info">' + esc(t) + '</span>'; }).join(" ") : '<span class="badge neutral">-</span>'; }
+  // 단축근무 사용 회차: 같은 이름의 단축 기록을 시작일 순으로 번호 매김
+  function shortRounds(records){
+    var by = {}, out = {};
+    records.forEach(function(x){ if (!wtHas(x.data, SHORT_T)) return; var k = String(x.data.target || "").trim(); (by[k] = by[k] || []).push(x); });
+    Object.keys(by).forEach(function(k){
+      var l = by[k].sort(function(a, b){ return String(a.data.start || "").localeCompare(String(b.data.start || "")); });
+      l.forEach(function(x, i){ out[x.id] = { n: i + 1, total: l.length, key: k, list: l }; });
+    });
+    return out;
+  }
   async function renderWorktypes(c, tab){
     var host = $("#cm"), key = "att.worktypes", def = REC_DEF[tab], f = wtFilter[tab];
     try { await loadRecs("att", "worktypes"); } catch(err){ host.innerHTML = '<div class="banner danger">불러오지 못했습니다: ' + esc(err.message) + '</div>'; return; }
     if (!$("#cm")) return;
     var all = S.recs[key].filter(function(x){ return (x.data.list || "worktype") === def.list; });
-    var w = can(key, "write");
-    var byType = {}, byTypeAll = {}; all.forEach(function(x){ byTypeAll[x.data.type] = (byTypeAll[x.data.type] || 0) + 1; if (wtStatus(x.data) !== "종료") byType[x.data.type] = (byType[x.data.type] || 0) + 1; });
+    var w = can(key, "write"), rounds = tab === "worktypes" ? shortRounds(all) : {};
+    var byType = {}, byTypeAll = {};
+    all.forEach(function(x){ var on = wtStatus(x.data) !== "종료"; wtTypes(x.data).forEach(function(t){ byTypeAll[t] = (byTypeAll[t] || 0) + 1; if (on) byType[t] = (byType[t] || 0) + 1; }); });
     var orgs = []; all.forEach(function(x){ var o = wtOrg(x.data); if (o && orgs.indexOf(o) < 0) orgs.push(o); }); orgs.sort();
     var teams = []; all.forEach(function(x){ var t = wtTeam(x.data); if (t && (!f.org || wtOrg(x.data) === f.org) && teams.indexOf(t) < 0) teams.push(t); }); teams.sort();
     if (f.team && teams.indexOf(f.team) < 0) f.team = "";
     host.innerHTML = '<nav class="subtabs"><a href="#/c/att/worktypes" class="' + (tab === "worktypes" ? "on" : "") + '">근무형태 현황</a><a href="#/c/att/worktypes/exceptions" class="' + (tab === "exceptions" ? "on" : "") + '">예외 이력</a></nav>' +
-      '<div class="hint" style="font-size:12.5px;margin:-4px 0 12px">' + (tab === "worktypes" ? "기본 근무형태(선택적 근로시간제)와 다르게 근무하는 인원입니다. 단시간근로자·근로시간 단축자의 1주 소정근로시간은 근태 위반자 관리 › 자동 필터링의 개인별 의무 근로시간 기준으로 쓰입니다. 휴가·휴직자는 휴가/휴직 현황에서 관리합니다." : "개인·조직별로 근태 기준과 다르게 처리한 예외 이력입니다.") + ' 행을 누르면 세부 내용이 열립니다.</div>' +
+      '<div class="hint" style="font-size:12.5px;margin:-4px 0 12px">' + (tab === "worktypes" ? "기본 근무형태(선택적 근로시간제)와 다르게 근무하는 인원입니다. 단시간근로자·근로시간 단축자의 1주 소정근로시간은 근태 위반자 관리 › 자동 필터링의 개인별 의무 근로시간 기준으로 쓰입니다. 근로시간 단축을 여러 번 쓴 사람은 한 줄로 묶이고 ▸를 누르면 이전 사용 내역이 펼쳐집니다." : "개인·조직별로 근태 기준과 다르게 처리한 예외 이력입니다.") + ' 행을 누르면 세부 내용이 열립니다.</div>' +
       '<div class="mini-stats">' + def.fields[0][3].map(function(t){ return '<button class="ms ms-btn' + (f.type === t ? " on" : "") + '" data-ft="' + esc(t) + '">' + esc(t) + '<b>' + (byType[t] || 0) + '</b><small class="hint" style="display:block;font-size:10.5px;font-weight:500">적용 중 · 전체 ' + (byTypeAll[t] || 0) + '</small></button>'; }).join("") + '</div>' +
       '<div class="rec-tools"><select id="fOrg"><option value="">전체 소속</option>' + orgs.map(function(o){ return '<option' + (o === f.org ? " selected" : "") + '>' + esc(o) + '</option>'; }).join("") + '</select>' +
       '<select id="fTeam"><option value="">전체 팀</option>' + teams.map(function(t){ return '<option' + (t === f.team ? " selected" : "") + '>' + esc(t) + '</option>'; }).join("") + '</select>' +
       '<input type="search" id="fT" placeholder="이름·소속·팀·내용 검색" value="' + esc(f.q) + '"><label class="hint" style="font-size:12.5px;display:flex;gap:4px;align-items:center"><input type="checkbox" id="fE"' + (f.ended ? " checked" : "") + '> 종료된 항목 포함</label><span class="grow"></span>' +
       '<span class="hint" id="wtCnt" style="font-size:12px"></span><button class="btn sm" id="rCsv">CSV 내려받기</button>' + (w ? '<button class="btn sm primary" id="rAdd">+ ' + esc(def.noun) + ' 추가</button>' : '') + '</div>' +
       '<div id="wtTbl"></div>';
+    function stBadge(d){ var s = wtStatus(d); return '<span class="badge ' + (s === "종료" ? "neutral" : s === "예정" ? "warn" : "good") + '">' + s + '</span>'; }
     var cols = tab === "worktypes"
-      ? [["구분", function(d){ return '<span class="badge info">' + esc(d.type || "-") + '</span>'; }], ["이름", function(d){ return '<b>' + esc(d.target || "") + '</b>'; }], ["소속", function(d){ return esc(wtOrg(d)); }], ["팀", function(d){ return esc(wtTeam(d)); }],
+      ? [["구분", function(d){ return typeBadges(d); }], ["이름", function(d){ return '<b>' + esc(d.target || "") + '</b>'; }], ["소속", function(d){ return esc(wtOrg(d)); }], ["팀", function(d){ return esc(wtTeam(d)); }],
+         ["사용 회차", function(d, x){ var r = rounds[x.id]; return r ? '<span class="round">' + r.n + '회차</span>' + (r.total > 1 ? ' <span class="hint" style="font-size:11px">/ 총 ' + r.total + '회</span>' : '') : ''; }],
          ["적용기간", function(d){ return esc((d.start || "") + (d.start || d.end ? " ~ " : "") + (d.end || "")); }], ["1주 소정근로시간", function(d){ return d.weekly_hours ? esc(d.weekly_hours) + "시간" : ""; }],
-         ["태그", function(d){ return esc(d.tags || ""); }], ["상태", function(d){ var s = wtStatus(d); return '<span class="badge ' + (s === "종료" ? "neutral" : s === "예정" ? "warn" : "good") + '">' + s + '</span>'; }]]
-      : [["구분", function(d){ return '<span class="badge info">' + esc(d.type || "-") + '</span>'; }], ["대상", function(d){ return '<b>' + esc(d.target || "") + '</b>'; }], ["소속", function(d){ return esc(wtOrg(d)); }], ["팀", function(d){ return esc(wtTeam(d)); }],
-         ["적용일", function(d){ return esc((d.start || "") + (d.end ? " ~ " + d.end : "")); }], ["태그", function(d){ return esc(d.tags || ""); }], ["상태", function(d){ var s = wtStatus(d); return '<span class="badge ' + (s === "종료" ? "neutral" : "good") + '">' + s + '</span>'; }]];
+         ["태그", function(d){ return esc(d.tags || ""); }], ["상태", function(d){ return stBadge(d); }]]
+      : [["구분", function(d){ return typeBadges(d); }], ["대상", function(d){ return '<b>' + esc(d.target || "") + '</b>'; }], ["소속", function(d){ return esc(wtOrg(d)); }], ["팀", function(d){ return esc(wtTeam(d)); }],
+         ["적용일", function(d){ return esc((d.start || "") + (d.end ? " ~ " + d.end : "")); }], ["태그", function(d){ return esc(d.tags || ""); }], ["상태", function(d){ return stBadge(d); }]];
     var list = [];
     function rer(){ renderWorktypes(c, tab); }
     // only the table is redrawn while typing, so the search box keeps focus (한글 입력 유지)
     function drawTable(){
-      var q = f.q.trim();
-      list = all.filter(function(x){ var d = x.data; return (f.ended || wtStatus(d) !== "종료") && (!f.type || d.type === f.type) && (!f.org || wtOrg(d) === f.org) && (!f.team || wtTeam(d) === f.team) &&
-        (!q || [d.target, d.org, d.team, d.dept, d.content, d.basis, d.tags].join(" ").indexOf(q) >= 0); })
-        .sort(function(a, b){ return def.fields[0][3].indexOf(a.data.type) - def.fields[0][3].indexOf(b.data.type) || (wtStatus(a.data) === "종료") - (wtStatus(b.data) === "종료") || String(b.data.start || "").localeCompare(String(a.data.start || "")) || String(a.data.target).localeCompare(String(b.data.target)); });
-      $("#wtCnt").textContent = list.length + "건";
-      $("#wtTbl").innerHTML = '<div class="tbl-box"><table class="rec compact"><thead><tr>' + cols.map(function(c2){ return '<th>' + c2[0] + '</th>'; }).join("") + '</tr></thead><tbody>' +
-        (list.length ? list.map(function(x){ return '<tr class="clk' + (wtStatus(x.data) === "종료" ? " ended" : "") + '" data-rid="' + x.id + '" tabindex="0">' + cols.map(function(c2){ return '<td>' + c2[1](x.data) + '</td>'; }).join("") + '</tr>'; }).join("")
-          : '<tr><td colspan="' + cols.length + '" class="hint" style="padding:18px">해당하는 항목이 없습니다.</td></tr>') + '</tbody></table></div>';
-      $all("#wtTbl tr[data-rid]").forEach(function(tr){
-        function open(){ wtDetail(c, tab, S.recs[key].filter(function(x){ return x.id === tr.dataset.rid; })[0], rer); }
-        tr.onclick = open; tr.onkeydown = function(e){ if (e.key === "Enter") open(); };
+      var q = f.q.trim(), types = def.fields[0][3];
+      function firstIdx(d){ var l = wtTypes(d); var m = 99; l.forEach(function(t){ var i = types.indexOf(t); if (i >= 0 && i < m) m = i; }); return m; }
+      list = all.filter(function(x){ var d = x.data; return (f.ended || wtStatus(d) !== "종료") && (!f.type || wtHas(d, f.type)) && (!f.org || wtOrg(d) === f.org) && (!f.team || wtTeam(d) === f.team) &&
+        (!q || [d.target, d.org, d.team, d.dept, d.content, d.basis, d.tags, d.type].join(" ").indexOf(q) >= 0); });
+      // 단축근무: 같은 이름은 최근 기록 한 줄로 묶고 나머지는 펼침 행으로
+      var groups = {}, shown = [];
+      list.forEach(function(x){ var r = rounds[x.id]; if (r){ (groups[r.key] = groups[r.key] || []).push(x); } else shown.push({ x: x, kids: [] }); });
+      Object.keys(groups).forEach(function(k){
+        var g = groups[k].sort(function(a, b){ return String(b.data.start || "").localeCompare(String(a.data.start || "")); });
+        shown.push({ x: g[0], kids: g.slice(1) });
+      });
+      shown.sort(function(a, b){ var A = a.x.data, B = b.x.data; return firstIdx(A) - firstIdx(B) || (wtStatus(A) === "종료") - (wtStatus(B) === "종료") || String(B.start || "").localeCompare(String(A.start || "")) || String(A.target).localeCompare(String(B.target)); });
+      function tr(x, extra, child){
+        return '<tr class="clk' + (wtStatus(x.data) === "종료" ? " ended" : "") + (child ? " kid" : "") + '" data-rid="' + x.id + '" tabindex="0"' + (child && !wtOpen[child] ? ' hidden' : '') + (child ? ' data-kid="' + esc(child) + '"' : '') + '>' +
+          cols.map(function(c2, i){ return '<td>' + (i === 1 && extra ? extra : '') + (i === 1 && child ? '<span class="kid-mark">└</span>' : '') + c2[1](x.data, x) + '</td>'; }).join("") + '</tr>';
+      }
+      var rowsHtml = shown.map(function(s){
+        var k = rounds[s.x.id] && rounds[s.x.id].key;
+        var tog = s.kids.length ? '<button class="tog" data-tog="' + esc(k) + '" title="이전 사용 내역 ' + s.kids.length + '건 ' + (wtOpen[k] ? "접기" : "펼치기") + '">' + (wtOpen[k] ? "▾" : "▸") + '</button>' : (tab === "worktypes" ? '<span class="tog-sp"></span>' : '');
+        return tr(s.x, tog) + s.kids.map(function(x){ return tr(x, '<span class="tog-sp"></span>', k); }).join("");
+      }).join("");
+      $("#wtCnt").textContent = list.length + "건" + (Object.keys(groups).length ? " · 단축근무 " + Object.keys(groups).length + "명" : "");
+      $("#wtTbl").innerHTML = '<div class="tbl-box"><table class="rec compact wt-tbl"><thead><tr>' + cols.map(function(c2){ return '<th>' + c2[0] + '</th>'; }).join("") + '</tr></thead><tbody>' +
+        (shown.length ? rowsHtml : '<tr><td colspan="' + cols.length + '" class="hint" style="padding:18px">해당하는 항목이 없습니다.</td></tr>') + '</tbody></table></div>';
+      $all("#wtTbl [data-tog]").forEach(function(b){ b.onclick = function(e){ e.stopPropagation(); var k = b.dataset.tog; wtOpen[k] = !wtOpen[k];
+        $all('#wtTbl tr[data-kid]').forEach(function(r){ if (r.dataset.kid === k) r.hidden = !wtOpen[k]; }); b.textContent = wtOpen[k] ? "▾" : "▸"; }; });
+      $all("#wtTbl tr[data-rid]").forEach(function(row){
+        function open(){ wtDetail(c, tab, S.recs[key].filter(function(x){ return x.id === row.dataset.rid; })[0], rer); }
+        row.onclick = open; row.onkeydown = function(e){ if (e.key === "Enter") open(); };
       });
     }
     drawTable();
@@ -1314,17 +1352,20 @@
     $("#fOrg").onchange = function(e){ f.org = e.target.value; f.team = ""; rer(); };
     $("#fTeam").onchange = function(e){ f.team = e.target.value; drawTable(); };
     $("#fT").addEventListener("input", function(e){ f.q = e.target.value; drawTable(); });
-    $("#rCsv").onclick = function(){ downloadCsv(def.title, def.fields.map(function(f2){ return [f2[1], function(x){ return f2[0] === "org" ? wtOrg(x.data) : f2[0] === "team" ? wtTeam(x.data) : x.data[f2[0]]; }]; }).concat([["상태", function(x){ return wtStatus(x.data); }]]), list); };
+    $("#rCsv").onclick = function(){ downloadCsv(def.title, def.fields.map(function(f2){ return [f2[1], function(x){ return f2[0] === "org" ? wtOrg(x.data) : f2[0] === "team" ? wtTeam(x.data) : x.data[f2[0]]; }]; }).concat([["사용 회차", function(x){ var r = rounds[x.id]; return r ? r.n + "/" + r.total : ""; }], ["상태", function(x){ return wtStatus(x.data); }]]), list); };
     if ($("#rAdd")) $("#rAdd").onclick = function(){ openRecord(c, tab, null, rer); };
   }
   function wtDetail(c, tab, x, after){
     var def = REC_DEF[tab], d = x.data, key = "att.worktypes";
     var canEd = can(key, "edit") || (can(key, "write") && String(x.created_by || "").toLowerCase() === me.email);
-    var m = showModal('<div style="display:flex;justify-content:space-between;gap:10px"><div><span class="badge info">' + esc(d.type || "-") + '</span> <span class="badge ' + (wtStatus(d) === "종료" ? "neutral" : "good") + '">' + wtStatus(d) + '</span><h3 style="font-size:18px;margin-top:6px">' + esc(d.target || "") + '</h3><div class="hint" style="font-size:12.5px">' + esc([wtOrg(d), wtTeam(d)].filter(Boolean).join(" · ")) + '</div></div><button class="btn sm ghost" id="dx">닫기 ✕</button></div>' +
+    var r = tab === "worktypes" ? shortRounds(S.recs[key])[x.id] : null;
+    var hist = r && r.total > 1 ? '<h4 style="margin:14px 0 6px;font-size:13px">근로시간 단축 사용 내역 (총 ' + r.total + '회)</h4><div class="tbl-box"><table class="rec compact"><thead><tr><th>회차</th><th>적용기간</th><th>단축</th><th>1주 소정근로시간</th><th>상태</th><th>문서</th></tr></thead><tbody>' +
+      r.list.map(function(y, i){ var e = y.data; var m = /1일 (\d+(?:\.\d+)?)시간 단축/.exec(e.content || ""); return '<tr class="' + (y.id === x.id ? "cur" : "") + '"><td><b>' + (i + 1) + '회차</b></td><td>' + esc((e.start || "") + " ~ " + (e.end || "")) + '</td><td>' + esc((e.tags || "").replace(" 근로시간 단축", "")) + (m ? " · 1일 " + m[1] + "h" : "") + '</td><td>' + (e.weekly_hours ? esc(e.weekly_hours) + "시간" : "") + '</td><td>' + esc(wtStatus(e)) + '</td><td style="font-size:12px">' + esc(e.basis || "") + '</td></tr>'; }).join("") + '</tbody></table></div>' : '';
+    var m = showModal('<div style="display:flex;justify-content:space-between;gap:10px"><div>' + typeBadges(d) + ' <span class="badge ' + (wtStatus(d) === "종료" ? "neutral" : "good") + '">' + wtStatus(d) + '</span>' + (r ? ' <span class="badge neutral">' + r.n + '회차' + (r.total > 1 ? ' / 총 ' + r.total + '회' : '') + '</span>' : '') + '<h3 style="font-size:18px;margin-top:6px">' + esc(d.target || "") + '</h3><div class="hint" style="font-size:12.5px">' + esc([wtOrg(d), wtTeam(d)].filter(Boolean).join(" · ")) + '</div></div><button class="btn sm ghost" id="dx">닫기 ✕</button></div>' +
       '<div class="kv" style="margin-top:12px">' + def.fields.filter(function(f){ return ["type", "target", "org", "team", "content"].indexOf(f[0]) < 0; }).map(function(f){ var v = d[f[0]]; return '<div class="row"><span class="hint">' + f[1] + '</span><span>' + (v == null || v === "" ? '<span class="hint">-</span>' : esc(v) + (f[0] === "weekly_hours" ? "시간" : "")) + '</span></div>'; }).join("") +
       (d.op_flag ? '<div class="row"><span class="hint">운영여부(원본)</span><span>' + esc(d.op_flag) + '</span></div>' : '') + '</div>' +
-      '<h4 style="margin:14px 0 6px;font-size:13px">세부 내용</h4><div class="wraptext" style="font-size:13.5px;line-height:1.65;background:var(--paper-0);border-radius:10px;padding:12px 14px">' + (d.content ? esc(d.content) : '<span class="hint">-</span>') + '</div>' +
-      '<div class="modal-actions" style="margin-top:14px"><span class="hint" style="font-size:11.5px;margin-right:auto">' + esc(x.updated_by || x.created_by || "") + ' · ' + esc(String(x.updated_at || x.created_at || "").slice(0, 10)) + '</span>' + (canEd ? '<button class="btn primary" id="dEd">수정</button>' : '') + '</div>', "mid");
+      '<h4 style="margin:14px 0 6px;font-size:13px">세부 내용</h4><div class="wraptext" style="font-size:13.5px;line-height:1.65;background:var(--paper-0);border-radius:10px;padding:12px 14px">' + (d.content ? esc(d.content) : '<span class="hint">-</span>') + '</div>' + hist +
+      '<div class="modal-actions" style="margin-top:14px"><span class="hint" style="font-size:11.5px;margin-right:auto">' + esc(x.updated_by || x.created_by || "") + ' · ' + esc(String(x.updated_at || x.created_at || "").slice(0, 10)) + '</span>' + (canEd ? '<button class="btn primary" id="dEd">수정</button>' : '') + '</div>', r && r.total > 1 ? "wide" : "mid");
     $("#dx", m).onclick = closeModal;
     if ($("#dEd", m)) $("#dEd", m).onclick = function(){ openRecord(c, tab, x, after); };
   }
@@ -1430,7 +1471,7 @@
     var mStart = new Date(F.year, F.month - 1, 1), mEnd = new Date(F.year, F.month, 0);
     // 근무형태 현황: 단시간근로자·근로시간 단축자 → 개인별 기준
     var wt = {}; (S.recs["att.worktypes"] || []).forEach(function(x){ var d = x.data; if ((d.list || "worktype") !== "worktype" || !d.target) return;
-      if (d.start && parseD(d.start) > mEnd) return; if (d.end && parseD(d.end) < mStart) return; wt[d.target] = d; });
+      if (d.start && parseD(d.start) > mEnd) return; if (d.end && parseD(d.end) < mStart) return; if (d.ended) return; wt[d.target] = d; });
     function mvx(r, map, k){ return map[k] ? r[map[k]] : undefined; }
     var rows1 = f1 ? f1.rows.map(function(r){
       var date = pDate(mvx(r, f1.map, "date")), name = String(mvx(r, f1.map, "name") || "").trim();
@@ -1458,7 +1499,7 @@
       f2.rows.forEach(function(r){
         var name = String(r[f2.map.name] || "").trim(); if (!name) return;
         var actual = pHours(r[f2.map.actual]), base = minH, w = wt[name];
-        if (w && w.weekly_hours && (w.type === "단시간근로자" || w.type === "근로시간 단축자")) base = Math.round(minH * (+w.weekly_hours) / 40 * 100) / 100;
+        if (w && w.weekly_hours && (wtHas(w, "단시간근로자") || wtHas(w, "근로시간 단축자"))) base = Math.round(minH * (+w.weekly_hours) / 40 * 100) / 100;
         var adj = actual + (excess[name] || 0) / 60;
         if (adj < base) res.under.push({ k: "under|" + name, name: name, dept: (res.people[name] || {}).dept || "", email: (res.people[name] || {}).email || "", actual: Math.round(actual * 100) / 100, excess: Math.round((excess[name] || 0) / 60 * 100) / 100, adj: Math.round(adj * 100) / 100, base: base, short_h: Math.round((base - adj) * 100) / 100, note: note(name), exd: exDefault(name) });
       });

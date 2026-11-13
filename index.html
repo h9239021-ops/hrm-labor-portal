@@ -671,14 +671,23 @@
   .side .side-link{margin:0 4px 2px;}
 
   #faqTop{flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;}
+
+  /* ===== v10: 단축근무 회차 묶음 ===== */
+  .wt-tbl .tog{all:unset;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:5px;margin-right:6px;font-size:11px;color:var(--accent-700);background:var(--accent-050);border:1px solid var(--accent-100);vertical-align:-3px;}
+  .wt-tbl .tog:hover{background:var(--accent-100);}
+  .wt-tbl .tog-sp{display:inline-block;width:24px;}
+  .wt-tbl tr.kid td{background:var(--paper-50);font-size:12.5px;}
+  .wt-tbl .kid-mark{color:var(--ink-300);margin-right:4px;}
+  .round{font-weight:700;color:var(--ink-900);}
+  table.rec tr.cur td{background:var(--accent-050);}
 </style>
 </head>
 <body>
 <div id="app"></div>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script src="config.js?v=202611131720"></script>
-<script src="logo.js?v=202611131720"></script>
-<script src="app.js?v=202611131720"></script>
+<script src="config.js?v=202611131730"></script>
+<script src="logo.js?v=202611131730"></script>
+<script src="app.js?v=202611131730"></script>
 </body>
 </html>
