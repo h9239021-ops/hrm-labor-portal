@@ -1958,16 +1958,16 @@
   var AM_WHEN = [["rel", "기준일 기준 D±n일"], ["monthly", "매월 정해진 날 일괄"]];
   var AM_VARS = "{이름} {소속} {팀} {구분} {시작일} {종료일} {복직일} {일수} {담당자}";
   var amTab = "rules";
-  function amSrcRecs(src){
-    var p = String(src || "").split(":"), kind = p[0], t = p[1];
+  function amSrcRecs(src, tagq){
+    var p = String(src || "").split(":"), kind = p[0], t = p[1]; tagq = String(tagq || "").trim();
     var recs = kind === "wt" ? (S.recs["att.worktypes"] || []).filter(function(x){ return (x.data.list || "worktype") === "worktype" && wtHas(x.data, t); }) : (S.recs[kind + ".status"] || []).filter(function(x){ return t === "*" || x.data.type === t; });
-    return recs.filter(function(x){ return !x.data.ended || kind !== "wt" || true; });
+    return recs.filter(function(x){ return !tagq || [x.data.tags, x.data.type, x.data.content].join(" ").indexOf(tagq) >= 0; });
   }
   function amEventDate(rule, d){ return rule.event === "end" ? d.end : rule.event === "return" ? (d.return_date || (d.end ? addDay(d.end, 1) : "")) : d.start; }
   // 오늘 기준으로 이 규칙이 보내야 할 대상 [{rec, date, due}]
   function amTargets(rule, today){
     var out = [], t = today || todayStr(), now = parseD(t);
-    amSrcRecs(rule.source).forEach(function(x){
+    amSrcRecs(rule.source, rule.tagq).forEach(function(x){
       var ev = amEventDate(rule, x.data); if (!ev) return;
       if (rule.when === "monthly"){
         var day = Math.min(+rule.day || 1, new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate()), base = new Date(now.getFullYear(), now.getMonth() + (rule.scope === "next" ? 1 : 0), 1), ym = ymd(base).slice(0, 7);
@@ -1999,7 +1999,7 @@
           return '<div class="am-rule' + (d.enabled ? " on" : "") + '"><div class="am-h"><div><b>' + esc(d.target) + '</b> <span class="badge ' + (d.enabled ? "good" : "neutral") + '">' + (d.enabled ? "켜짐" : "꺼짐") + '</span> <span class="badge info">' + (d.mode === "auto" ? "자동 발송" : "승인 후 발송") + '</span></div>' +
             '<div class="tools">' + (w ? '<button class="btn sm" data-amt="' + x.id + '">' + (d.enabled ? "끄기" : "켜기") + '</button><button class="btn sm" data-ame="' + x.id + '">수정</button>' : '') + '<button class="btn sm" data-amp="' + x.id + '">대상·본문 미리보기 (' + tg.length + ')</button></div></div>' +
             '<div class="hint" style="font-size:12.5px;margin-top:4px">대상: ' + esc((AM_SRC.filter(function(s){ return s[0] === d.source; })[0] || ["", d.source])[1]) + ' · 기준일: ' + (d.event === "end" ? "종료일" : d.event === "return" ? "복직일" : "시작일") + ' · ' +
-            (d.when === "monthly" ? "매월 " + (d.day || 1) + "일에 " + (d.scope === "next" ? "다음 달" : "이번 달") + " 해당자 일괄" : "기준일 " + ((+d.offset || 0) === 0 ? "당일" : (+d.offset < 0 ? (-d.offset) + "일 전" : d.offset + "일 후"))) + (d.cc ? " · 참조 " + esc(d.cc) : "") + '</div><div class="am-sub">제목: ' + esc(d.subject || "") + '</div></div>'; }).join("") : '<p class="hint" style="padding:14px">등록된 규칙이 없습니다.</p>') + '</div>';
+            (d.when === "monthly" ? "매월 " + (d.day || 1) + "일에 " + (d.scope === "next" ? "다음 달" : "이번 달") + " 해당자 일괄" : "기준일 " + ((+d.offset || 0) === 0 ? "당일" : (+d.offset < 0 ? (-d.offset) + "일 전" : d.offset + "일 후"))) + (d.tagq ? " · 조건: 「" + esc(d.tagq) + "」 포함" : "") + (d.to ? " · 고정 수신자 " + esc(d.to) : "") + (d.cc ? " · 참조 " + esc(d.cc) : "") + '</div><div class="am-sub">제목: ' + esc(d.subject || "") + '</div></div>'; }).join("") : '<p class="hint" style="padding:14px">등록된 규칙이 없습니다.</p>') + '</div>';
     } else if (amTab === "queue"){
       var qs = queue.slice().sort(function(a, b){ return String(b.data.due || "").localeCompare(String(a.data.due || "")); });
       h += '<div class="hint" style="font-size:12.5px;margin:0 0 12px">발송기가 만든 메일입니다. "승인 대기"는 내용을 확인하고 승인하면 다음 실행 때 발송됩니다. "주소 필요"는 수신 주소록에 이메일을 넣으면 다시 시도합니다.</div>' +
@@ -2029,7 +2029,7 @@
     function amPreview(x){
       var d = x.data, tg = amTargets(d);
       var m = showModal('<div style="display:flex;justify-content:space-between;gap:10px"><div><h3>' + esc(d.target) + ' · 대상 미리보기</h3><p class="hint" style="margin-top:4px">' + (d.when === "monthly" ? (d.scope === "next" ? "다음 달" : "이번 달") + " 해당자" : "발송 예정일이 3일 전~14일 뒤인 대상") + ' ' + tg.length + '명</p></div><button class="btn sm ghost" id="dx">닫기 ✕</button></div>' +
-        (tg.length ? '<div class="tbl-box" style="max-height:200px;margin-top:8px"><table class="rec compact" style="min-width:0"><thead><tr><th>발송 예정일</th><th>이름</th><th>소속</th><th>기준일</th><th>이메일</th></tr></thead><tbody>' + tg.map(function(t, i){ var r = t.rec.data, em = amEmail(people, r); return '<tr class="clk" data-pv="' + i + '"><td>' + t.due + '</td><td><b>' + esc(r.target || "") + '</b></td><td>' + esc([r.org, r.team].filter(Boolean).join(" ")) + '</td><td>' + esc(t.date) + '</td><td>' + (em ? esc(em) : '<span class="badge warn">주소 필요</span>') + '</td></tr>'; }).join("") + '</tbody></table></div>' : '<p class="hint" style="padding:12px 0">지금은 해당하는 대상이 없습니다.</p>') +
+        (tg.length ? '<div class="tbl-box" style="max-height:200px;margin-top:8px"><table class="rec compact" style="min-width:0"><thead><tr><th>발송 예정일</th><th>이름</th><th>소속</th><th>기준일</th><th>이메일</th></tr></thead><tbody>' + tg.map(function(t, i){ var r = t.rec.data, em = d.to || amEmail(people, r); return '<tr class="clk" data-pv="' + i + '"><td>' + t.due + '</td><td><b>' + esc(r.target || "") + '</b></td><td>' + esc([r.org, r.team].filter(Boolean).join(" ")) + '</td><td>' + esc(t.date) + '</td><td>' + (em ? esc(em) : '<span class="badge warn">주소 필요</span>') + '</td></tr>'; }).join("") + '</tbody></table></div>' : '<p class="hint" style="padding:12px 0">지금은 해당하는 대상이 없습니다.</p>') +
         '<h4 style="margin:14px 0 6px;font-size:13px">본문 미리보기' + (tg.length ? ' <span class="hint" style="font-weight:500">(대상 행을 누르면 그 사람 기준으로 바뀝니다)</span>' : '') + '</h4><div class="am-sub" id="pvS"></div><div class="wraptext" id="pvB" style="font-size:13.5px;line-height:1.7;background:var(--paper-0);border-radius:10px;padding:12px 14px"></div>', "wide");
       function show(r){ $("#pvS", m).textContent = "제목: " + amFill(d.subject, r); $("#pvB", m).textContent = amFill(d.body, r); }
       show(tg[0] ? tg[0].rec.data : { target: "홍길동", org: "MS", team: "○○팀", type: "예시", start: todayStr(), end: addDay(todayStr(), 30) });
@@ -2043,13 +2043,14 @@
         '<label>보내는 시점' + sel("when", AM_WHEN, d.when) + '</label><label>D±n일 (전은 음수, 예: -7)<input type="number" name="offset" value="' + esc(d.offset == null ? 0 : d.offset) + '"></label>' +
         '<label>매월 발송일 (일괄일 때)<input type="number" name="day" min="1" max="31" value="' + esc(d.day || 1) + '"></label><label>일괄 대상' + sel("scope", [["this", "이번 달 해당자"], ["next", "다음 달 해당자"]], d.scope || "this") + '</label>' +
         '<label>발송 방식' + sel("mode", [["approve", "승인 후 발송"], ["auto", "자동 발송"]], d.mode) + '</label><label>참조(CC)<input name="cc" value="' + esc(d.cc || "") + '" placeholder="쉼표로 구분"></label>' +
+        '<label>대상 조건 (태그·내용에 포함된 말)<input name="tagq" value="' + esc(d.tagq || "") + '" placeholder="예: 임신기 · 비우면 전체"></label><label>고정 수신자 (대상자 대신 받을 주소)<input name="to" value="' + esc(d.to || "") + '" placeholder="비우면 대상자 본인"></label>' +
         '<label class="full">제목<input name="subject" value="' + esc(d.subject || "") + '" required></label><label class="full">본문 <span class="hint" style="font-weight:500">쓸 수 있는 값: ' + AM_VARS + '</span><textarea name="body" rows="12" required>' + esc(d.body || "") + '</textarea></label>' +
         '<div class="form-actions">' + (x && can(key, "edit") ? '<button type="button" class="btn danger" id="amDel" style="margin-right:auto">삭제</button>' : '') + '<button type="button" class="btn ghost" id="amNo">취소</button><button class="btn primary">저장</button></div></form>', "wide");
       $("#amNo", m).onclick = closeModal;
       if ($("#amDel", m)) $("#amDel", m).onclick = async function(){ if (!confirm("이 규칙을 삭제할까요?")) return; var r = await sb.from("portal_records").delete().eq("id", x.id).select("id"); if (r.error || !r.data || !r.data.length){ alert("삭제하지 못했습니다: " + errMsg(r)); return; } S.recs[key] = all.filter(function(y){ return y.id !== x.id; }); closeModal(); rer(); };
       $("#amf", m).addEventListener("submit", async function(e){
         e.preventDefault(); var fd = new FormData(e.target), data = Object.assign({}, d);
-        ["target", "source", "event", "when", "scope", "mode", "cc", "subject", "body"].forEach(function(k){ data[k] = String(fd.get(k) || "").trim(); });
+        ["target", "source", "event", "when", "scope", "mode", "cc", "tagq", "to", "subject", "body"].forEach(function(k){ data[k] = String(fd.get(k) || "").trim(); });
         data.offset = +fd.get("offset") || 0; data.day = Math.max(1, Math.min(31, +fd.get("day") || 1)); data.list = "rule";
         var ok = x ? await save(x, data) : await add(data);
         if (ok){ logp(key, x ? "rule-edit" : "rule-add", data.target); closeModal(); toast("저장했습니다."); rer(); }

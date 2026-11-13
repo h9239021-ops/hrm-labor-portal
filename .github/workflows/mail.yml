@@ -1,0 +1,44 @@
+# 자동 메일 발송기: 근태 › 자동 메일의 규칙에 따라 메일을 만들고(승인 대기/발송 대기) 발송합니다.
+# 저장소 Settings › Secrets and variables › Actions 에 아래 값을 등록해야 동작합니다.
+#   SUPABASE_SERVICE_KEY  (Supabase › Project Settings › API › service_role key)
+#   SMTP_USER             (발신 WORKS 메일 주소)
+#   SMTP_PASS             (WORKS 외부 앱 비밀번호)
+#   선택: SMTP_HOST(기본 smtp.worksmobile.com), SMTP_PORT(기본 465), MAIL_SENDER_NAME(기본 "HRM팀 노무관리파트")
+name: auto-mail
+on:
+  schedule:
+    - cron: '10 0 * * 1-5'   # 평일 09:10 (KST)
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: '발송하지 않고 대상만 계산 (true/false)'
+        default: 'false'
+jobs:
+  send:
+    runs-on: ubuntu-latest
+    env:
+      SUPABASE_URL: https://pkvuhwzowniepnfadlky.supabase.co
+      SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+      SMTP_USER: ${{ secrets.SMTP_USER }}
+      SMTP_PASS: ${{ secrets.SMTP_PASS }}
+      SMTP_HOST: ${{ secrets.SMTP_HOST }}
+      SMTP_PORT: ${{ secrets.SMTP_PORT }}
+      MAIL_SENDER_NAME: ${{ secrets.MAIL_SENDER_NAME }}
+      DRY_RUN: ${{ github.event.inputs.dry_run }}
+    steps:
+      - name: Check secrets
+        id: chk
+        run: |
+          if [ -z "$SUPABASE_SERVICE_KEY" ]; then echo "SUPABASE_SERVICE_KEY 가 없어 아무 것도 하지 않습니다."; echo "ok=no" >> "$GITHUB_OUTPUT"; else echo "ok=yes" >> "$GITHUB_OUTPUT"; fi
+      - uses: actions/checkout@v4
+        if: steps.chk.outputs.ok == 'yes'
+      - uses: actions/setup-node@v4
+        if: steps.chk.outputs.ok == 'yes'
+        with:
+          node-version: 20
+      - name: Install
+        if: steps.chk.outputs.ok == 'yes'
+        run: npm install --no-save --no-audit --no-fund nodemailer@6 @supabase/supabase-js@2
+      - name: Run
+        if: steps.chk.outputs.ok == 'yes'
+        run: node scripts/send-mail.mjs

@@ -1,0 +1,36 @@
+# Supabase 프로젝트가 접속이 없어도 일시 정지되지 않도록 하루 한 번 읽기 요청을 보냅니다.
+# (공개 키만 사용합니다. RLS 때문에 데이터는 내려오지 않습니다.)
+name: keepalive
+on:
+  schedule:
+    - cron: '17 0 * * *'    # 매일 09:17 (KST)
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Supabase
+        run: |
+          set -e
+          URL=https://pkvuhwzowniepnfadlky.supabase.co
+          KEY=sb_publishable_pnFQ46hbfpaTWZrfpq6ahw_pJiqobW6
+          code=$(curl -s -o /dev/null -w '%{http_code}' "$URL/rest/v1/portal_staff?select=name&limit=1" -H "apikey: $KEY" -H "Authorization: Bearer $KEY")
+          echo "rest: $code"
+          auth=$(curl -s -o /dev/null -w '%{http_code}' "$URL/auth/v1/settings" -H "apikey: $KEY")
+          echo "auth: $auth"
+          test "$code" = "200"
+      # 저장소에 60일 동안 변경이 없으면 GitHub가 예약 실행을 끄기 때문에 매월 1일 표시 파일을 갱신합니다.
+      - uses: actions/checkout@v4
+        if: github.event_name == 'schedule'
+      - name: Monthly heartbeat commit
+        if: github.event_name == 'schedule'
+        run: |
+          if [ "$(date -u +%d)" = "01" ]; then
+            date -u +"%Y-%m-%dT%H:%M:%SZ" > .github/heartbeat.txt
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add .github/heartbeat.txt
+            git commit -m "heartbeat" && git push || echo "nothing to commit"
+          fi
