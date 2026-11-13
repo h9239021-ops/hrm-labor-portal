@@ -665,14 +665,76 @@
     else d = new Date(n.getFullYear(), n.getMonth() - (parseInt(p, 10) - 1), 1);
     return ymd(d);
   }
-  function renderFaqPage(openId){
-    if (openId){ faqCat = "전체"; faqQ = ""; faqKind = ""; faqType = ""; faqStatus = ""; faqAns = ""; }
-    app.innerHTML = shell('<div class="cat-head"><div class="crumb"><a href="#/">홈</a> › FAQ</div><h1><span>💬</span>FAQ</h1><p class="hint" style="margin:4px 0 0;font-size:13px">자주 묻는 문의와 답변을 모으고, 카테고리별·기간별 문의 현황을 분석합니다. FAQ를 추가하거나 고치면 분석이 바로 갱신됩니다.</p></div>' +
+  var faqTab = "dash", faqDash = null;
+  function renderFaqPage(arg){
+    var openId = arg && arg !== "list" && arg !== "dash" ? arg : null;
+    faqTab = arg === "list" || openId ? "list" : "dash";
+    if (openId){ faqCat = "전체"; faqQ = ""; faqKind = ""; faqType = ""; faqStatus = ""; faqAns = ""; faqSrc = ""; }
+    app.innerHTML = shell('<div class="cat-head"><div class="crumb"><a href="#/">홈</a> › FAQ</div><h1><span>💬</span>FAQ</h1><p class="hint" style="margin:4px 0 0;font-size:13px">자주 묻는 문의와 답변을 모으고, 카테고리별·기간별 문의 현황을 분석합니다. FAQ를 추가하거나 고치면 대시보드가 바로 갱신됩니다.</p>' +
+      '<nav class="tabs"><a href="#/faq" class="' + (faqTab === "dash" ? "on" : "") + '">FAQ 대시보드</a><a href="#/faq/list" class="' + (faqTab === "list" ? "on" : "") + '">FAQ 목록</a></nav></div>' +
       '<div class="cat-wrap"><div class="cat-main" id="fqMain"></div></div>', "FAQ");
     wireShell();
     drawFaqPage();
     if (openId){ var f = S.faq.filter(function(x){ return x.id === openId; })[0]; if (f) faqDetail(f, drawFaqPage); }
   }
+  /* ---------- FAQ 대시보드 내보내기 (경영진 보고용) ---------- */
+  function loadScript(src){ return new Promise(function(res, rej){ if (document.querySelector('script[src="' + src + '"]')) return res(); var s = document.createElement("script"); s.src = src; s.onload = res; s.onerror = function(){ rej(new Error("스크립트를 불러오지 못했습니다: " + src)); }; document.head.appendChild(s); }); }
+  function faqExportExcel(){
+    if (!window.XLSX || !faqDash){ alert("엑셀 도구를 불러오지 못했습니다. 새로고침 후 다시 시도하세요."); return; }
+    var D = faqDash, n = D.inP.length, sp = n - D.repAll, today = todayStr();
+    var pct = function(a, b){ return b ? Math.round(a / b * 1000) / 10 : 0; };
+    var wb = XLSX.utils.book_new();
+    function sheet(name, rows, widths){ var ws = XLSX.utils.aoa_to_sheet(rows); ws["!cols"] = widths.map(function(w){ return { wch: w }; }); XLSX.utils.book_append_sheet(wb, ws, name); }
+    sheet("요약", [
+      ["HRM 노무관리파트 FAQ 문의 현황"], [],
+      ["기간", D.plabel + " (" + (D.from || "전체") + " ~ " + today + ")"], ["기준일", today], ["작성", me.name], [],
+      ["항목", "값", "비고"],
+      ["기간 내 문의 건수", n, "전체 FAQ " + D.total + "건"],
+      ["이번 달 문의", D.cThis, "지난달 " + D.cPrev + "건"],
+      ["가장 많은 분류", D.catRows[0] ? D.catRows[0][0] : "-", D.catRows[0] ? D.catRows[0][1] + "건 (" + pct(D.catRows[0][1], n) + "%)" : ""],
+      ["진행 중 문의", D.open, ""],
+      ["반복 문의", D.repAll, pct(D.repAll, n) + "%"],
+      ["특수 문의", sp, pct(sp, n) + "%"],
+      ["최근 3개월 반복 문의 비율(%)", D.last3 == null ? "-" : Math.round(D.last3 * 10) / 10, D.prev3 == null ? "직전 3개월 데이터 없음" : "직전 3개월 " + Math.round(D.prev3 * 10) / 10 + "%"],
+      D.noDate ? ["날짜 없는 문의", D.noDate, "기간 분석에서 제외"] : []
+    ], [30, 26, 30]);
+    sheet("카테고리별", [["분류", "건수", "비율(%)"]].concat(D.catRows.map(function(r){ return [r[0], r[1], pct(r[1], n)]; })).concat([["합계", n, 100]]), [16, 10, 10]);
+    sheet("유형별", [["유형", "건수", "비율(%)"]].concat(Object.keys(D.byTypeP).sort(function(a, b){ return D.byTypeP[b] - D.byTypeP[a]; }).map(function(t){ return [t, D.byTypeP[t], pct(D.byTypeP[t], n)]; })), [18, 10, 10]);
+    sheet("월별 추이", [["월", "전체", "반복 문의", "특수 문의", "반복 비율(%)"]].concat(D.rs.map(function(x){ return [x.k, x.n, x.rep, x.sp, x.n ? pct(x.rep, x.n) : ""]; })), [10, 8, 10, 10, 12]);
+    sheet("문의 목록", [["문의 구분", "질문", "분류", "유형", "질문자", "소속", "직책", "문의날짜", "완료날짜", "진행현황", "답변자"]].concat(sortFaq(D.inP).map(function(f){ return [srcOf(f), f.question, f.category || "", f.qtype || "", f.asker_name || "", f.asker_dept || "", f.asker_title || "", f.asked_on || "", f.done_on || "", f.status || "", f.answerer || ""]; })), [10, 46, 10, 26, 10, 24, 8, 12, 12, 10, 10]);
+    XLSX.writeFile(wb, "FAQ_문의현황_" + D.plabel.replace(/\s/g, "") + "_" + today + ".xlsx");
+    logp("faq", "export", "xlsx " + D.plabel);
+  }
+  async function faqExportPdf(btn){
+    var el = $("#faqDash"); if (!el) return;
+    var label = btn.textContent; btn.disabled = true; btn.textContent = "PDF 만드는 중…";
+    var root = document.documentElement, prevTheme = root.getAttribute("data-theme");
+    try {
+      await loadScript("https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js");
+      await loadScript("https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js");
+      root.setAttribute("data-theme", "light"); el.classList.add("printing");
+      await new Promise(function(r){ setTimeout(r, 120); });
+      var canvas = await window.html2canvas(el, { scale: 2, backgroundColor: "#ffffff", logging: false });
+      if (!canvas || !canvas.width || !canvas.height) throw new Error("화면을 캡처하지 못했습니다.");
+      var pdf = new window.jspdf.jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
+      var pw = pdf.internal.pageSize.getWidth(), ph = pdf.internal.pageSize.getHeight(), mg = 10;
+      var iw = pw - mg * 2, pxPerMm = canvas.width / iw, pagePx = Math.max(200, Math.floor((ph - mg * 2) * pxPerMm));
+      for (var y = 0, page = 0; y < canvas.height; y += pagePx, page++){
+        var h = Math.min(pagePx, canvas.height - y), part = document.createElement("canvas"); part.width = canvas.width; part.height = h;
+        part.getContext("2d").drawImage(canvas, 0, y, canvas.width, h, 0, 0, canvas.width, h);
+        if (page) pdf.addPage();
+        pdf.addImage(part.toDataURL("image/jpeg", 0.9), "JPEG", mg, mg, iw, h / pxPerMm);
+      }
+      pdf.save("FAQ_문의현황_" + faqDash.plabel.replace(/\s/g, "") + "_" + todayStr() + ".pdf");
+      logp("faq", "export", "pdf " + faqDash.plabel);
+    } catch(err){ alert("PDF를 만들지 못했습니다: " + err.message); }
+    finally {
+      el.classList.remove("printing");
+      if (prevTheme == null) root.removeAttribute("data-theme"); else root.setAttribute("data-theme", prevTheme);
+      btn.disabled = false; btn.textContent = label;
+    }
+  }
+  function goFaqList(){ if (location.hash === "#/faq/list") drawFaqPage(); else location.hash = "#/faq/list"; }
   function drawFaqPage(){
     var host = $("#fqMain"); if (!host) return;
     var w = can("home.faq", "write"), from = periodStart(faqPeriod);
@@ -697,8 +759,12 @@
     var topTypes = Object.keys(byTypeP).sort(function(a, b){ return byTypeP[b] - byTypeP[a]; }).slice(0, 8), maxT = topTypes.length ? byTypeP[topTypes[0]] : 0;
     var plabel = PERIODS.filter(function(p){ return p[0] === faqPeriod; })[0][1];
 
-    var h = '<div class="rec-tools" role="group" aria-label="분석 기간">' + PERIODS.map(function(p){ return '<button class="btn sm' + (p[0] === faqPeriod ? " primary" : "") + '" data-pd="' + p[0] + '">' + p[1] + '</button>'; }).join("") +
-      '<span class="grow"></span><span class="hint" style="font-size:12px">문의 날짜 기준' + (noDate ? ' · 날짜 없는 ' + noDate + '건은 기간 분석에서 제외' : '') + '</span></div>';
+    var h = "";
+    if (faqTab === "dash"){
+    h += '<div class="rec-tools" role="group" aria-label="분석 기간">' + PERIODS.map(function(p){ return '<button class="btn sm' + (p[0] === faqPeriod ? " primary" : "") + '" data-pd="' + p[0] + '">' + p[1] + '</button>'; }).join("") +
+      '<span class="grow"></span><span class="hint" style="font-size:12px">문의 날짜 기준' + (noDate ? ' · 날짜 없는 ' + noDate + '건은 기간 분석에서 제외' : '') + '</span>' +
+      '<button class="btn sm" id="dPdf">⬇ PDF 다운로드</button><button class="btn sm" id="dXls">⬇ 엑셀 다운로드</button></div>';
+    h += '<div id="faqDash"><div class="rpt-h"><div><b>FAQ 문의 현황</b><span>HRM팀 노무관리파트</span></div><div class="rpt-m">기간: ' + esc(plabel) + ' (' + (from || (dated.length ? dated.map(faqDate).sort()[0] : "-")) + ' ~ ' + todayStr() + ')<br>기준일 ' + todayStr() + ' · 작성 ' + esc(me.name) + '</div></div>';
     h += '<div class="kpis">' +
       '<div class="kpi"><div class="k">' + esc(plabel) + ' 문의</div><div class="v">' + inP.length + '<small>건</small></div><div class="s">전체 ' + S.faq.length + '건</div></div>' +
       '<div class="kpi"><div class="k">이번 달</div><div class="v">' + cThis + '<small>건</small></div><div class="s">지난달 ' + cPrev + '건 · ' + (delta === 0 ? "변동 없음" : (delta > 0 ? "▲ " + delta : "▼ " + (-delta)) + "건") + '</div></div>' +
@@ -712,9 +778,7 @@
       '<section class="panel" style="margin-top:0"><div class="panel-head"><div><h2>기간별 문의 건수</h2><div class="desc">월별 · ' + months[0] + ' ~ ' + months[months.length - 1] + '</div></div></div>' +
       '<div class="cols" style="--n:' + months.length + '">' + months.map(function(k){ var v = byM[k] || 0;
         return '<div class="col" title="' + k + ': ' + v + '건"><span class="cv2">' + (v || "") + '</span><i style="height:' + (v / maxM * 100) + '%"></i><span class="cl">' + (k.slice(5) === "01" || k === months[0] ? k.slice(2, 4) + "." : "") + +k.slice(5) + '월</span></div>'; }).join("") + '</div></section></div>';
-    // list
-    var cats = ["전체"]; S.faq.forEach(function(f){ if (f.category && cats.indexOf(f.category) < 0) cats.push(f.category); });
-    var answerers = []; S.faq.forEach(function(f){ if (f.answerer && answerers.indexOf(f.answerer) < 0) answerers.push(f.answerer); });
+    }
     // 반복·특수 문의 추이 (월별)
     var rs = months.map(function(k){ var l = dated.filter(function(f){ return faqDate(f).slice(0, 7) === k; }); var r = l.filter(function(f){ return srcOf(f) === "반복 문의"; }).length; return { k: k, rep: r, sp: l.length - r, n: l.length }; });
     function share(arr){ var n = 0, r = 0; arr.forEach(function(x){ n += x.n; r += x.rep; }); return n ? r / n * 100 : null; }
@@ -722,6 +786,8 @@
     var repAll = inP.filter(function(f){ return srcOf(f) === "반복 문의"; }).length;
     function trendTxt(cur, prev, label){ if (cur == null) return label + " 데이터 없음"; if (prev == null) return label + " " + Math.round(cur) + "% (비교할 직전 기간 없음)"; var d = Math.round((cur - prev) * 10) / 10; return label + " " + Math.round(cur) + "% · 직전 3개월 " + Math.round(prev) + "% 대비 " + (d === 0 ? "변동 없음" : (d > 0 ? '<b class="up">▲ ' + d + '%p 증가</b>' : '<b class="down">▼ ' + (-d) + '%p 감소</b>')); }
     var maxN = Math.max.apply(null, rs.map(function(x){ return x.n; }).concat([1]));
+    faqDash = { plabel: plabel, from: from, inP: inP, total: S.faq.length, cThis: cThis, cPrev: cPrev, open: open, catRows: catRows, byTypeP: byTypeP, rs: rs, last3: last3, prev3: prev3, repAll: repAll, noDate: noDate };
+    if (faqTab === "dash")
     h += '<section class="panel"><div class="panel-head"><div><h2>반복 문의 · 특수 문의 추이</h2><div class="desc">' + esc(plabel) + ' 반복 ' + repAll + '건 · 특수 ' + (inP.length - repAll) + '건' + (inP.length ? ' (반복 ' + Math.round(repAll / inP.length * 100) + '%)' : '') + '</div></div>' +
       '<div class="legend"><span class="lg rep"></span>반복 문의<span class="lg sp"></span>특수 문의</div></div>' +
       '<div class="trend-note">' + trendTxt(last3, prev3, "최근 3개월 반복 문의 비율") + '<br>' + trendTxt(last3 == null ? null : 100 - last3, prev3 == null ? null : 100 - prev3, "최근 3개월 특수 문의 비율") + '</div>' +
@@ -731,11 +797,14 @@
       '<p class="hint" style="font-size:11.5px;margin:6px 0 0">막대 높이 = 월별 전체 문의 건수, 막대 위 % = 그 달의 반복 문의 비율. 반복 문의 비율이 늘면 FAQ로 해결할 수 있는 문의가 많다는 뜻입니다.</p>' +
       '<div class="scrollx" style="margin-top:10px"><table class="tbl" style="min-width:0"><thead><tr><th>월</th>' + rs.map(function(x){ return '<th class="n">' + +x.k.slice(5) + '월</th>'; }).join("") + '</tr></thead><tbody>' +
       '<tr><td>반복</td>' + rs.map(function(x){ return '<td class="n">' + x.rep + '</td>'; }).join("") + '</tr><tr><td>특수</td>' + rs.map(function(x){ return '<td class="n">' + x.sp + '</td>'; }).join("") + '</tr>' +
-      '<tr><td>반복 비율</td>' + rs.map(function(x){ return '<td class="n">' + (x.n ? Math.round(x.rep / x.n * 100) + "%" : "-") + '</td>'; }).join("") + '</tr></tbody></table></div></section>';
+      '<tr><td>반복 비율</td>' + rs.map(function(x){ return '<td class="n">' + (x.n ? Math.round(x.rep / x.n * 100) + "%" : "-") + '</td>'; }).join("") + '</tr></tbody></table></div></section></div>';
+    var cats = ["전체"]; S.faq.forEach(function(f){ if (f.category && cats.indexOf(f.category) < 0) cats.push(f.category); });
+    var answerers = []; S.faq.forEach(function(f){ if (f.answerer && answerers.indexOf(f.answerer) < 0) answerers.push(f.answerer); });
     var list = sortFaq(S.faq.filter(function(f){ return (faqCat === "전체" || f.category === faqCat) && (!faqSrc || srcOf(f) === faqSrc) && (!faqKind || f.kind === faqKind) && (!faqStatus || (f.status || "완료") === faqStatus) && (!faqAns || f.answerer === faqAns) &&
       (!faqType || String(f.qtype || "").split(",").map(function(t){ return t.trim(); }).indexOf(faqType) >= 0) &&
       (!faqQ || [f.question, f.answer, f.detail, f.asker_name, f.asker_dept, f.qtype].join(" ").indexOf(faqQ) >= 0); }));
-    h += '<section class="panel"><div class="panel-head"><div><h2>FAQ 목록</h2><div class="desc">' + list.length + '건 · 행을 누르면 문의 내용과 답변이 열립니다</div></div>' +
+    if (faqTab === "list")
+    h += '<section class="panel" style="margin-top:0"><div class="panel-head"><div><h2>FAQ 목록</h2><div class="desc">' + list.length + '건 · 행을 누르면 문의 내용과 답변이 열립니다</div></div>' +
       '<div class="rec-tools" style="margin:0"><select id="fsrcSel"><option value="">반복·특수 전체</option>' + FAQ_SRC.map(function(s){ return '<option' + (s === faqSrc ? " selected" : "") + '>' + s + '</option>'; }).join("") + '</select><select id="ftSel"><option value="">전체 유형</option>' + FAQ_TYPES.map(function(t){ return '<option' + (t === faqType ? " selected" : "") + '>' + t + '</option>'; }).join("") + '</select>' +
       '<select id="fsSel"><option value="">전체 진행현황</option>' + FAQ_STATUS.map(function(s){ return '<option' + (s === faqStatus ? " selected" : "") + '>' + s + '</option>'; }).join("") + '</select>' +
       '<select id="faSel"><option value="">전체 답변자</option>' + answerers.map(function(s){ return '<option' + (s === faqAns ? " selected" : "") + '>' + esc(s) + '</option>'; }).join("") + '</select>' +
@@ -750,10 +819,13 @@
     host.innerHTML = h;
     function redraw(){ drawFaqPage(); }
     $all("[data-pd]", host).forEach(function(b){ b.onclick = function(){ faqPeriod = b.dataset.pd; redraw(); }; });
-    $all("[data-hc]", host).forEach(function(b){ b.onclick = function(){ faqCat = faqCat === b.dataset.hc ? "전체" : b.dataset.hc; redraw(); }; });
-    $all("[data-ht]", host).forEach(function(b){ b.onclick = function(){ faqType = faqType === b.dataset.ht ? "" : b.dataset.ht; redraw(); }; });
+    $all("[data-hc]", host).forEach(function(b){ b.onclick = function(){ faqCat = b.dataset.hc; goFaqList(); }; });
+    $all("[data-ht]", host).forEach(function(b){ b.onclick = function(){ faqType = b.dataset.ht; goFaqList(); }; });
     $all("[data-fc]", host).forEach(function(b){ b.onclick = function(){ faqCat = b.dataset.fc; redraw(); }; });
-    if ($("#kOpen")) $("#kOpen").onclick = function(e){ e.preventDefault(); faqStatus = "진행 중"; redraw(); };
+    if ($("#kOpen")) $("#kOpen").onclick = function(e){ e.preventDefault(); faqStatus = "진행 중"; goFaqList(); };
+    if ($("#dXls")) $("#dXls").onclick = faqExportExcel;
+    if ($("#dPdf")) $("#dPdf").onclick = function(){ faqExportPdf(this); };
+    if (faqTab !== "list") return;
     $("#ftSel").onchange = function(e){ faqType = e.target.value; redraw(); };
     $("#fsrcSel").onchange = function(e){ faqSrc = e.target.value; redraw(); };
     $("#fsSel").onchange = function(e){ faqStatus = e.target.value; redraw(); };
