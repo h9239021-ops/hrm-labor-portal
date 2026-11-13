@@ -417,7 +417,29 @@
   table.org .ugrp{border-left:1px solid var(--line);}
 
   .trio{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,.9fr) minmax(0,1fr);gap:16px;margin-top:22px;align-items:stretch;}
-  @media (max-width:1180px){ .trio{grid-template-columns:1fr 1fr;} .trio .faqc{grid-column:1/-1;} }
+  @media (max-width:1180px){ .trio{grid-template-columns:1fr 1fr;} .trio .chgc{grid-column:1/-1;} .duo{grid-template-columns:1fr;} }
+  .duo{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr);gap:16px;margin-top:18px;align-items:start;}
+  .duo.one{grid-template-columns:1fr;}
+  .duo>.panel{margin-top:0;min-width:0;min-height:400px;}
+  .og-peek{margin-top:14px;display:flex;flex-direction:column;gap:6px;}
+  details.og-wrap[open]+.og-peek{display:none;}
+  .og-peek .pk{display:flex;align-items:center;gap:10px;text-align:left;border:1px solid var(--line-soft);background:var(--surface);border-radius:10px;padding:9px 12px;cursor:pointer;font:inherit;color:inherit;}
+  .og-peek .pk:hover{border-color:var(--accent-500);background:var(--accent-050);}
+  .og-peek .pk .t{font-weight:700;font-size:13.5px;}
+  .og-peek .pk .n{font-size:12px;color:var(--ink-500);}
+  .og-peek .pk .who{margin-left:auto;display:flex;gap:4px;flex-wrap:wrap;justify-content:flex-end;}
+  .trio.solo{grid-template-columns:1fr;}
+  .cal .ev1{color:var(--accent-700);font-weight:600;}
+  .cal .ev1.wc{color:var(--danger-700);}
+  .cal-lg{display:flex;gap:14px;justify-content:flex-end;font-size:11.5px;color:var(--ink-500);margin-top:8px;}
+  .cal-lg span{display:inline-flex;align-items:center;gap:5px;}
+  .cal-lg i{width:8px;height:8px;border-radius:50%;display:inline-block;}
+  .cal-lg i.b{background:var(--accent-700);} .cal-lg i.r{background:var(--danger-700);}
+  .chg li{border-color:var(--danger-100);}
+  .chg li .tt b{font-weight:700;}
+  .chg .ck{display:inline-block;font-size:11px;font-weight:700;border-radius:6px;padding:1px 6px;margin-right:6px;background:var(--danger-100);color:var(--danger-700);}
+  .chg .ck.end,.chg .ck.back{background:var(--paper-0);color:var(--ink-700);border:1px solid var(--line);}
+
   @media (max-width:720px){ .trio{grid-template-columns:1fr;} }
   .card2{background:var(--surface);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);padding:16px 18px;display:flex;flex-direction:column;min-height:400px;max-height:430px;}
   .card2 .sec-h{margin-bottom:10px;}
@@ -688,6 +710,6 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="config.js?v=202611131730"></script>
 <script src="logo.js?v=202611131730"></script>
-<script src="app.js?v=202611131730"></script>
+<script src="app.js?v=202611131900"></script>
 </body>
 </html>
