@@ -1606,7 +1606,7 @@
   function genFilter(k){ return genF[k] || (genF[k] = { q: "", type: "", org: "", team: "", st: "", ended: true }); }
   function pStatus(d){ var s = wtStatus(d); return s === "적용 중" ? "진행 중" : s; }
   function genStatus(def, d){ var g = def.gen; if (g.status === "period") return pStatus(d); if (g.status) return d[g.status] || "-"; return ""; }
-  function stCls(s){ return /종료|종결|완료|시행$/.test(s) ? "neutral" : /예정|접수|입법예고|승인 대기|주소 필요/.test(s) ? "warn" : /실패|해당\(인정\)/.test(s) ? "danger" : "good"; }
+  function stCls(s){ return /종료|종결|완료|시행$|현행 유지/.test(s) ? "neutral" : /예정|접수|입법예고|승인 대기|주소 필요|검토 중|미해결|백로그|요청/.test(s) ? "warn" : /실패|해당\(인정\)/.test(s) ? "danger" : "good"; }
   function fLabel(def, k){ for (var i = 0; i < def.fields.length; i++) if (def.fields[i][0] === k) return def.fields[i][1]; return k; }
   function genCell(def, k, d){
     if (k === "_period") return esc((d.start || "") + (d.end && d.end !== d.start ? " ~ " + d.end : ""));
@@ -1810,10 +1810,11 @@
       hint: "인사위원회 의결 등으로 확정된 징계·포상 이력입니다(상벌규정 서식 1 관리대장).",
       stats: { date: "start", dims: [["징계 종류별", "type"], ["사업부별", "org"], ["사유별", "reason"]] } } };
   REC_DEF.agenda = { menu: "agenda", title: "안건 정리", noun: "안건",
-    fields: [["type", "구분", "select", ["협의 사항", "의결 사항", "보고 사항", "고충 처리", "기타"]], ["target", "안건", "text"], ["start", "회의일", "date"], ["round", "회차", "text", "예: 2026년 3분기"], ["proposer", "제안", "select", ["근로자위원", "사용자위원", "공통"]],
-      ["status", "진행 상태", "select", ["제안", "검토 중", "수용", "일부 수용", "불수용", "완료"]], ["owner", "담당", "text"], ["content", "안건 내용", "textarea"], ["result", "회사 답변·결과", "textarea"]],
-    gen: { typeF: "type", nameF: "target", status: "status", sort: "start", files: true, cols: ["round", "type", "target", "proposer", "start", "owner", "_status"],
-      hint: "분기 노사협의회(기업문화발전위원회) 안건과 처리 결과입니다.", stats: { date: "start", dims: [["구분별", "type"], ["진행 상태별", "status"], ["제안 주체별", "proposer"], ["회차별", "round"]] } } };
+    fields: [["type", "유형", "multi", ["휴가", "근태", "복리후생", "임금", "근무환경", "건강검진", "기타"]], ["target", "안건(이슈)", "text"], ["round", "제안 시기", "text", "예: 26년 4분기"], ["start", "기준일", "date"], ["org", "제안 사업부", "text"],
+      ["status", "상태", "select", ["백로그", "미해결", "검토 중", "의견 제시 완료", "추후 검토 예정", "현행 유지", "개선 완료"]], ["priority", "우선순위", "select", ["높음", "보통", "낮음"]],
+      ["content", "제안 사항", "textarea"], ["result", "답변 내용", "textarea"], ["todo", "진행 필요 사항", "textarea"], ["note", "비고", "textarea"]],
+    gen: { typeF: "type", nameF: "target", status: "status", sort: "start", files: true, cols: ["round", "type", "target", "org", "priority", "_files", "_status"],
+      hint: "분기 노사협의회(기업문화발전위원회)에서 제안된 안건과 회사 답변입니다.", stats: { date: "start", dims: [["유형별", "type", "multi"], ["상태별", "status"], ["제안 사업부별", "org"], ["제안 시기별", "round"], ["우선순위별", "priority"]] } } };
   REC_DEF.safety = { menu: "status", title: "안전보건 관리 현황", noun: "관리 항목",
     fields: [["type", "구분", "select", ["산업안전보건위원회", "안전보건교육", "위험성평가", "합동·순회 점검", "건강검진·보건관리", "재해·사고", "법령 이행점검", "안전보건 계획·예산", "기타"]], ["target", "제목", "text"], ["start", "실시(예정)일", "date"], ["end", "종료일", "date"],
       ["org", "대상 사업장", "text"], ["owner", "담당", "text"], ["status", "진행 상태", "select", ["예정", "진행 중", "완료", "미실시"]], ["cycle", "주기", "select", ["수시", "매월", "분기", "반기", "연 1회"]], ["basis", "근거", "text"],
@@ -1821,10 +1822,11 @@
     gen: { typeF: "type", nameF: "target", status: "status", sort: "start", files: true, cols: ["type", "target", "start", "org", "owner", "cycle", "_files", "_status"],
       hint: "산업안전보건위원회, 안전보건교육, 위험성평가, 점검, 재해 발생 등 안전보건 관리 활동의 일정과 결과입니다.", stats: { date: "start", dims: [["구분별", "type"], ["진행 상태별", "status"], ["사업장별", "org"], ["주기별", "cycle"]] } } };
   REC_DEF.opinions = { menu: "opinions", title: "노무 검토 의견", noun: "검토 의견",
-    fields: [["type", "분야", "select", ["근로시간", "임금·수당", "휴가·휴직", "징계·해고", "채용·계약", "괴롭힘·성희롱", "취업규칙·제도", "산업안전", "기타"]], ["target", "제목", "text"], ["start", "검토일", "date"], ["org", "사업부", "text"],
-      ["asker", "요청자", "text"], ["advisor", "자문처", "text", "내부 검토 / 노무법인명"], ["status", "상태", "select", ["요청", "검토 중", "완료"]], ["question", "질의 내용", "textarea"], ["content", "검토 의견", "textarea"], ["note", "후속 조치", "textarea"]],
-    gen: { typeF: "type", nameF: "target", status: "status", sort: "start", files: true, cols: ["type", "target", "start", "org", "asker", "advisor", "_files", "_status"],
-      hint: "노무 이슈별 검토 의견과 외부 자문 이력입니다.", stats: { date: "start", dims: [["분야별", "type"], ["사업부별", "org"], ["자문처별", "advisor"], ["상태별", "status"]] } } };
+    fields: [["type", "카테고리", "multi", ["임금", "채용", "근로관계종료", "괴롭힘", "성희롱", "4대보험", "근로자성", "퇴직금", "평균임금", "성과급", "무급휴직자", "무단결근", "기타소득", "임금채권상계", "법정의무교육", "근로시간", "휴가·휴직", "징계·해고", "취업규칙·제도", "산업안전", "기타"]],
+      ["target", "문서 이름", "text"], ["start", "문의 접수일", "date"], ["end", "답변일", "date"], ["org", "요청 부서", "text"], ["asker", "요청자", "text"], ["advisor", "답변자·자문처", "text"], ["status", "상태", "select", ["요청", "검토 중", "완료"]],
+      ["question", "질의 사항", "textarea"], ["content", "답변 내용", "textarea"], ["note", "결과·참고", "textarea"]],
+    gen: { typeF: "type", nameF: "target", status: "status", sort: "start", files: true, cols: ["type", "target", "start", "end", "org", "advisor", "_files", "_status"],
+      hint: "노무관리파트에서 답변한 노무 검토 의견과 외부 자문 이력입니다.", stats: { date: "start", dims: [["카테고리별", "type", "multi"], ["요청 부서별", "org"], ["답변자별", "advisor"], ["상태별", "status"]], duration: ["start", "end", "평균 답변 소요"] } } };
   var LAW_STAGES = ["입법예고", "시행예정", "시행"];
   REC_DEF.laws = { menu: "laws", title: "법령정보", noun: "법령 개정사항",
     fields: [["stage", "단계", "select", LAW_STAGES], ["target", "제목", "text"], ["law", "법령명", "text"], ["kind", "구분", "select", ["법률", "시행령", "시행규칙", "고시·지침", "판례·행정해석"]],
@@ -1854,7 +1856,7 @@
   }
 
   /* ---------- 규정 · 매뉴얼: 규정 목록과 버전 관리 ---------- */
-  var RULE_GROUPS = ["1. 기본·지배구조", "2. 조직·권한", "3. 인사·복무", "4. 총무·보안", "5. 회계·자금", "6. 교육", "7. 구매", "신고·제출 자료", "기타"];
+  var RULE_GROUPS = ["C. 인사 및 노무관리", "A. 경영", "B. 조직 및 직무권한", "D. 직무관리", "D-405. 안전보건관리규정 별지·별첨", "E. 재무관리", "F. 교육, 훈련", "G. 구매관리", "고용노동부 신고자료 (2025-06 취업규칙 변경신고)", "기타"];
   var ruleQ = "", ruleTab = "docs";
   function ruleCur(d){ var v = (d.versions || []).slice().sort(function(a, b){ return String(b.date || "").localeCompare(String(a.date || "")) || String(b.at || "").localeCompare(String(a.at || "")); }); return v[0] || null; }
   async function renderRules(c, sub){
@@ -1893,7 +1895,7 @@
     if ($("#rlAdd")) $("#rlAdd").onclick = function(){ ruleEdit(c, null, rer); };
   }
   function ruleEdit(c, x, after){
-    var d = x ? x.data : { group: RULE_GROUPS[2] };
+    var d = x ? x.data : { group: RULE_GROUPS[0] };
     var m = showModal('<h3>규정 ' + (x ? "정보 수정" : "추가") + '</h3><form class="f" id="rlf"><label>번호<input name="no" value="' + esc(d.no || "") + '" placeholder="예: 3-2"></label><label>분류<select name="group">' + RULE_GROUPS.map(function(g){ return '<option' + (g === d.group ? " selected" : "") + '>' + g + '</option>'; }).join("") + '</select></label>' +
       '<label class="full">규정명<input name="target" value="' + esc(d.target || "") + '" required></label><label>담당 부서·담당자<input name="owner" value="' + esc(d.owner || "") + '"></label><label>최초 제정일<input type="date" name="enacted" value="' + esc(d.enacted || "") + '"></label>' +
       '<label class="full">비고<textarea name="note" rows="3">' + esc(d.note || "") + '</textarea></label><div class="form-actions">' + (x && can("rules.docs", "edit") ? '<button type="button" class="btn danger" id="rlDel" style="margin-right:auto">규정 삭제</button>' : '') + '<button type="button" class="btn ghost" id="rlNo">취소</button><button class="btn primary">저장</button></div></form>', "mid");
