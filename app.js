@@ -233,7 +233,7 @@
       '<div class="home-hero"><div><h1>HRM 노무관리파트 업무포털</h1><div class="sub">' + now.getFullYear() + "년 " + (now.getMonth() + 1) + "월 " + now.getDate() + "일 (" + DOW[now.getDay()] + ') · ' + esc(me.name) + '님, 안녕하세요.</div></div></div>';
     var showOrg = can("home.org", "read"), showCal = can("home.calendar", "read"), showFaq = can("home.faq", "read"), showChg = canChg();
     if (showOrg || showFaq){
-      h += '<div class="duo' + (showOrg && showFaq ? '' : ' one') + '">' + (showOrg ? '<section class="panel" id="orgSec"></section>' : '') +
+      h += '<div class="duo' + (showOrg && showFaq ? '' : ' one') + '">' + (showOrg ? '<section class="card2 orgc" id="orgSec"></section>' : '') +
         (showFaq ? '<section class="card2 faqc" id="faqCard"></section>' : '') + '</div>';
     }
     if (showCal || showChg){
@@ -325,65 +325,44 @@
     return '<option value="">-</option>' + names.map(function(n){ return '<option' + (n === sel ? " selected" : "") + '>' + esc(n) + '</option>'; }).join("") +
       (withSpecial ? '<option' + (sel === SPECIAL_SUB ? " selected" : "") + '>' + SPECIAL_SUB + '</option>' : '');
   }
-  var orgOpen = false;
+  // home card (FAQ 카드와 같은 크기): 대분류 탭 + 업무명 목록, 업무명을 누르면 세부 내용 팝업
+  var orgTab = "전체";
+  function orgWho(rows){ var who = {}; rows.forEach(function(r){ UNITS.forEach(function(u){ var v = (r.units || {})[u[0]]; if (v) who[v] = 1; }); }); return Object.keys(who); }
   function renderOrg(){
     var host = $("#orgSec"); if (!host) return;
-    var ed = can("home.org", "edit"), q0 = orgQuery.trim();
-    var groups = orgGroups();
-    var total = S.org.length;
-    host.innerHTML = '<details class="og-wrap" id="orgWrap"' + (orgOpen || q0 ? " open" : "") + '><summary><span class="cv">▶</span><h2>노무관리파트 업무분장표</h2><span class="hint" style="font-size:12.5px">' + groups.length + '개 대분류 · ' + total + '개 업무</span>' +
-      '<span class="legend" style="margin-left:auto">' + S.staff.map(function(s){ return chip(s.name); }).join("") + '</span></summary><div class="og-in">' +
-      '<div class="sec-h"><div class="hint" style="font-size:12.5px">대분류를 눌러 펼치고, 업무명을 누르면 세부 내용이 열립니다.' + (ed ? ' 사업부 칸의 담당자를 누르면 바로 바꿀 수 있습니다.' : '') + '</div>' +
-      '<div class="tools"><input type="search" id="orgQ" placeholder="업무·담당자 검색" value="' + esc(q0) + '">' +
-      '<button class="btn sm" id="orgAll">모두 펼치기</button><button class="btn sm" id="orgNone">모두 접기</button>' +
-      (ed ? '<button class="btn sm primary" id="orgAdd">+ 업무 추가</button>' : '') + '</div></div><div id="orgGroups"></div></div></details>' +
-      '<div class="og-peek"><div class="hint" style="font-size:12px;margin-bottom:8px">대분류를 누르면 업무분장표가 펼쳐집니다.</div>' + groups.map(function(g){
-        var who = {}; g.rows.forEach(function(r){ UNITS.forEach(function(u){ var v = (r.units || {})[u[0]]; if (v) who[v] = 1; }); });
-        return '<button class="pk" data-peek="' + esc(g.grp) + '"><span class="t">' + esc(g.grp) + '</span><span class="n">' + g.rows.length + '개 업무</span><span class="who">' + Object.keys(who).map(chip).join("") + '</span></button>';
-      }).join("") + '</div>';
-    $all("[data-peek]", host).forEach(function(b){ b.onclick = function(){ var o = window.__orgOpen = window.__orgOpen || {}; o[b.dataset.peek] = true; orgOpen = true; renderOrg(); }; });
-    // only the group list is redrawn while typing, so the search box keeps focus (한글 입력 유지)
-    function drawGroups(){
-      var q = orgQuery.trim(), openSet = window.__orgOpen || {}, h = "";
-      if (!groups.length) h += '<p class="hint">등록된 업무분장이 없습니다.</p>';
+    var ed = can("home.org", "edit"), groups = orgGroups();
+    if (orgTab !== "전체" && !groups.some(function(g){ return g.grp === orgTab; })) orgTab = "전체";
+    host.innerHTML = '<div class="sec-h"><h2>🗂️ 노무관리파트 업무분장표</h2><div class="tools"><input type="search" id="orgQ" placeholder="업무·담당자 검색" value="' + esc(orgQuery) + '" style="width:150px">' +
+      (ed ? '<button class="btn sm primary" id="orgAdd">+ 업무</button>' : '') + '</div></div>' +
+      '<div class="faq-tabs"><button data-ot="전체" class="' + (orgTab === "전체" ? "on" : "") + '">전체 <span class="n">' + S.org.length + '</span></button>' +
+      groups.map(function(g){ return '<button data-ot="' + esc(g.grp) + '" class="' + (g.grp === orgTab ? "on" : "") + '">' + esc(g.grp) + ' <span class="n">' + g.rows.length + '</span></button>'; }).join("") + '</div>' +
+      '<div class="hint" style="font-size:11.5px;margin:-2px 0 6px">업무명을 누르면 사업부별 담당자와 세부 내용이 팝업으로 열립니다.</div>' +
+      '<ul class="org-list" id="orgList"></ul>' +
+      '<div class="legend" style="margin-top:8px;justify-content:flex-end">' + S.staff.map(function(s){ return chip(s.name); }).join("") + '</div>';
+    // only the list is redrawn while typing, so the search box keeps focus (한글 입력 유지)
+    function drawList(){
+      var q = orgQuery.trim(), h = "";
       groups.forEach(function(g){
-        var rows = g.rows.filter(function(r){
-          if (!q) return true;
-          var hay = [r.grp, r.title, r.note].concat(UNITS.map(function(u){ return (r.units || {})[u[0]]; })).join(" ");
-          return hay.indexOf(q) >= 0;
-        });
+        if (orgTab !== "전체" && g.grp !== orgTab) return;
+        var rows = g.rows.filter(function(r){ return !q || [r.grp, r.title, r.note].concat(UNITS.map(function(u){ return (r.units || {})[u[0]]; })).join(" ").indexOf(q) >= 0; });
         if (!rows.length) return;
-        var who = {}; rows.forEach(function(r){ UNITS.forEach(function(u){ var v = (r.units || {})[u[0]]; if (v) who[v] = 1; }); });
-        var open = q || openSet[g.grp];
-        h += '<details class="og" data-g="' + esc(g.grp) + '"' + (open ? " open" : "") + '><summary><span class="cv">▶</span><span class="t">' + esc(g.grp) + '</span><span class="n">' + rows.length + '개 업무</span>' +
-          '<span class="who">' + Object.keys(who).map(chip).join("") + '</span></summary><div class="og-body"><table class="org"><thead><tr>' +
-          '<th class="l">업무(중분류)</th>' + UNITS.map(function(u, i){ return '<th class="' + (i === 0 ? "ugrp" : "") + '">' + u[1] + '</th>'; }).join("") + '<th class="l ugrp">비고</th></tr></thead><tbody>' +
-          rows.map(function(r){
-            var u = r.units || {};
-            return '<tr data-id="' + r.id + '"><td class="l ttl"><button data-open="' + r.id + '">' + esc(r.title) + '</button>' + (r.detail_html ? '<span class="has">세부 ▸</span>' : '') + '</td>' +
-              UNITS.map(function(x, i){
-                var c = u[x[0]] ? chip(u[x[0]]) : '<span class="chip empty">-</span>';
-                return '<td class="' + (i === 0 ? "ugrp" : "") + '">' + (ed ? '<button class="pick" data-pick="' + r.id + '" data-u="' + x[0] + '" title="' + esc(x[1]) + ' 담당자 바꾸기">' + c + '</button>' : c) + '</td>';
-              }).join("") +
-              '<td class="note ugrp">' + esc(r.note || "") + '</td></tr>';
-          }).join("") + '</tbody></table></div></details>';
+        if (orgTab === "전체") h += '<li class="og-h">' + esc(g.grp) + '</li>';
+        rows.forEach(function(r){
+          h += '<li><button data-open="' + r.id + '"><span class="tx">' + esc(r.title) + (r.detail_html ? ' <span class="has">세부</span>' : '') + '</span><span class="who">' + orgWho([r]).map(chip).join("") + '</span></button></li>';
+        });
       });
-      if (groups.length && !h) h = '<p class="hint">검색 결과가 없습니다.</p>';
-      var box = $("#orgGroups"); box.innerHTML = h;
-      $all("details.og", box).forEach(function(d){ d.addEventListener("toggle", function(){ if (orgQuery.trim()) return; window.__orgOpen = window.__orgOpen || {}; window.__orgOpen[d.dataset.g] = d.open; }); });
+      var box = $("#orgList");
+      box.innerHTML = h || '<li class="hint" style="font-size:13px;padding:8px">' + (S.org.length ? "검색 결과가 없습니다." : "등록된 업무분장이 없습니다.") + '</li>';
       $all("[data-open]", box).forEach(function(b){ b.onclick = function(){ openOrg(+b.dataset.open); }; });
-      $all("[data-pick]", box).forEach(function(b){ b.onclick = function(e){ e.stopPropagation(); openPicker(b, +b.dataset.pick, b.dataset.u); }; });
     }
-    drawGroups();
-    $("#orgWrap").addEventListener("toggle", function(e){ orgOpen = e.target.open; });
-    $("#orgQ").addEventListener("input", function(e){ orgQuery = e.target.value; drawGroups(); });
-    $("#orgAll").onclick = function(){ $all("#orgGroups details.og").forEach(function(d){ d.open = true; }); };
-    $("#orgNone").onclick = function(){ $all("#orgGroups details.og").forEach(function(d){ d.open = false; }); };
+    drawList();
+    $all("[data-ot]", host).forEach(function(b){ b.onclick = function(){ orgTab = b.dataset.ot; renderOrg(); }; });
+    $("#orgQ").addEventListener("input", function(e){ orgQuery = e.target.value; drawList(); });
     if ($("#orgAdd")) $("#orgAdd").onclick = function(){ openOrgEdit(null); };
   }
   function closePicker(){ var p = document.getElementById("pickPop"); if (p) p.remove(); document.removeEventListener("mousedown", pickOutside, true); }
   function pickOutside(e){ var p = document.getElementById("pickPop"); if (p && !p.contains(e.target)) closePicker(); }
-  function openPicker(btn, id, unit){
+  function openPicker(btn, id, unit, after){
     closePicker();
     var r = S.org.filter(function(x){ return x.id === id; })[0]; if (!r) return;
     var cur = (r.units || {})[unit] || "", label = UNITS.filter(function(u){ return u[0] === unit; })[0][1];
@@ -408,7 +387,7 @@
         var x = await sb.from("portal_org").update(upd).eq("id", id).select("id");
         if (x.error || !x.data || !x.data.length){ alert("저장하지 못했습니다: " + errMsg(x)); return; }
         Object.assign(r, upd); logp("org", "assign", r.title + " " + (all ? "전체" : label) + "=" + (v || "-"));
-        toast((all ? "모든 사업부" : label) + " 담당자를 " + (v || "비움") + "(으)로 저장했습니다."); renderOrg();
+        toast((all ? "모든 사업부" : label) + " 담당자를 " + (v || "비움") + "(으)로 저장했습니다."); renderOrg(); if (after) after();
       };
     });
   }
@@ -418,12 +397,14 @@
     var m = showModal('<div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start"><div><div class="hint" style="font-size:12px">' + esc(r.grp) + '</div><h3 style="font-size:18px">' + esc(r.title) + '</h3></div>' +
       '<button class="btn sm ghost" id="mx">닫기 ✕</button></div>' +
       '<div class="tbl-w" style="border:1px solid var(--line);border-radius:10px;overflow-x:auto;margin:12px 0"><table class="org" style="min-width:640px"><thead><tr>' + UNITS.map(function(x){ return '<th>' + x[1] + '</th>'; }).join("") + '</tr></thead><tbody><tr>' +
-      UNITS.map(function(x){ return '<td>' + (u[x[0]] ? chip(u[x[0]]) : '<span class="chip empty">-</span>') + '</td>'; }).join("") + '</tr></tbody></table></div>' +
+      UNITS.map(function(x){ var c = u[x[0]] ? chip(u[x[0]]) : '<span class="chip empty">-</span>'; return '<td>' + (ed ? '<button class="pick" data-mpick="' + x[0] + '" title="' + esc(x[1]) + ' 담당자 바꾸기">' + c + '</button>' : c) + '</td>'; }).join("") + '</tr></tbody></table></div>' +
+      (ed ? '<div class="hint" style="font-size:11.5px;margin:-6px 0 12px">사업부 칸의 담당자를 누르면 바로 바꿀 수 있습니다.</div>' : '') +
       (r.note ? '<div class="banner info" style="margin:0 0 12px">비고: ' + esc(r.note) + '</div>' : '') +
       '<div class="doc" id="odBody">' + (r.detail_html ? cleanHtml(r.detail_html) : '<p class="hint">아직 세부 내용이 없습니다.' + (ed ? ' "세부 내용 수정"을 눌러 작성하세요.' : '') + '</p>') + '</div>' +
       '<div class="modal-actions" style="margin-top:16px">' + (r.updated_by ? '<span class="hint" style="font-size:11.5px;margin-right:auto">최종 수정 ' + esc(r.updated_by) + ' · ' + esc(String(r.updated_at || "").slice(0, 10)) + '</span>' : '') +
       (ed ? '<button class="btn" id="oInfo">담당·항목 수정</button><button class="btn primary" id="oEdit">세부 내용 수정</button>' : '') + '</div>', "wide");
     $("#mx", m).onclick = closeModal;
+    $all("[data-mpick]", m).forEach(function(b){ b.onclick = function(e){ e.stopPropagation(); openPicker(b, r.id, b.dataset.mpick, function(){ openOrg(r.id); }); }; });
     $all("#odBody a", m).forEach(function(a){ if (/^https?:/.test(a.getAttribute("href") || "")){ a.target = "_blank"; a.rel = "noopener"; } });
     if (ed){
       $("#oInfo", m).onclick = function(){ openOrgEdit(r); };
