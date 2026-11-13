@@ -192,14 +192,13 @@
     if (window.__editDirty && !confirm("수정 중인 내용을 저장하지 않고 이동할까요?")){ history.back(); return; }
     window.__editDirty = false; render();
   });
-  function shell(inner, activeCat){
-    var cats = CATS.filter(catVisible);
+  // area: null = portal home; otherwise the title of the inner page (category, FAQ, 권한 관리)
+  function shell(inner, area){
     return '<header class="hd"><div class="hd-in">' +
       '<a class="brand" href="#/"><img src="' + (window.LOGO_SRC || "") + '" alt="ConnectWave"><span class="sep"></span><span class="nm">HRM 노무관리파트 업무포털</span></a>' +
-      '<nav class="gnb"><a href="#/" class="' + (!activeCat ? "on" : "") + '">홈</a>' +
-      cats.map(function(c){ return c.link ? '<a href="' + c.link + '" target="_blank" rel="noopener">' + esc(c.name) + ' ↗</a>' : '<a href="#/c/' + c.id + '" class="' + (activeCat === c.id ? "on" : "") + '">' + esc(c.name) + '</a>'; }).join("") +
-      (isAdmin() ? '<a href="#/admin" class="' + (activeCat === "admin" ? "on" : "") + '">권한 관리</a>' : '') + '</nav>' +
-      '<div class="hd-r"><span class="who" title="' + esc(me.email) + '">' + esc(me.name) + (me.team ? " · " + esc(me.team) : "") + '</span><button class="btn sm" id="logout">로그아웃</button></div>' +
+      (area ? '<span class="hd-area">› ' + esc(area) + '</span><a class="btn sm" href="#/" style="margin-left:8px">🏠 업무포털 홈</a>' : '') +
+      '<div class="hd-r">' + (isAdmin() && area !== "권한 관리" ? '<a class="btn sm ghost" href="#/admin">권한 관리</a>' : '') +
+      '<span class="who" title="' + esc(me.email) + '">' + esc(me.name) + (me.team ? " · " + esc(me.team) : "") + '</span><button class="btn sm" id="logout">로그아웃</button></div>' +
       '</div></header>' + inner;
   }
   function wireShell(){ var b = $("#logout"); if (b) b.onclick = async function(){ await sb.auth.signOut(); me = null; location.hash = "#/"; renderLogin(); }; }
@@ -213,6 +212,7 @@
       if (!c || !catVisible(c)){ location.hash = "#/"; return; }
       renderCategory(c, p[2], p[3]);
     } else if (p[0] === "admin" && isAdmin()){ renderAdmin(); }
+    else if (p[0] === "faq" && can("home.faq", "read")){ renderFaqPage(p[1]); }
     else renderHome();
     wireShell();
   }
@@ -261,53 +261,81 @@
     return '<option value="">-</option>' + names.map(function(n){ return '<option' + (n === sel ? " selected" : "") + '>' + esc(n) + '</option>'; }).join("") +
       (withSpecial ? '<option' + (sel === SPECIAL_SUB ? " selected" : "") + '>' + SPECIAL_SUB + '</option>' : '');
   }
+  var orgOpen = false;
   function renderOrg(){
     var host = $("#orgSec"); if (!host) return;
     var ed = can("home.org", "edit"), q = orgQuery.trim();
     var openSet = window.__orgOpen || {};
     var groups = orgGroups();
-    var h = '<div class="sec-h"><div><h2>노무관리파트 업무분장표</h2><div class="hint" style="font-size:12.5px;margin-top:2px">대분류를 눌러 펼치고, 업무명을 누르면 세부 내용이 열립니다.' + (ed ? ' 메인·서브 담당자는 표에서 바로 바꿀 수 있습니다.' : '') + '</div></div>' +
-      '<div class="tools"><div class="legend">' + S.staff.map(function(s){ return chip(s.name); }).join("") + '</div>' +
-      '<input type="search" id="orgQ" placeholder="업무·담당자 검색" value="' + esc(q) + '">' +
+    var total = S.org.length;
+    var h = '<details class="og-wrap" id="orgWrap"' + (orgOpen || q ? " open" : "") + '><summary><span class="cv">▶</span><h2>노무관리파트 업무분장표</h2><span class="hint" style="font-size:12.5px">' + groups.length + '개 대분류 · ' + total + '개 업무</span>' +
+      '<span class="legend" style="margin-left:auto">' + S.staff.map(function(s){ return chip(s.name); }).join("") + '</span></summary><div class="og-in">' +
+      '<div class="sec-h"><div class="hint" style="font-size:12.5px">대분류를 눌러 펼치고, 업무명을 누르면 세부 내용이 열립니다.' + (ed ? ' 사업부 칸의 담당자를 누르면 바로 바꿀 수 있습니다.' : '') + '</div>' +
+      '<div class="tools"><input type="search" id="orgQ" placeholder="업무·담당자 검색" value="' + esc(q) + '">' +
       '<button class="btn sm" id="orgAll">모두 펼치기</button><button class="btn sm" id="orgNone">모두 접기</button>' +
-      (can("home.org", "edit") ? '<button class="btn sm primary" id="orgAdd">+ 업무 추가</button>' : '') + '</div></div>';
+      (ed ? '<button class="btn sm primary" id="orgAdd">+ 업무 추가</button>' : '') + '</div></div>';
     if (!groups.length) h += '<p class="hint">등록된 업무분장이 없습니다.</p>';
     groups.forEach(function(g){
       var rows = g.rows.filter(function(r){
         if (!q) return true;
-        var hay = [r.grp, r.title, r.main_name, r.sub_name, r.note].concat(UNITS.map(function(u){ return (r.units || {})[u[0]]; })).join(" ");
+        var hay = [r.grp, r.title, r.note].concat(UNITS.map(function(u){ return (r.units || {})[u[0]]; })).join(" ");
         return hay.indexOf(q) >= 0;
       });
       if (!rows.length) return;
-      var mains = {}; rows.forEach(function(r){ if (r.main_name) mains[r.main_name] = 1; UNITS.forEach(function(u){ var v = (r.units || {})[u[0]]; if (v) mains[v] = 1; }); });
+      var who = {}; rows.forEach(function(r){ UNITS.forEach(function(u){ var v = (r.units || {})[u[0]]; if (v) who[v] = 1; }); });
       var open = q || openSet[g.grp];
       h += '<details class="og" data-g="' + esc(g.grp) + '"' + (open ? " open" : "") + '><summary><span class="cv">▶</span><span class="t">' + esc(g.grp) + '</span><span class="n">' + rows.length + '개 업무</span>' +
-        '<span class="who">' + Object.keys(mains).map(chip).join("") + '</span></summary><div class="og-body"><table class="org"><thead><tr>' +
-        '<th class="l">업무(중분류)</th><th>메인</th><th>서브</th>' + UNITS.map(function(u, i){ return '<th class="' + (i === 0 ? "ugrp" : "") + '">' + u[1] + '</th>'; }).join("") + '<th class="l ugrp">비고</th></tr></thead><tbody>' +
+        '<span class="who">' + Object.keys(who).map(chip).join("") + '</span></summary><div class="og-body"><table class="org"><thead><tr>' +
+        '<th class="l">업무(중분류)</th>' + UNITS.map(function(u, i){ return '<th class="' + (i === 0 ? "ugrp" : "") + '">' + u[1] + '</th>'; }).join("") + '<th class="l ugrp">비고</th></tr></thead><tbody>' +
         rows.map(function(r){
           var u = r.units || {};
           return '<tr data-id="' + r.id + '"><td class="l ttl"><button data-open="' + r.id + '">' + esc(r.title) + '</button>' + (r.detail_html ? '<span class="has">세부 ▸</span>' : '') + '</td>' +
-            '<td>' + (ed ? '<select data-f="main_name" data-id="' + r.id + '">' + staffOptions(r.main_name, false) + '</select>' : chip(r.main_name)) + '</td>' +
-            '<td>' + (ed ? '<select data-f="sub_name" data-id="' + r.id + '">' + staffOptions(r.sub_name, true) + '</select>' : (r.sub_name === SPECIAL_SUB ? '<span class="chip">' + SPECIAL_SUB + '</span>' : chip(r.sub_name))) + '</td>' +
-            UNITS.map(function(x, i){ return '<td class="' + (i === 0 ? "ugrp" : "") + '">' + (u[x[0]] ? chip(u[x[0]]) : '<span class="chip empty">-</span>') + '</td>'; }).join("") +
+            UNITS.map(function(x, i){
+              var c = u[x[0]] ? chip(u[x[0]]) : '<span class="chip empty">-</span>';
+              return '<td class="' + (i === 0 ? "ugrp" : "") + '">' + (ed ? '<button class="pick" data-pick="' + r.id + '" data-u="' + x[0] + '" title="' + esc(x[1]) + ' 담당자 바꾸기">' + c + '</button>' : c) + '</td>';
+            }).join("") +
             '<td class="note ugrp">' + esc(r.note || "") + '</td></tr>';
         }).join("") + '</tbody></table></div></details>';
     });
-    host.innerHTML = h;
+    host.innerHTML = h + '</div></details>';
+    $("#orgWrap").addEventListener("toggle", function(e){ orgOpen = e.target.open; });
     $all("details.og", host).forEach(function(d){ d.addEventListener("toggle", function(){ window.__orgOpen = window.__orgOpen || {}; window.__orgOpen[d.dataset.g] = d.open; }); });
     $("#orgQ").addEventListener("input", function(e){ orgQuery = e.target.value; var pos = e.target.selectionStart; renderOrg(); var i = $("#orgQ"); i.focus(); try { i.setSelectionRange(pos, pos); } catch(x){} });
     $("#orgAll").onclick = function(){ $all("details.og", host).forEach(function(d){ d.open = true; }); };
     $("#orgNone").onclick = function(){ $all("details.og", host).forEach(function(d){ d.open = false; }); };
     if ($("#orgAdd")) $("#orgAdd").onclick = function(){ openOrgEdit(null); };
     $all("[data-open]", host).forEach(function(b){ b.onclick = function(){ openOrg(+b.dataset.open); }; });
-    $all("select[data-f]", host).forEach(function(s){
-      s.addEventListener("change", async function(){
-        var id = +s.dataset.id, f = s.dataset.f, v = s.value || null, upd = {}; upd[f] = v; upd.updated_by = me.email; upd.updated_at = new Date().toISOString();
-        var r = await sb.from("portal_org").update(upd).eq("id", id).select("id");
-        if (r.error || !r.data || !r.data.length){ alert("저장하지 못했습니다: " + errMsg(r)); renderOrg(); return; }
-        var row = S.org.filter(function(x){ return x.id === id; })[0]; Object.assign(row, upd);
-        logp("org", "assign", row.title + " " + f + "=" + v); toast((f === "main_name" ? "메인" : "서브") + " 담당자를 저장했습니다."); renderOrg();
-      });
+    $all("[data-pick]", host).forEach(function(b){ b.onclick = function(e){ e.stopPropagation(); openPicker(b, +b.dataset.pick, b.dataset.u); }; });
+  }
+  function closePicker(){ var p = document.getElementById("pickPop"); if (p) p.remove(); document.removeEventListener("mousedown", pickOutside, true); }
+  function pickOutside(e){ var p = document.getElementById("pickPop"); if (p && !p.contains(e.target)) closePicker(); }
+  function openPicker(btn, id, unit){
+    closePicker();
+    var r = S.org.filter(function(x){ return x.id === id; })[0]; if (!r) return;
+    var cur = (r.units || {})[unit] || "", label = UNITS.filter(function(u){ return u[0] === unit; })[0][1];
+    var pop = document.createElement("div"); pop.id = "pickPop"; pop.className = "pick-pop";
+    pop.innerHTML = '<div class="pp-h">' + esc(label) + ' · ' + esc(r.title) + '</div>' +
+      S.staff.map(function(s){ return '<button data-n="' + esc(s.name) + '" class="' + (s.name === cur ? "on" : "") + '">' + chip(s.name) + (s.name === cur ? ' <span class="hint">현재</span>' : '') + '</button>'; }).join("") +
+      '<button data-n="">' + '<span class="chip empty">비우기</span></button>' +
+      '<label class="pp-all"><input type="checkbox" id="ppAll"> 이 업무의 모든 사업부에 적용</label>';
+    document.body.appendChild(pop);
+    var rc = btn.getBoundingClientRect(), w = pop.offsetWidth, hgt = pop.offsetHeight;
+    var left = Math.min(window.innerWidth - w - 8, Math.max(8, rc.left + rc.width / 2 - w / 2));
+    var top = rc.bottom + 6 + hgt > window.innerHeight ? rc.top - hgt - 6 : rc.bottom + 6;
+    pop.style.left = (left + window.scrollX) + "px"; pop.style.top = (top + window.scrollY) + "px";
+    setTimeout(function(){ document.addEventListener("mousedown", pickOutside, true); }, 0);
+    $all("button[data-n]", pop).forEach(function(b){
+      b.onclick = async function(){
+        var v = b.dataset.n, all = $("#ppAll", pop).checked, units = Object.assign({}, r.units || {});
+        if (all) UNITS.forEach(function(u){ if (v) units[u[0]] = v; else delete units[u[0]]; });
+        else { if (v) units[unit] = v; else delete units[unit]; }
+        closePicker();
+        var upd = { units: units, updated_by: me.email, updated_at: new Date().toISOString() };
+        var x = await sb.from("portal_org").update(upd).eq("id", id).select("id");
+        if (x.error || !x.data || !x.data.length){ alert("저장하지 못했습니다: " + errMsg(x)); return; }
+        Object.assign(r, upd); logp("org", "assign", r.title + " " + (all ? "전체" : label) + "=" + (v || "-"));
+        toast((all ? "모든 사업부" : label) + " 담당자를 " + (v || "비움") + "(으)로 저장했습니다."); renderOrg();
+      };
     });
   }
   function openOrg(id){
@@ -315,8 +343,7 @@
     var u = r.units || {}, ed = can("home.org", "edit");
     var m = showModal('<div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start"><div><div class="hint" style="font-size:12px">' + esc(r.grp) + '</div><h3 style="font-size:18px">' + esc(r.title) + '</h3></div>' +
       '<button class="btn sm ghost" id="mx">닫기 ✕</button></div>' +
-      '<div style="display:flex;gap:16px;flex-wrap:wrap;margin:12px 0;font-size:13px"><div>메인 ' + chip(r.main_name) + '</div><div>서브 ' + (r.sub_name === SPECIAL_SUB ? '<span class="chip">' + SPECIAL_SUB + '</span>' : chip(r.sub_name)) + '</div></div>' +
-      '<div class="tbl-w" style="border:1px solid var(--line);border-radius:10px;overflow-x:auto;margin-bottom:12px"><table class="org" style="min-width:640px"><thead><tr>' + UNITS.map(function(x){ return '<th>' + x[1] + '</th>'; }).join("") + '</tr></thead><tbody><tr>' +
+      '<div class="tbl-w" style="border:1px solid var(--line);border-radius:10px;overflow-x:auto;margin:12px 0"><table class="org" style="min-width:640px"><thead><tr>' + UNITS.map(function(x){ return '<th>' + x[1] + '</th>'; }).join("") + '</tr></thead><tbody><tr>' +
       UNITS.map(function(x){ return '<td>' + (u[x[0]] ? chip(u[x[0]]) : '<span class="chip empty">-</span>') + '</td>'; }).join("") + '</tr></tbody></table></div>' +
       (r.note ? '<div class="banner info" style="margin:0 0 12px">비고: ' + esc(r.note) + '</div>' : '') +
       '<div class="doc" id="odBody">' + (r.detail_html ? cleanHtml(r.detail_html) : '<p class="hint">아직 세부 내용이 없습니다.' + (ed ? ' "세부 내용 수정"을 눌러 작성하세요.' : '') + '</p>') + '</div>' +
@@ -350,15 +377,13 @@
     var m = showModal('<h3>' + (isNew ? "업무 추가" : "담당·항목 수정") + '</h3><p class="hint">사업부별 담당자는 해당 업무를 사업부마다 나눠 맡는 경우에 지정합니다.</p>' +
       '<form class="f" id="of"><label>대분류<input name="grp" list="grpList" value="' + esc(r.grp) + '" required><datalist id="grpList">' + groups.map(function(g){ return '<option value="' + esc(g) + '">'; }).join("") + '</datalist></label>' +
       '<label>업무(중분류)<input name="title" value="' + esc(r.title) + '" required></label>' +
-      '<label>메인 담당<select name="main_name">' + staffOptions(r.main_name, false) + '</select></label>' +
-      '<label>서브 담당<select name="sub_name">' + staffOptions(r.sub_name, true) + '</select></label>' +
-      '<div class="full"><div class="hint" style="font-size:12.5px;font-weight:600;margin-bottom:6px">사업부별 담당 <button type="button" class="btn sm" id="allMain">모두 메인 담당으로</button></div><div class="unit-grid">' +
+      '<div class="full"><div class="hint" style="font-size:12.5px;font-weight:600;margin-bottom:6px;display:flex;gap:6px;align-items:center;flex-wrap:wrap">사업부별 담당 <select id="allSel" style="width:auto;margin:0;padding:4px 8px">' + staffOptions("", false).replace('<option value="">-</option>', '<option value="">일괄 지정…</option>') + '</select> <button type="button" class="btn sm" id="allMain">모든 사업부에 적용</button></div><div class="unit-grid">' +
       UNITS.map(function(u){ return '<label>' + u[1] + '<select name="u_' + u[0] + '">' + staffOptions((r.units || {})[u[0]], false) + '</select></label>'; }).join("") + '</div></div>' +
       '<label class="full">비고<input name="note" value="' + esc(r.note || "") + '"></label>' +
       '<div class="form-actions">' + (!isNew && can("home.org", "manage") ? '<button type="button" class="btn danger" id="oDel" style="margin-right:auto">업무 삭제</button>' : '') +
       '<button type="button" class="btn ghost" id="oNo">취소</button><button class="btn primary">저장</button></div></form>', "wide");
     $("#oNo", m).onclick = function(){ closeModal(); if (!isNew) openOrg(r.id); };
-    $("#allMain", m).onclick = function(){ var v = $('[name=main_name]', m).value; UNITS.forEach(function(u){ $('[name=u_' + u[0] + ']', m).value = v; }); };
+    $("#allMain", m).onclick = function(){ var v = $('#allSel', m).value; if (!v) return; UNITS.forEach(function(u){ $('[name=u_' + u[0] + ']', m).value = v; }); };
     if ($("#oDel", m)) $("#oDel", m).onclick = async function(){
       if (!confirm("'" + r.title + "' 업무를 삭제할까요? 되돌릴 수 없습니다.")) return;
       var x = await sb.from("portal_org").delete().eq("id", r.id).select("id");
@@ -368,7 +393,7 @@
     $("#of", m).addEventListener("submit", async function(e){
       e.preventDefault(); var fd = new FormData(e.target), units = {};
       UNITS.forEach(function(u){ var v = fd.get("u_" + u[0]); if (v) units[u[0]] = v; });
-      var rec = { grp: String(fd.get("grp")).trim(), title: String(fd.get("title")).trim(), main_name: fd.get("main_name") || null, sub_name: fd.get("sub_name") || null, units: units, note: String(fd.get("note") || "").trim() || null, updated_by: me.email, updated_at: new Date().toISOString() };
+      var rec = { grp: String(fd.get("grp")).trim(), title: String(fd.get("title")).trim(), units: units, note: String(fd.get("note") || "").trim() || null, updated_by: me.email, updated_at: new Date().toISOString() };
       var x;
       if (isNew){
         var same = S.org.filter(function(o){ return o.grp === rec.grp; });
@@ -514,27 +539,32 @@
   }
 
   /* ---------- FAQ ---------- */
-  var faqQ = "";
+  var faqQ = "", faqKind = "", faqPeriod = "12m";
+  function faqDate(f){ return String(f.asked_on || f.updated_at || "").slice(0, 10); }
+  // home card: search + add; titles open the FAQ page
   function renderFaq(){
     var host = $("#faqCard"); if (!host) return;
     var cats = ["전체"]; S.faq.forEach(function(f){ if (f.category && cats.indexOf(f.category) < 0) cats.push(f.category); });
     var w = can("home.faq", "write");
-    var list = S.faq.filter(function(f){ return (faqCat === "전체" || f.category === faqCat) && (!faqQ || (f.question + " " + (f.answer || "")).indexOf(faqQ) >= 0); });
-    host.innerHTML = '<div class="sec-h"><h2>💬 FAQ</h2><div class="tools"><input type="search" id="fq" placeholder="질문 검색" value="' + esc(faqQ) + '" style="width:150px">' + (w ? '<button class="btn sm primary" id="fAdd">+ FAQ</button>' : '') + '</div></div>' +
+    var list = S.faq.filter(function(f){ return (faqCat === "전체" || f.category === faqCat) && (!faqQ || (f.question + " " + (f.answer || "")).indexOf(faqQ) >= 0); })
+      .slice().sort(function(a, b){ return faqDate(b) < faqDate(a) ? -1 : faqDate(b) > faqDate(a) ? 1 : 0; });
+    host.innerHTML = '<div class="sec-h"><h2><a href="#/faq" class="h-link">💬 FAQ ›</a></h2><div class="tools"><input type="search" id="fq" placeholder="질문 검색" value="' + esc(faqQ) + '" style="width:150px">' + (w ? '<button class="btn sm primary" id="fAdd">+ FAQ</button>' : '') + '</div></div>' +
       '<div class="faq-tabs">' + cats.map(function(c){ return '<button data-fc="' + esc(c) + '" class="' + (c === faqCat ? "on" : "") + '">' + esc(c) + '</button>'; }).join("") + '</div>' +
-      '<ul class="faq-list">' + (list.length ? list.map(function(f){
-        return '<li><details><summary><span class="q">Q</span><span>' + esc(f.question) + (f.kind ? ' <span class="badge neutral" style="font-size:10.5px">' + esc(f.kind) + '</span>' : '') + '</span></summary><div class="a">' + esc(f.answer || "답변 준비 중") +
-          (w ? '<div class="act"><button class="btn sm" data-fe="' + f.id + '">수정</button></div>' : '') + '</div></details></li>';
-      }).join("") : '<li class="hint" style="font-size:13px">해당하는 FAQ가 없습니다.</li>') + '</ul>';
+      '<ul class="faq-links">' + (list.length ? list.map(function(f){
+        return '<li><a href="#/faq/' + encodeURIComponent(f.id) + '"><span class="q">Q</span><span class="tx">' + esc(f.question) + '</span>' + (f.category ? '<span class="badge neutral">' + esc(f.category) + '</span>' : '') + '</a></li>';
+      }).join("") : '<li class="hint" style="font-size:13px;padding:8px">해당하는 FAQ가 없습니다.</li>') + '</ul>' +
+      '<a class="btn sm" href="#/faq" style="margin-top:8px;align-self:flex-end">FAQ 화면에서 전체 보기 · 문의 분석 →</a>';
     $all("[data-fc]", host).forEach(function(b){ b.onclick = function(){ faqCat = b.dataset.fc; renderFaq(); }; });
     $("#fq").addEventListener("input", function(e){ faqQ = e.target.value; renderFaq(); var i = $("#fq"); i.focus(); i.setSelectionRange(i.value.length, i.value.length); });
-    if ($("#fAdd")) $("#fAdd").onclick = function(){ openFaq(null); };
-    $all("[data-fe]", host).forEach(function(b){ b.onclick = function(){ openFaq(S.faq.filter(function(f){ return f.id === b.dataset.fe; })[0]); }; });
+    if ($("#fAdd")) $("#fAdd").onclick = function(){ openFaq(null, renderFaq); };
   }
-  function openFaq(f){
-    var isNew = !f; f = f || { category: faqCat !== "전체" ? faqCat : "", question: "", answer: "", kind: "" };
-    var m = showModal('<h3>' + (isNew ? "FAQ 추가" : "FAQ 수정") + '</h3><form class="f" id="ff">' +
-      '<label>분류<input name="category" value="' + esc(f.category || "") + '" placeholder="예: 근태, 휴가"></label>' +
+  function openFaq(f, after){
+    var isNew = !f; f = f || { category: faqCat !== "전체" ? faqCat : "", question: "", answer: "", kind: "단순 반복", asked_on: todayStr() };
+    var cats = []; S.faq.forEach(function(x){ if (x.category && cats.indexOf(x.category) < 0) cats.push(x.category); });
+    CATS.forEach(function(c){ if (c.id !== "insp" && cats.indexOf(c.name) < 0) cats.push(c.name); });
+    var m = showModal('<h3>' + (isNew ? "FAQ 추가" : "FAQ 수정") + '</h3><p class="hint">문의 날짜와 분류는 FAQ 화면의 문의 분석(카테고리 비율·기간별 건수)에 바로 반영됩니다.</p><form class="f" id="ff">' +
+      '<label>분류<input name="category" list="fcl" value="' + esc(f.category || "") + '" placeholder="예: 근태, 휴가" required><datalist id="fcl">' + cats.map(function(c){ return '<option value="' + esc(c) + '">'; }).join("") + '</datalist></label>' +
+      '<label>문의 날짜<input type="date" name="asked_on" value="' + esc(f.asked_on || "") + '"></label>' +
       '<label>구분<select name="kind">' + ["", "단순 반복", "개별 판단", "FAQ 미수록"].map(function(k){ return '<option' + (f.kind === k ? " selected" : "") + '>' + k + '</option>'; }).join("") + '</select></label>' +
       '<label class="full">질문<input name="question" value="' + esc(f.question) + '" required></label>' +
       '<label class="full">답변<textarea name="answer" rows="6" style="min-height:140px">' + esc(f.answer || "") + '</textarea></label>' +
@@ -544,17 +574,98 @@
       if (!confirm("이 FAQ를 삭제할까요?")) return;
       var x = await sb.from("portal_faq").delete().eq("id", f.id).select("id");
       if (x.error || !x.data || !x.data.length){ alert("삭제하지 못했습니다: " + errMsg(x)); return; }
-      S.faq = S.faq.filter(function(z){ return z.id !== f.id; }); closeModal(); renderFaq();
+      S.faq = S.faq.filter(function(z){ return z.id !== f.id; }); closeModal(); after && after();
     };
     $("#ff", m).addEventListener("submit", async function(e){
       e.preventDefault(); var fd = new FormData(e.target);
-      var rec = { category: String(fd.get("category") || "").trim() || null, kind: fd.get("kind") || null, question: String(fd.get("question")).trim(), answer: String(fd.get("answer") || "").trim(), updated_by: me.email, updated_at: new Date().toISOString() };
+      var rec = { category: String(fd.get("category") || "").trim() || null, kind: fd.get("kind") || null, asked_on: fd.get("asked_on") || null, question: String(fd.get("question")).trim(), answer: String(fd.get("answer") || "").trim(), updated_by: me.email, updated_at: new Date().toISOString() };
       if (isNew) rec.sort = S.faq.length ? Math.max.apply(null, S.faq.map(function(z){ return z.sort || 0; })) + 1 : 1;
       var x = isNew ? await sb.from("portal_faq").insert(rec).select("*") : await sb.from("portal_faq").update(rec).eq("id", f.id).select("*");
       if (x.error || !x.data || !x.data.length){ alert("저장하지 못했습니다: " + errMsg(x)); return; }
       if (isNew) S.faq.push(x.data[0]); else Object.assign(f, x.data[0]);
-      logp("faq", isNew ? "add" : "edit", rec.question); closeModal(); toast("FAQ를 저장했습니다."); renderFaq();
+      logp("faq", isNew ? "add" : "edit", rec.question); closeModal(); toast("FAQ를 저장했습니다."); after && after();
     });
+  }
+
+  /* ---------- FAQ page (inner page with inquiry analysis) ---------- */
+  var PERIODS = [["all", "전체"], ["year", "올해"], ["12m", "최근 12개월"], ["6m", "최근 6개월"], ["3m", "최근 3개월"], ["month", "이번 달"]];
+  function periodStart(p){
+    var n = new Date(), d;
+    if (p === "all") return null;
+    if (p === "year") d = new Date(n.getFullYear(), 0, 1);
+    else if (p === "month") d = new Date(n.getFullYear(), n.getMonth(), 1);
+    else d = new Date(n.getFullYear(), n.getMonth() - (parseInt(p, 10) - 1), 1);
+    return ymd(d);
+  }
+  function renderFaqPage(openId){
+    if (openId){ faqCat = "전체"; faqQ = ""; faqKind = ""; }
+    app.innerHTML = shell('<div class="cat-head"><div class="crumb"><a href="#/">홈</a> › FAQ</div><h1><span>💬</span>FAQ</h1><p class="hint" style="margin:4px 0 0;font-size:13px">자주 묻는 문의와 답변을 모으고, 카테고리별·기간별 문의 현황을 분석합니다. FAQ를 추가하거나 고치면 분석이 바로 갱신됩니다.</p></div>' +
+      '<div class="cat-wrap"><div class="cat-main" id="fqMain"></div></div>', "FAQ");
+    wireShell();
+    drawFaqPage(openId);
+  }
+  function drawFaqPage(openId){
+    var host = $("#fqMain"); if (!host) return;
+    var w = can("home.faq", "write"), from = periodStart(faqPeriod);
+    var dated = S.faq.filter(function(f){ return !!faqDate(f); });
+    var inP = S.faq.filter(function(f){ var d = faqDate(f); return !from || (d && d >= from); });
+    var noDate = S.faq.length - dated.length;
+    // category share within period
+    var byCat = {}; inP.forEach(function(f){ var c = f.category || "미분류"; byCat[c] = (byCat[c] || 0) + 1; });
+    var catRows = Object.keys(byCat).map(function(c){ return [c, byCat[c]]; }).sort(function(a, b){ return b[1] - a[1] || a[0].localeCompare(b[0]); });
+    var maxC = catRows.length ? catRows[0][1] : 0;
+    // monthly series: months from period start (or first dated month, max 24) to this month
+    var now = new Date(), months = [];
+    var startD = from ? parseD(from) : (dated.length ? parseD(dated.map(faqDate).sort()[0]) : new Date(now.getFullYear(), now.getMonth(), 1));
+    var sm = new Date(startD.getFullYear(), startD.getMonth(), 1);
+    var span = (now.getFullYear() - sm.getFullYear()) * 12 + now.getMonth() - sm.getMonth();
+    if (span > 23) sm = new Date(now.getFullYear(), now.getMonth() - 23, 1);
+    for (var d = new Date(sm); d <= now; d.setMonth(d.getMonth() + 1)) months.push(d.getFullYear() + "-" + pad(d.getMonth() + 1));
+    var byM = {}; dated.forEach(function(f){ var k = faqDate(f).slice(0, 7); byM[k] = (byM[k] || 0) + 1; });
+    var maxM = Math.max.apply(null, months.map(function(k){ return byM[k] || 0; }).concat([1]));
+    var thisM = ymd(now).slice(0, 7), prevD = new Date(now.getFullYear(), now.getMonth() - 1, 1), prevM = prevD.getFullYear() + "-" + pad(prevD.getMonth() + 1);
+    var cThis = byM[thisM] || 0, cPrev = byM[prevM] || 0, delta = cThis - cPrev;
+    var byKind = {}; inP.forEach(function(f){ var k = f.kind || "구분 없음"; byKind[k] = (byKind[k] || 0) + 1; });
+    var rep = byKind["단순 반복"] || 0;
+    var plabel = PERIODS.filter(function(p){ return p[0] === faqPeriod; })[0][1];
+
+    var h = '<div class="rec-tools" role="group" aria-label="분석 기간">' + PERIODS.map(function(p){ return '<button class="btn sm' + (p[0] === faqPeriod ? " primary" : "") + '" data-pd="' + p[0] + '">' + p[1] + '</button>'; }).join("") +
+      '<span class="grow"></span><span class="hint" style="font-size:12px">문의 날짜 기준' + (noDate ? ' · 날짜 없는 ' + noDate + '건은 기간 분석에서 제외' : '') + '</span></div>';
+    h += '<div class="kpis">' +
+      '<div class="kpi"><div class="k">' + esc(plabel) + ' 문의</div><div class="v">' + inP.length + '<small>건</small></div><div class="s">전체 ' + S.faq.length + '건</div></div>' +
+      '<div class="kpi"><div class="k">이번 달</div><div class="v">' + cThis + '<small>건</small></div><div class="s">지난달 ' + cPrev + '건 · ' + (delta === 0 ? "변동 없음" : (delta > 0 ? "▲ " + delta : "▼ " + (-delta)) + "건") + '</div></div>' +
+      '<div class="kpi"><div class="k">가장 많은 분류</div><div class="v" style="font-size:20px;font-family:var(--font-body)">' + (catRows[0] ? esc(catRows[0][0]) : "-") + '</div><div class="s">' + (catRows[0] ? catRows[0][1] + "건 · " + Math.round(catRows[0][1] / inP.length * 100) + "%" : "") + '</div></div>' +
+      '<div class="kpi"><div class="k">단순 반복 비율</div><div class="v">' + (inP.length ? Math.round(rep / inP.length * 100) : 0) + '<small>%</small></div><div class="s">' + Object.keys(byKind).map(function(k){ return esc(k) + " " + byKind[k]; }).join(" · ") + '</div></div></div>';
+    h += '<div class="an-grid"><section class="panel" style="margin-top:0"><div class="panel-head"><div><h2>카테고리별 문의 비율</h2><div class="desc">' + esc(plabel) + ' · ' + inP.length + '건</div></div></div>' +
+      (catRows.length ? '<div class="hbars">' + catRows.map(function(r){ var pct = inP.length ? Math.round(r[1] / inP.length * 1000) / 10 : 0;
+        return '<button class="hb' + (faqCat === r[0] ? " on" : "") + '" data-hc="' + esc(r[0]) + '" title="' + esc(r[0]) + ': ' + r[1] + '건 (' + pct + '%) · 눌러서 목록 거르기"><span class="hl">' + esc(r[0]) + '</span><span class="ht"><i style="width:' + Math.max(2, r[1] / maxC * 100) + '%"></i></span><span class="hv"><b>' + r[1] + '</b>건 · ' + pct + '%</span></button>'; }).join("") + '</div>'
+        : '<p class="hint">이 기간에 문의가 없습니다.</p>') + '</section>' +
+      '<section class="panel" style="margin-top:0"><div class="panel-head"><div><h2>기간별 문의 건수</h2><div class="desc">월별 · ' + months[0] + ' ~ ' + months[months.length - 1] + '</div></div></div>' +
+      '<div class="cols" style="--n:' + months.length + '">' + months.map(function(k){ var v = byM[k] || 0;
+        return '<div class="col" title="' + k + ': ' + v + '건"><span class="cv2">' + (v || "") + '</span><i style="height:' + (v / maxM * 100) + '%"></i><span class="cl">' + (k.slice(5) === "01" || k === months[0] ? k.slice(2, 4) + "." : "") + +k.slice(5) + '월</span></div>'; }).join("") + '</div></section></div>';
+    // list
+    var cats = ["전체"]; S.faq.forEach(function(f){ if (f.category && cats.indexOf(f.category) < 0) cats.push(f.category); });
+    var list = S.faq.filter(function(f){ return (faqCat === "전체" || f.category === faqCat) && (!faqKind || f.kind === faqKind) && (!faqQ || (f.question + " " + (f.answer || "")).indexOf(faqQ) >= 0); })
+      .slice().sort(function(a, b){ return faqDate(b) < faqDate(a) ? -1 : faqDate(b) > faqDate(a) ? 1 : 0; });
+    h += '<section class="panel"><div class="panel-head"><div><h2>FAQ 목록</h2><div class="desc">' + list.length + '건</div></div>' +
+      '<div class="rec-tools" style="margin:0"><select id="fkSel"><option value="">전체 구분</option>' + ["단순 반복", "개별 판단", "FAQ 미수록"].map(function(k){ return '<option' + (k === faqKind ? " selected" : "") + '>' + k + '</option>'; }).join("") + '</select>' +
+      '<input type="search" id="fpq" placeholder="질문·답변 검색" value="' + esc(faqQ) + '">' + (w ? '<button class="btn sm primary" id="fpAdd">+ FAQ 추가</button>' : '') + '</div></div>' +
+      '<div class="faq-tabs">' + cats.map(function(c){ return '<button data-fc="' + esc(c) + '" class="' + (c === faqCat ? "on" : "") + '">' + esc(c) + '</button>'; }).join("") + '</div>' +
+      '<ul class="faq-list big">' + (list.length ? list.map(function(f){
+        return '<li id="faq-' + esc(f.id) + '"><details' + (f.id === openId ? " open" : "") + '><summary><span class="q">Q</span><span style="flex:1">' + esc(f.question) + '</span>' +
+          (f.category ? '<span class="badge info">' + esc(f.category) + '</span>' : '') + (f.kind ? '<span class="badge neutral">' + esc(f.kind) + '</span>' : '') + '<span class="hint mono" style="font-size:11.5px">' + esc(faqDate(f)) + '</span></summary>' +
+          '<div class="a">' + esc(f.answer || "답변 준비 중") + (w ? '<div class="act"><button class="btn sm" data-fe="' + esc(f.id) + '">수정</button></div>' : '') + '</div></details></li>';
+      }).join("") : '<li class="hint" style="font-size:13px">해당하는 FAQ가 없습니다.</li>') + '</ul></section>';
+    host.innerHTML = h;
+    function redraw(){ drawFaqPage(); }
+    $all("[data-pd]", host).forEach(function(b){ b.onclick = function(){ faqPeriod = b.dataset.pd; redraw(); }; });
+    $all("[data-hc]", host).forEach(function(b){ b.onclick = function(){ faqCat = faqCat === b.dataset.hc ? "전체" : b.dataset.hc; redraw(); }; });
+    $all("[data-fc]", host).forEach(function(b){ b.onclick = function(){ faqCat = b.dataset.fc; redraw(); }; });
+    $("#fkSel").onchange = function(e){ faqKind = e.target.value; redraw(); };
+    $("#fpq").addEventListener("input", function(e){ faqQ = e.target.value; redraw(); var i = $("#fpq"); i.focus(); i.setSelectionRange(i.value.length, i.value.length); });
+    if ($("#fpAdd")) $("#fpAdd").onclick = function(){ openFaq(null, redraw); };
+    $all("[data-fe]", host).forEach(function(b){ b.onclick = function(){ openFaq(S.faq.filter(function(f){ return f.id === b.dataset.fe; })[0], redraw); }; });
+    if (openId){ var el = document.getElementById("faq-" + openId); if (el) setTimeout(function(){ el.scrollIntoView({ behavior: "smooth", block: "center" }); el.classList.add("flash-highlight"); }, 60); }
   }
 
   /* =====================================================================
@@ -567,13 +678,13 @@
     var head = '<div class="cat-head"><div class="crumb"><a href="#/">홈</a> › ' + esc(c.name) + '</div><h1><span>' + c.ic + '</span>' + esc(c.name) + '</h1>' +
       '<nav class="tabs">' + menus.map(function(m){ var l = level(c.id + "." + m[0]); return '<a href="#/c/' + c.id + '/' + m[0] + '" class="' + (m[0] === menu ? "on" : "") + '">' + esc(m[1]) + '<span class="lv">' + LV_LABEL[Object.keys(LV)[l]] + '</span></a>'; }).join("") + '</nav></div>';
     var key = c.id + "." + menu;
-    if (c.id === "att" && menu === "manual"){ app.innerHTML = shell(head + '<div class="cat-wrap" id="cw"></div>', c.id); renderManual(c, key, sub); }
-    else if (c.id === "att" && (menu === "violations" || menu === "worktypes")){ app.innerHTML = shell(head + '<div class="cat-wrap"><div class="cat-main" id="cm"></div></div>', c.id); renderRecords(c, menu); }
+    if (c.id === "att" && menu === "manual"){ app.innerHTML = shell(head + '<div class="cat-wrap" id="cw"></div>', c.name); renderManual(c, key, sub); }
+    else if (c.id === "att" && (menu === "violations" || menu === "worktypes")){ app.innerHTML = shell(head + '<div class="cat-wrap"><div class="cat-main" id="cm"></div></div>', c.name); renderRecords(c, menu); }
     else {
       app.innerHTML = shell(head + '<div class="cat-wrap"><div class="cat-main"><div class="soon-box"><div class="ic">' + c.ic + '</div><h2>' + esc(c.name) + ' 메뉴는 준비 중입니다</h2>' +
         '<p>근태 카테고리와 같은 틀(상단 메뉴 · 왼쪽 절차 · 관리표)로 이어서 구성할 예정입니다.</p>' +
         (c.src ? '<p class="hint" style="margin-top:16px">옮겨 올 노션 원문</p><ul>' + c.src.map(function(s){ return '<li>' + esc(s) + '</li>'; }).join("") + '</ul>' : '') +
-        (c.link ? '<p><a class="btn primary" href="' + c.link + '" target="_blank" rel="noopener">근로감독 대시보드 열기 ↗</a></p>' : '') + '</div></div></div>', c.id);
+        (c.link ? '<p><a class="btn primary" href="' + c.link + '" target="_blank" rel="noopener">근로감독 대시보드 열기 ↗</a></p>' : '') + '</div></div></div>', c.name);
     }
     wireShell();
   }
@@ -834,7 +945,7 @@
     return g;
   }
   async function renderAdmin(){
-    app.innerHTML = shell('<div class="cat-head"><div class="crumb"><a href="#/">홈</a> › 권한 관리</div><h1>권한 관리</h1></div><div class="cat-wrap"><div class="cat-main" id="am"><p class="hint">불러오는 중…</p></div></div>', "admin");
+    app.innerHTML = shell('<div class="cat-head"><div class="crumb"><a href="#/">홈</a> › 권한 관리</div><h1>권한 관리</h1></div><div class="cat-wrap"><div class="cat-main" id="am"><p class="hint">불러오는 중…</p></div></div>', "권한 관리");
     wireShell();
     var r = await Promise.all([sb.from("portal_access").select("*").order("email"), sb.from("portal_staff").select("*").order("sort")]);
     var users = r[0].data || [], staff = r[1].data || [];
