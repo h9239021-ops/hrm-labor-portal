@@ -16,7 +16,7 @@
       items: ["근태 운영", "(분기)근태 미준수 관리", "시간외근로"],
       menus: [["manual", "근태관리 매뉴얼"], ["violations", "근태 위반자 관리"], ["worktypes", "근무형태 현황"]] },
     { id: "leave", name: "휴가", ic: "🌴", desc: "연차·연차 촉진, 리프레쉬·보상·경조휴가, 퇴사자 연차 정산",
-      items: ["연차/휴가", "연차 촉진", "리프레쉬 휴가"], menus: [["main", "휴가"]], src: ["연차/휴가", "리프레쉬 휴가"] },
+      items: ["연차/휴가", "연차 촉진", "리프레쉬 휴가"], menus: [["manual", "휴가 매뉴얼"]], src: ["연차/휴가", "리프레쉬 휴가"] },
     { id: "absence", name: "휴직", ic: "🍼", desc: "모성보호, 육아·질병 휴직, 복직 관리",
       items: ["모성보호", "휴직/복직"], menus: [["main", "휴직"]], src: ["모성보호/휴직/복직"] },
     { id: "welfare", name: "복리후생", ic: "🎁", desc: "경조사, 건강검진, 생일·출산·명절 선물, 복지몰",
@@ -178,7 +178,7 @@
       can("home.org", "read") ? sb.from("portal_org").select("*").order("sort") : null,
       can("home.calendar", "read") ? sb.from("portal_events").select("*").order("start_date") : null,
       can("home.faq", "read") ? sb.from("portal_faq").select("*").order("sort") : null,
-      sb.from("portal_pages").select("id,cat,menu,grp,grp_sort,sort,title,lead,updated_at,updated_by").order("grp_sort").order("sort")
+      sb.from("portal_pages").select("id,cat,menu,grp,grp_sort,sort,parent,title,lead,updated_at,updated_by").order("grp_sort").order("sort")
     ];
     var r = await Promise.all(q.map(function(x){ return x || Promise.resolve({ data: [] }); }));
     S.staff = (r[0].data || []).filter(function(x){ return x.active !== false; });
@@ -242,7 +242,7 @@
     if (showFaq) renderFaq();
   }
   function catCard(c){
-    var ready = c.id === "att" || !!c.link;
+    var ready = !!c.link || S.pages.some(function(p){ return p.cat === c.id; });
     return '<a class="catc' + (ready ? "" : " soon") + '" href="' + (c.link ? c.link : "#/c/" + c.id) + '"' + (c.link ? ' target="_blank" rel="noopener"' : '') + '>' +
       (c.link ? '<span class="ext">대시보드 ↗</span>' : (ready ? '' : '<span class="ext">준비 중</span>')) +
       '<div class="ic">' + c.ic + '</div><h3>' + esc(c.name) + '</h3><p>' + esc(c.desc) + '</p>' +
@@ -678,7 +678,7 @@
     var head = '<div class="cat-head"><div class="crumb"><a href="#/">홈</a> › ' + esc(c.name) + '</div><h1><span>' + c.ic + '</span>' + esc(c.name) + '</h1>' +
       '<nav class="tabs">' + menus.map(function(m){ var l = level(c.id + "." + m[0]); return '<a href="#/c/' + c.id + '/' + m[0] + '" class="' + (m[0] === menu ? "on" : "") + '">' + esc(m[1]) + '<span class="lv">' + LV_LABEL[Object.keys(LV)[l]] + '</span></a>'; }).join("") + '</nav></div>';
     var key = c.id + "." + menu;
-    if (c.id === "att" && menu === "manual"){ app.innerHTML = shell(head + '<div class="cat-wrap" id="cw"></div>', c.name); renderManual(c, key, sub); }
+    if (menu === "manual"){ app.innerHTML = shell(head + '<div class="cat-wrap" id="cw"></div>', c.name); renderManual(c, key, sub); }
     else if (c.id === "att" && menu === "worktypes"){ app.innerHTML = shell(head + '<div class="cat-wrap"><div class="cat-main" id="cm"></div></div>', c.name); renderWorktypes(c, sub === "exceptions" ? "exceptions" : "worktypes"); }
     else if (c.id === "att" && menu === "violations"){ app.innerHTML = shell(head + '<div class="cat-wrap"><div class="cat-main" id="cm"></div></div>', c.name); renderViol(c, sub); }
     else {
@@ -694,114 +694,159 @@
   var manualEditing = false, tocEditing = false, tocDraft = null;
   function manualPages(c){ return S.pages.filter(function(p){ return p.cat === c.id && p.menu === "manual"; }).sort(function(a, b){ return a.grp_sort - b.grp_sort || a.sort - b.sort; }); }
   function groupNames(list){ var g = []; list.forEach(function(p){ if (g.indexOf(p.grp) < 0) g.push(p.grp); }); return g; }
-  // keep each group's items contiguous, in order of the group's first appearance
-  function normalizeDraft(d){ var g = groupNames(d); var out = []; g.forEach(function(n){ d.forEach(function(x){ if (x.grp === n) out.push(x); }); }); return out; }
-  // ordered: [{id, grp}] in the final order → writes grp / grp_sort / sort for rows that changed
+  // display order: group → top-level page → its sub-pages. Sub-pages always follow their parent's group.
+  function normalizeDraft(d){
+    var ids = {}; d.forEach(function(x){ ids[x.id] = x; });
+    d.forEach(function(x){ if (x.parent && (!ids[x.parent] || ids[x.parent].parent)) x.parent = null; if (x.parent) x.grp = ids[x.parent].grp; });
+    var out = [];
+    groupNames(d.filter(function(x){ return !x.parent; }).concat(d.filter(function(x){ return x.parent; }))).forEach(function(g){
+      d.forEach(function(x){ if (x.grp === g && !x.parent){ out.push(x); d.forEach(function(y){ if (y.parent === x.id) out.push(y); }); } });
+    });
+    return out;
+  }
+  function flatPages(list){ return normalizeDraft(list.map(function(p){ return { id: p.id, grp: p.grp, parent: p.parent || null, title: p.title, ref: p }; })).map(function(x){ return x.ref; }); }
+  // ordered: [{id, grp, parent, title?}] → writes grp / grp_sort / sort / parent (/ title) for rows that changed
   async function saveOrder(ordered){
     ordered = normalizeDraft(ordered);
     var gOrder = groupNames(ordered), cnt = {}, todo = [];
     ordered.forEach(function(o){
-      var gs = (gOrder.indexOf(o.grp) + 1) * 10; cnt[o.grp] = (cnt[o.grp] || 0) + 1;
+      cnt[o.grp] = (cnt[o.grp] || 0) + 1;
       var p = S.pages.filter(function(x){ return x.id === o.id; })[0]; if (!p) return;
-      var v = { grp: o.grp, grp_sort: gs, sort: cnt[o.grp] };
-      if (p.grp !== v.grp || p.grp_sort !== v.grp_sort || p.sort !== v.sort) todo.push([p, v]);
+      var v = { grp: o.grp, grp_sort: (gOrder.indexOf(o.grp) + 1) * 10, sort: cnt[o.grp], parent: o.parent || null };
+      if (o.title && o.title !== p.title) v.title = o.title;
+      if (p.grp !== v.grp || p.grp_sort !== v.grp_sort || p.sort !== v.sort || (p.parent || null) !== v.parent || v.title) todo.push([p, v]);
     });
     for (var i = 0; i < todo.length; i++){
       var r = await sb.from("portal_pages").update(todo[i][1]).eq("id", todo[i][0].id).select("id");
-      if (r.error || !r.data || !r.data.length){ alert("목차 순서를 저장하지 못했습니다: " + errMsg(r)); return false; }
+      if (r.error || !r.data || !r.data.length){ alert("목차를 저장하지 못했습니다: " + errMsg(r)); return false; }
       Object.assign(todo[i][0], todo[i][1]);
     }
     S.pages.sort(function(a, b){ return a.grp_sort - b.grp_sort || a.sort - b.sort; });
     if (todo.length) logp("pages", "order", todo.length + "건");
     return true;
   }
-  // position controls used by the page editor and "문서 추가"
-  function posControls(list, curGrp, selfId, afterId){
-    var groups = groupNames(list);
-    return '<div class="pos-row"><span class="hint">목차 위치</span><select id="posGrp">' + groups.map(function(g){ return '<option' + (g === curGrp ? " selected" : "") + '>' + esc(g) + '</option>'; }).join("") + '<option value="__new">+ 새 그룹…</option></select>' +
-      '<select id="posAfter"></select></div>';
+  // position controls for the page editor and "문서 추가": group / 상위 목차 / 순서
+  function posControls(list, curGrp){
+    return '<div class="pos-row"><span class="hint">목차 위치</span><select id="posGrp">' + groupNames(list).map(function(g){ return '<option' + (g === curGrp ? " selected" : "") + '>' + esc(g) + '</option>'; }).join("") + '<option value="__new">+ 새 그룹…</option></select>' +
+      '<select id="posPar" title="상위 목차"></select><select id="posAfter" title="순서"></select></div>';
   }
-  function wirePos(root, list, selfId, afterId){
-    var gs = $("#posGrp", root), af = $("#posAfter", root);
-    function fill(sel){
-      var items = list.filter(function(p){ return p.grp === gs.value && p.id !== selfId; });
-      af.innerHTML = '<option value="__first">맨 앞</option>' + items.map(function(p){ return '<option value="' + esc(p.id) + '">' + esc(p.title) + ' 다음</option>'; }).join("");
-      af.value = sel && items.some(function(p){ return p.id === sel; }) ? sel : (items.length ? items[items.length - 1].id : "__first");
+  function wirePos(root, list, self, cur){
+    var gs = $("#posGrp", root), ps = $("#posPar", root), af = $("#posAfter", root);
+    var hasKids = self && list.some(function(p){ return p.parent === self.id; });
+    function fillPar(sel){
+      var tops = list.filter(function(p){ return p.grp === gs.value && !p.parent && (!self || p.id !== self.id); });
+      ps.innerHTML = '<option value="">상위 목차 없음(1단계)</option>' + (hasKids ? "" : tops.map(function(p){ return '<option value="' + esc(p.id) + '">' + esc(p.title) + ' 아래(2단계)</option>'; }).join(""));
+      ps.value = sel && tops.some(function(p){ return p.id === sel; }) && !hasKids ? sel : "";
+    }
+    function fillAfter(sel){
+      var sibs = list.filter(function(p){ return p.grp === gs.value && (p.parent || "") === ps.value && (!self || p.id !== self.id); });
+      af.innerHTML = '<option value="__first">맨 앞</option>' + sibs.map(function(p){ return '<option value="' + esc(p.id) + '">' + esc(p.title) + ' 다음</option>'; }).join("");
+      af.value = sel === "__first" ? "__first" : sel && sibs.some(function(p){ return p.id === sel; }) ? sel : (sibs.length ? sibs[sibs.length - 1].id : "__first");
     }
     gs.addEventListener("change", function(){
       if (gs.value === "__new"){
         var n = (window.prompt("새 그룹 이름", "") || "").trim();
-        if (!n){ gs.selectedIndex = 0; fill(); return; }
+        if (!n){ gs.selectedIndex = 0; fillPar(); fillAfter(); return; }
         var o = document.createElement("option"); o.textContent = n; gs.insertBefore(o, gs.lastChild); gs.value = n;
       }
-      fill();
+      fillPar(); fillAfter();
     });
-    fill(afterId);
-    return function(){ return { grp: gs.value, after: af.value }; };
+    ps.addEventListener("change", function(){ fillAfter(); });
+    fillPar(cur && cur.parent); fillAfter(cur && cur.after);
+    return function(){ return { grp: gs.value, parent: ps.value || null, after: af.value }; };
   }
   function orderWith(list, id, pos){
-    var d = list.filter(function(p){ return p.id !== id; }).map(function(p){ return { id: p.id, grp: p.grp }; });
-    var item = { id: id, grp: pos.grp };
-    var idx;
-    if (pos.after === "__first"){ idx = d.findIndex(function(x){ return x.grp === pos.grp; }); if (idx < 0) idx = d.length; }
-    else { idx = d.findIndex(function(x){ return x.id === pos.after; }); idx = idx < 0 ? d.length : idx + 1; }
-    d.splice(idx, 0, item);
+    var d = normalizeDraft(list.map(function(p){ return { id: p.id, grp: p.grp, parent: p.parent || null }; }));
+    var me2 = d.filter(function(x){ return x.id === id; })[0] || { id: id }, kids = d.filter(function(x){ return x.parent === id; });
+    d = d.filter(function(x){ return x.id !== id && x.parent !== id; });
+    me2.grp = pos.grp; me2.parent = pos.parent || null; kids.forEach(function(k){ k.grp = pos.grp; });
+    var sibs = d.filter(function(x){ return x.grp === pos.grp && (x.parent || null) === me2.parent; }), idx;
+    if (pos.after === "__first" || !sibs.length){
+      if (sibs.length) idx = d.indexOf(sibs[0]);
+      else if (me2.parent){ idx = d.findIndex(function(x){ return x.id === me2.parent; }) + 1; }
+      else { var last = -1; d.forEach(function(x, i){ if (x.grp === pos.grp) last = i; }); idx = last < 0 ? d.length : last + 1; }
+    } else {
+      idx = d.findIndex(function(x){ return x.id === pos.after; });
+      idx = idx < 0 ? d.length : idx + 1;
+      while (idx < d.length && d[idx].parent && d[idx].parent === pos.after) idx++;
+    }
+    d.splice.apply(d, [idx, 0, me2].concat(kids));
     return d;
   }
+  function menuLabel(c){ var m = c.menus.filter(function(x){ return x[0] === "manual"; })[0]; return m ? m[1] : c.name + " 매뉴얼"; }
   function tocSide(c, key, list, page){
     var groups = groupNames(list), ed = can(key, "edit");
     if (tocEditing && ed){
       var d = tocDraft, dg = groupNames(d);
-      return '<aside class="side toc-edit"><div class="side-title">목차 편집</div><p class="hint" style="font-size:12px;padding:0 10px">↑↓로 순서를, 그룹 선택으로 위치를 바꾼 뒤 저장하세요.</p>' + dg.map(function(g, gi){
+      return '<aside class="side toc-edit"><div class="side-title">목차 편집</div><p class="hint" style="font-size:12px;padding:0 10px">↑↓ 순서, → 하위 목차로 넣기, ← 꺼내기, ✎ 이름 바꾸기. 다 바꾼 뒤 저장하세요.</p>' + dg.map(function(g, gi){
+        var items = d.filter(function(x){ return x.grp === g; });
         return '<div class="te-g"><div class="te-gh"><b>' + esc(g) + '</b><span><button class="ib" data-gu="' + gi + '" title="그룹 위로"' + (gi ? "" : " disabled") + '>↑</button><button class="ib" data-gd="' + gi + '" title="그룹 아래로"' + (gi < dg.length - 1 ? "" : " disabled") + '>↓</button><button class="ib" data-gr="' + gi + '" title="그룹 이름 바꾸기">✎</button></span></div>' +
-          d.filter(function(x){ return x.grp === g; }).map(function(x){
-            return '<div class="te-p"><span class="t">' + esc(x.title) + '</span><span class="ctl"><button class="ib" data-pu="' + esc(x.id) + '" title="위로">↑</button><button class="ib" data-pd="' + esc(x.id) + '" title="아래로">↓</button>' +
-              '<select data-pg="' + esc(x.id) + '" title="그룹 옮기기">' + dg.map(function(n){ return '<option' + (n === g ? " selected" : "") + '>' + esc(n) + '</option>'; }).join("") + '<option value="__new">+ 새 그룹…</option></select></span></div>';
+          items.map(function(x){
+            var sibs = items.filter(function(y){ return (y.parent || null) === (x.parent || null); }), si = sibs.indexOf(x);
+            var canIn = !x.parent && si > 0 && !d.some(function(y){ return y.parent === x.id; });
+            return '<div class="te-p' + (x.parent ? " sub" : "") + '"><span class="t">' + (x.parent ? "ㄴ " : "") + esc(x.title) + '</span><span class="ctl">' +
+              '<button class="ib" data-pu="' + esc(x.id) + '" title="위로"' + (si > 0 ? "" : " disabled") + '>↑</button><button class="ib" data-pd="' + esc(x.id) + '" title="아래로"' + (si < sibs.length - 1 ? "" : " disabled") + '>↓</button>' +
+              '<button class="ib" data-pin="' + esc(x.id) + '" title="바로 위 문서의 하위 목차로"' + (canIn ? "" : " disabled") + '>→</button><button class="ib" data-pout="' + esc(x.id) + '" title="하위 목차에서 꺼내기"' + (x.parent ? "" : " disabled") + '>←</button>' +
+              '<button class="ib" data-pr="' + esc(x.id) + '" title="목차 이름 바꾸기">✎</button>' +
+              (x.parent ? '' : '<select data-pg="' + esc(x.id) + '" title="그룹 옮기기">' + dg.map(function(n){ return '<option' + (n === g ? " selected" : "") + '>' + esc(n) + '</option>'; }).join("") + '<option value="__new">+ 새 그룹…</option></select>') + '</span></div>';
           }).join("") + '</div>';
       }).join("") + '<div style="display:flex;gap:6px;padding:12px 10px"><button class="btn sm ghost" id="teNo">취소</button><button class="btn sm primary" id="teOk">저장</button></div></aside>';
     }
-    return '<aside class="side"><div class="side-title">근태관리 매뉴얼</div>' + groups.map(function(g){
-      var open = list.some(function(p){ return p.grp === g && p.id === page.id; }) || g === groups[0];
+    return '<aside class="side"><div class="side-title">' + esc(menuLabel(c)) + '</div>' + groups.map(function(g){
+      var inG = list.filter(function(p){ return p.grp === g; });
+      var open = inG.some(function(p){ return p.id === page.id; }) || g === groups[0];
+      function a(p, cls){ return '<a href="#/c/' + c.id + '/manual/' + encodeURIComponent(p.id) + '" class="' + cls + (p.id === page.id ? " on" : "") + '">' + esc(p.title) + '</a>'; }
       return '<div class="grp' + (open ? " open" : "") + '"><button class="grp-h" type="button">' + esc(g) + '<span class="chev">▶</span></button><ul>' +
-        list.filter(function(p){ return p.grp === g; }).map(function(p){ return '<li><a href="#/c/' + c.id + '/manual/' + encodeURIComponent(p.id) + '" class="' + (p.id === page.id ? "on" : "") + '">' + esc(p.title) + '</a></li>'; }).join("") + '</ul></div>';
+        inG.filter(function(p){ return !p.parent; }).map(function(p){
+          var kids = inG.filter(function(k){ return k.parent === p.id; });
+          return '<li>' + a(p, "") + (kids.length ? '<ul class="sub">' + kids.map(function(k){ return '<li>' + a(k, "s2") + '</li>'; }).join("") + '</ul>' : '') + '</li>';
+        }).join("") + '</ul></div>';
     }).join("") + '<div style="padding:12px 10px;display:flex;gap:6px;flex-wrap:wrap">' + (ed ? '<button class="btn sm" id="tocEdit">↕ 목차 편집</button>' : '') + (can(key, "manage") ? '<button class="btn sm" id="pgAdd">+ 문서 추가</button>' : '') + '</div></aside>';
   }
   function wireTocEdit(c, key, page){
-    var host = $("#cw"), d = tocDraft;
+    var host = $("#cw");
     function re(){ tocDraft = normalizeDraft(tocDraft); renderManual(c, key, page.id); }
-    function swapIn(id, dir){
-      var i = d.findIndex(function(x){ return x.id === id; }), g = d[i].grp, j = i + dir;
-      while (j >= 0 && j < d.length && d[j].grp !== g) j += dir;
-      if (j < 0 || j >= d.length) return; var t = d[i]; d[i] = d[j]; d[j] = t; re();
+    function item(id){ return tocDraft.filter(function(x){ return x.id === id; })[0]; }
+    function swap(id, dir){
+      var d = tocDraft, x = item(id), sibs = d.filter(function(y){ return y.grp === x.grp && (y.parent || null) === (x.parent || null); }), i = sibs.indexOf(x), o = sibs[i + dir];
+      if (!o) return; var a = d.indexOf(x), b = d.indexOf(o); d[a] = o; d[b] = x; re();
     }
     function moveGroup(gi, dir){
-      var gs = groupNames(d), a = gs[gi], b = gs[gi + dir]; if (!b) return;
-      gs[gi] = b; gs[gi + dir] = a;
-      tocDraft = []; gs.forEach(function(n){ d.forEach(function(x){ if (x.grp === n) tocDraft.push(x); }); }); renderManual(c, key, page.id);
+      var gs = groupNames(tocDraft), a = gs[gi], b = gs[gi + dir]; if (!b) return; gs[gi] = b; gs[gi + dir] = a;
+      var out = []; gs.forEach(function(n){ tocDraft.forEach(function(x){ if (x.grp === n) out.push(x); }); }); tocDraft = out; renderManual(c, key, page.id);
     }
-    $all("[data-pu]", host).forEach(function(b){ b.onclick = function(){ swapIn(b.dataset.pu, -1); }; });
-    $all("[data-pd]", host).forEach(function(b){ b.onclick = function(){ swapIn(b.dataset.pd, 1); }; });
+    $all("[data-pu]", host).forEach(function(b){ b.onclick = function(){ swap(b.dataset.pu, -1); }; });
+    $all("[data-pd]", host).forEach(function(b){ b.onclick = function(){ swap(b.dataset.pd, 1); }; });
+    $all("[data-pin]", host).forEach(function(b){ b.onclick = function(){
+      var x = item(b.dataset.pin), sibs = tocDraft.filter(function(y){ return y.grp === x.grp && !y.parent; }), prev = sibs[sibs.indexOf(x) - 1]; if (!prev) return;
+      x.parent = prev.id; tocDraft.splice(tocDraft.indexOf(x), 1); var last = tocDraft.indexOf(prev); tocDraft.forEach(function(y, i){ if (y.parent === prev.id) last = i; }); tocDraft.splice(last + 1, 0, x); re(); }; });
+    $all("[data-pout]", host).forEach(function(b){ b.onclick = function(){
+      var x = item(b.dataset.pout), par = x.parent; x.parent = null; tocDraft.splice(tocDraft.indexOf(x), 1);
+      var last = tocDraft.findIndex(function(y){ return y.id === par; }); tocDraft.forEach(function(y, i){ if (y.parent === par) last = i; }); tocDraft.splice(last + 1, 0, x); re(); }; });
+    $all("[data-pr]", host).forEach(function(b){ b.onclick = function(){ var x = item(b.dataset.pr), n = (window.prompt("목차 이름", x.title) || "").trim(); if (!n || n === x.title) return; x.title = n; re(); }; });
     $all("[data-gu]", host).forEach(function(b){ b.onclick = function(){ moveGroup(+b.dataset.gu, -1); }; });
     $all("[data-gd]", host).forEach(function(b){ b.onclick = function(){ moveGroup(+b.dataset.gd, 1); }; });
     $all("[data-gr]", host).forEach(function(b){ b.onclick = function(){
-      var old = groupNames(d)[+b.dataset.gr], n = (window.prompt("그룹 이름", old) || "").trim(); if (!n || n === old) return;
-      d.forEach(function(x){ if (x.grp === old) x.grp = n; }); re(); }; });
+      var old = groupNames(tocDraft)[+b.dataset.gr], n = (window.prompt("그룹 이름", old) || "").trim(); if (!n || n === old) return;
+      tocDraft.forEach(function(x){ if (x.grp === old) x.grp = n; }); re(); }; });
     $all("[data-pg]", host).forEach(function(s){ s.onchange = function(){
-      var x = d.filter(function(y){ return y.id === s.dataset.pg; })[0], v = s.value;
+      var x = item(s.dataset.pg), v = s.value;
       if (v === "__new"){ v = (window.prompt("새 그룹 이름", "") || "").trim(); if (!v){ re(); return; } }
-      d.splice(d.indexOf(x), 1); x.grp = v;
-      var last = -1; d.forEach(function(y, i){ if (y.grp === v) last = i; }); d.splice(last < 0 ? d.length : last + 1, 0, x); re(); }; });
+      var moving = [x].concat(tocDraft.filter(function(y){ return y.parent === x.id; }));
+      tocDraft = tocDraft.filter(function(y){ return moving.indexOf(y) < 0; }); moving.forEach(function(y){ y.grp = v; });
+      var last = -1; tocDraft.forEach(function(y, i){ if (y.grp === v) last = i; }); tocDraft.splice.apply(tocDraft, [last < 0 ? tocDraft.length : last + 1, 0].concat(moving)); re(); }; });
     $("#teNo").onclick = function(){ tocEditing = false; tocDraft = null; renderManual(c, key, page.id); };
-    $("#teOk").onclick = async function(){ var ok = await saveOrder(tocDraft); if (!ok) return; tocEditing = false; tocDraft = null; toast("목차 순서를 저장했습니다."); renderManual(c, key, page.id); };
+    $("#teOk").onclick = async function(){ var ok = await saveOrder(tocDraft); if (!ok) return; tocEditing = false; tocDraft = null; toast("목차를 저장했습니다."); renderManual(c, key, page.id); };
   }
   async function renderManual(c, key, pid){
-    var host = $("#cw"), pages = manualPages(c);
-    if (!pages.length){ host.innerHTML = '<div class="cat-main"><p class="hint">등록된 매뉴얼이 없습니다.</p>' + (can(key, "manage") ? '<button class="btn sm" id="pgAdd">+ 문서 추가</button>' : '') + '</div>'; if ($("#pgAdd")) $("#pgAdd").onclick = function(){ addPage(c, pages, ""); }; return; }
+    var host = $("#cw"), pages = flatPages(manualPages(c));
+    if (!pages.length){ host.innerHTML = '<div class="cat-main"><p class="hint">등록된 매뉴얼이 없습니다.</p>' + (can(key, "manage") ? '<button class="btn sm" id="pgAdd">+ 문서 추가</button>' : '') + '</div>'; if ($("#pgAdd")) $("#pgAdd").onclick = function(){ addPage(c, pages, "업무 개요"); }; return; }
     var page = pages.filter(function(p){ return p.id === pid; })[0] || pages[0];
+    var parent = page.parent ? pages.filter(function(p){ return p.id === page.parent; })[0] : null;
     host.innerHTML = tocSide(c, key, pages, page) + '<div class="cat-main"><div class="doc-wrap"><article class="doc" id="docA"><p class="hint">불러오는 중…</p></article><nav class="toc-r" id="tocR"></nav></div></div>';
     $all(".grp-h", host).forEach(function(b){ b.onclick = function(){ b.parentNode.classList.toggle("open"); }; });
-    if ($("#pgAdd")) $("#pgAdd").onclick = function(){ addPage(c, pages, page.grp); };
-    if ($("#tocEdit")) $("#tocEdit").onclick = function(){ tocEditing = true; tocDraft = pages.map(function(p){ return { id: p.id, grp: p.grp, title: p.title }; }); renderManual(c, key, page.id); };
+    if ($("#pgAdd")) $("#pgAdd").onclick = function(){ addPage(c, pages, page.grp, page.parent || page.id); };
+    if ($("#tocEdit")) $("#tocEdit").onclick = function(){ tocEditing = true; tocDraft = pages.map(function(p){ return { id: p.id, grp: p.grp, parent: p.parent || null, title: p.title }; }); renderManual(c, key, page.id); };
     if (tocEditing && $("#teOk")) wireTocEdit(c, key, page);
     if (page.body_html == null){
       var r = await sb.from("portal_pages").select("body_html").eq("id", page.id).maybeSingle();
@@ -809,16 +854,18 @@
     }
     if (!$("#docA")) return;
     var idx = pages.indexOf(page), prev = pages[idx - 1], next = pages[idx + 1];
+    var kids = pages.filter(function(p){ return p.parent === page.id; });
     var art = $("#docA"), ed = can(key, "edit");
+    var crumb = esc(c.name) + ' › ' + esc(menuLabel(c)) + ' › ' + esc(page.grp) + (parent ? ' › <a href="#/c/' + c.id + '/manual/' + encodeURIComponent(parent.id) + '">' + esc(parent.title) + '</a>' : '');
     if (manualEditing && ed){
-      var before = idx > 0 && pages[idx - 1].grp === page.grp ? pages[idx - 1].id : "__first";
-      art.innerHTML = '<div class="crumb">' + esc(c.name) + ' › ' + esc(page.grp) + ' · 편집 중</div>' + editorBar() +
-        posControls(pages, page.grp, page.id, before) +
-        '<p class="ed-hint">제목·요약·본문을 화면에서 바로 고칩니다. 글자를 선택한 뒤 도구를 누르세요. 「링크」로 포털 안 다른 메뉴·문서도 연결할 수 있습니다.</p>' +
+      var sibs = pages.filter(function(p){ return p.grp === page.grp && (p.parent || null) === (page.parent || null); }), si = sibs.indexOf(page);
+      var cur = { parent: page.parent || null, after: si > 0 ? sibs[si - 1].id : "__first" };
+      art.innerHTML = '<div class="crumb">' + crumb + ' · 편집 중</div>' + editorBar() + posControls(pages, page.grp) +
+        '<p class="ed-hint">제목·요약·본문을 화면에서 바로 고칩니다. 제목을 바꾸면 목차 이름도 바뀝니다. 「링크」로 포털 안 다른 메뉴·문서도 연결할 수 있습니다.</p>' +
         '<h1 id="edTitle" contenteditable="true">' + esc(page.title) + '</h1><p class="lead" id="edLead" contenteditable="true">' + esc(page.lead || "") + '</p>' +
         '<div id="edBody" class="body" contenteditable="true">' + cleanHtml(page.body_html) + '</div><textarea id="edHtml" class="ed-html" style="display:none"></textarea>' +
         '<div class="modal-actions" style="margin-top:24px">' + (can(key, "manage") ? '<button class="btn danger" id="pgDel" style="margin-right:auto">문서 삭제</button>' : '') + '<button class="btn ghost" id="pgNo">취소</button><button class="btn primary" id="pgOk">저장</button></div>';
-      var getPos = wirePos(art, pages, page.id, before);
+      var getPos = wirePos(art, pages, page, cur);
       var st = wireEditor(art, function(){ window.__editDirty = true; });
       [$("#edTitle"), $("#edLead")].forEach(function(x){ x.addEventListener("input", function(){ st.dirty = true; window.__editDirty = true; }); x.addEventListener("keydown", function(e){ if (e.key === "Enter") e.preventDefault(); }); });
       $("#pgNo").onclick = function(){ if (st.dirty && !confirm("수정한 내용을 저장하지 않고 닫을까요?")) return; manualEditing = false; window.__editDirty = false; renderManual(c, key, page.id); };
@@ -828,10 +875,11 @@
         if (x.error || !x.data || !x.data.length){ alert("저장하지 못했습니다: " + errMsg(x)); return; }
         Object.assign(page, upd);
         var pos = getPos();
-        if (pos.grp !== page.grp || pos.after !== before){ if (!(await saveOrder(orderWith(pages, page.id, pos)))) return; }
+        if (pos.grp !== page.grp || (pos.parent || null) !== (page.parent || null) || pos.after !== cur.after){ if (!(await saveOrder(orderWith(pages, page.id, pos)))) return; }
         logp("pages", "edit", page.title); manualEditing = false; window.__editDirty = false; toast("매뉴얼을 저장했습니다."); renderManual(c, key, page.id);
       };
       if ($("#pgDel")) $("#pgDel").onclick = async function(){
+        if (kids.length){ alert("하위 목차(" + kids.length + "개)가 있는 문서는 삭제할 수 없습니다. 하위 문서를 먼저 옮기거나 삭제하세요."); return; }
         if (!confirm("'" + page.title + "' 문서를 삭제할까요? 되돌릴 수 없습니다.")) return;
         var x = await sb.from("portal_pages").delete().eq("id", page.id).select("id");
         if (x.error || !x.data || !x.data.length){ alert("삭제하지 못했습니다: " + errMsg(x)); return; }
@@ -839,11 +887,12 @@
       };
       return;
     }
-    art.innerHTML = '<div class="crumb">' + esc(c.name) + ' › 근태관리 매뉴얼 › ' + esc(page.grp) + '</div><h1>' + esc(page.title) + '</h1>' +
+    art.innerHTML = '<div class="crumb">' + crumb + '</div><h1>' + esc(page.title) + '</h1>' +
       (page.lead ? '<p class="lead">' + esc(page.lead) + '</p>' : '') +
       '<div class="meta-line"><span class="tag b">' + esc(page.grp) + '</span>' + (page.updated_by ? '<span class="hint" style="font-size:12px">최종 수정 ' + esc(String(page.updated_at || "").slice(0, 10)) + ' · ' + esc(page.updated_by) + '</span>' : '') +
       (ed ? '<button class="btn sm" id="pgEdit" style="margin-left:auto">✎ 이 문서 수정</button>' : '') + '</div>' +
       '<div class="body">' + cleanHtml(page.body_html) + '</div>' +
+      (kids.length ? '<div class="kid-cards"><h3>하위 목차</h3>' + kids.map(function(k){ return '<a href="#/c/' + c.id + '/manual/' + encodeURIComponent(k.id) + '"><b>' + esc(k.title) + '</b>' + (k.lead ? '<span>' + esc(k.lead) + '</span>' : '') + '</a>'; }).join("") + '</div>' : '') +
       '<div class="pn">' + (prev ? '<a href="#/c/' + c.id + '/manual/' + encodeURIComponent(prev.id) + '"><small>이전</small>' + esc(prev.title) + '</a>' : '<span></span>') +
       (next ? '<a class="nx" href="#/c/' + c.id + '/manual/' + encodeURIComponent(next.id) + '"><small>다음</small>' + esc(next.title) + '</a>' : '') + '</div>';
     if ($("#pgEdit")) $("#pgEdit").onclick = function(){ manualEditing = true; tocEditing = false; renderManual(c, key, page.id); };
@@ -860,22 +909,22 @@
     var links = $all("a", host);
     window.onscroll = function(){ var y = window.scrollY + 120, cur = 0; hs.forEach(function(h, i){ if (h.offsetTop <= y) cur = i; }); links.forEach(function(l, i){ l.classList.toggle("on", i === cur); }); };
   }
-  function addPage(c, pages, curGrp){
-    var m = showModal('<h3>문서 추가</h3><form class="f" id="af"><label class="full">문서 제목<input name="title" required></label><div class="full">' + posControls(pages.length ? pages : [{ grp: curGrp || "업무 개요", id: "", title: "" }], curGrp || (pages[0] && pages[0].grp) || "업무 개요", null, null) + '</div>' +
+  function addPage(c, pages, curGrp, curParent){
+    var base = pages.length ? pages : [{ grp: curGrp || "업무 개요", id: "", title: "" }];
+    var m = showModal('<h3>문서 추가</h3><form class="f" id="af"><label class="full">문서 제목(목차 이름)<input name="title" required></label><div class="full">' + posControls(base, curGrp || base[0].grp) + '</div>' +
       '<div class="form-actions"><button type="button" class="btn ghost" id="aNo">취소</button><button class="btn primary">만들기</button></div></form>', "mid");
-    var getPos = wirePos(m, pages, null, null);
+    var getPos = wirePos(m, pages, null, { parent: curParent && pages.some(function(p){ return p.id === curParent && !p.parent; }) ? curParent : null, after: "" });
     $("#aNo", m).onclick = closeModal;
     $("#af", m).addEventListener("submit", async function(e){
       e.preventDefault(); var fd = new FormData(e.target), pos = getPos();
-      var rec = { id: c.id + "-" + Date.now().toString(36), cat: c.id, menu: "manual", grp: pos.grp, grp_sort: 999, sort: 999, title: String(fd.get("title")).trim(), lead: "", body_html: "<h2>개요</h2><p>내용을 입력하세요.</p>", updated_by: me.email };
-      var x = await sb.from("portal_pages").insert(rec).select("id,cat,menu,grp,grp_sort,sort,title,lead,updated_at,updated_by");
+      var rec = { id: c.id + "-" + Date.now().toString(36), cat: c.id, menu: "manual", grp: pos.grp, grp_sort: 999, sort: 999, parent: pos.parent || null, title: String(fd.get("title")).trim(), lead: "", body_html: "<h2>개요</h2><p>내용을 입력하세요.</p>", updated_by: me.email };
+      var x = await sb.from("portal_pages").insert(rec).select("id,cat,menu,grp,grp_sort,sort,parent,title,lead,updated_at,updated_by");
       if (x.error || !x.data || !x.data.length){ alert("만들지 못했습니다: " + errMsg(x)); return; }
       var np = x.data[0]; np.body_html = rec.body_html; S.pages.push(np);
-      await saveOrder(orderWith(pages, np.id, pos));
+      await saveOrder(orderWith(pages.concat([np]), np.id, pos));
       closeModal(); manualEditing = true; location.hash = "#/c/" + c.id + "/manual/" + encodeURIComponent(np.id);
     });
   }
-
   /* ---------- link picker (internal menus/documents or external URL) ---------- */
   function portalTargets(){
     var t = [["업무포털 홈", "#/"]];
