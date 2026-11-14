@@ -102,8 +102,13 @@
     return t.innerHTML.trim();
   }
   var ED_BTNS = [["bold","<b>굵게</b>"],["red",'<span style="color:var(--danger-700)">빨강</span>'],["blue",'<span style="color:var(--accent-700)">파랑</span>'],["plain","색 빼기"],["|"],
-    ["h2","제목"],["h3","소제목"],["p","본문"],["|"],["ul","• 목록"],["ol","1. 목록"],["|"],["link","링크"],["unlink","링크 빼기"],["note","안내 박스"],["table","표 넣기"],["rowAdd","행 추가"],["rowDel","행 삭제"],["|"],["undo","↶"],["redo","↷"],["grow"],["html","HTML로 보기"]];
-  function editorBar(){ return '<div class="ed-bar" id="edBar">' + ED_BTNS.map(function(b){ if (b[0] === "|") return '<span class="sep"></span>'; if (b[0] === "grow") return '<span class="grow"></span>'; return '<button type="button" data-ed="' + b[0] + '">' + b[1] + '</button>'; }).join("") + '</div>'; }
+    ["under","<u>밑줄</u>"],["sel","fs","글자 크기",[["","글자 크기"],["fs-s","작게"],["normal","보통"],["fs-l","크게"],["fs-xl","아주 크게"]]],["|"],
+    ["h2","제목"],["h3","소제목"],["p","본문"],["|"],["ul","• 목록"],["ol","1. 목록"],["|"],["alL","⇤ 왼쪽"],["alC","↔ 가운데"],["alR","⇥ 오른쪽"],["|"],["link","링크"],["unlink","링크 빼기"],["|"],["undo","↶"],["redo","↷"],["grow"],["html","HTML로 보기"],["br"],
+    ["lbl","박스"],["note","안내 박스 ▾"],["|"],["lbl","표"],["table","표 넣기"],["rowAdd","행 추가"],["rowDel","행 삭제"],["colAdd","열 추가"],["colDel","열 삭제"],["colAll","정렬: 칸만"],["sel","tw","표 너비",[["","표 너비"],["60","좁게 60%"],["80","보통 80%"],["100","전체 100%"]]],["lbl2","열 경계선을 끌면 열 너비가 바뀝니다"]];
+  function editorBar(){ return '<div class="ed-bar" id="edBar">' + ED_BTNS.map(function(b){ if (b[0] === "|") return '<span class="sep"></span>'; if (b[0] === "grow") return '<span class="grow"></span>';
+      if (b[0] === "br") return '<span class="brk"></span>'; if (b[0] === "lbl") return '<span class="lbl">' + b[1] + '</span>'; if (b[0] === "lbl2") return '<span class="lbl2">' + b[1] + '</span>';
+      if (b[0] === "sel") return '<select data-edsel="' + b[1] + '" title="' + b[2] + '">' + b[3].map(function(o){ return '<option value="' + o[0] + '">' + o[1] + '</option>'; }).join("") + '</select>';
+      return '<button type="button" data-ed="' + b[0] + '">' + b[1] + '</button>'; }).join("") + '</div>'; }
   // host contains #edBar, #edBody (contenteditable) and #edHtml (textarea). returns { getHtml, dirty }
   function wireEditor(host, onDirty){
     var body = $("#edBody", host), box = $("#edHtml", host), htmlMode = false, st = { dirty: false };
@@ -116,14 +121,68 @@
     function wrap(cls){ var r = rng(); if (!r || r.collapsed || !inBody(r.commonAncestorContainer)){ alert("먼저 바꿀 글자를 선택하세요."); return; } var sp = document.createElement("span"); sp.className = cls; sp.appendChild(r.extractContents()); r.insertNode(sp); dirty(); }
     function unwrap(){ var r = rng(); if (!r) return; var n = r.commonAncestorContainer; n = n.nodeType === 3 ? n.parentNode : n; var sp = n.closest && n.closest("span.red,span.blue"); if (sp && inBody(sp)){ while (sp.firstChild) sp.parentNode.insertBefore(sp.firstChild, sp); sp.remove(); dirty(); } }
     function row(){ var r = rng(); if (!r) return null; var n = r.startContainer; n = n.nodeType === 3 ? n.parentNode : n; var tr = n.closest && n.closest("tr"); return tr && inBody(tr) ? tr : null; }
+    var lastR = null, colAll = false, pop = null;
+    document.addEventListener("selectionchange", function(){ var r = rng(); if (r && inBody(r.commonAncestorContainer)) lastR = r.cloneRange(); });
+    function restore(){ if (!lastR) return; body.focus(); var s = window.getSelection(); s.removeAllRanges(); s.addRange(lastR); }
+    function curEl(){ var r = rng(); if (!r) return null; var n = r.startContainer; n = n.nodeType === 3 ? n.parentNode : n; return inBody(n) ? n : null; }
+    function cell(){ var n = curEl(); var c = n && n.closest("td,th"); return c && inBody(c) ? c : null; }
+    function selCells(){ var r = rng(), c = cell(); if (!c) return []; var tb = c.closest("table");
+      if (colAll){ var ix = c.cellIndex; return $all("tr", tb).map(function(tr){ return tr.cells[ix]; }).filter(Boolean); }
+      var l = $all("td,th", tb).filter(function(x){ return r.intersectsNode(x); }); return l.length ? l : [c]; }
+    function align(v){ var cs = selCells();
+      if (cs.length){ cs.forEach(function(c){ c.style.textAlign = v === "left" ? "" : v; if (v === "left") c.classList.remove("c"); if (!c.getAttribute("style")) c.removeAttribute("style"); }); dirty(); return; }
+      document.execCommand(v === "center" ? "justifyCenter" : v === "right" ? "justifyRight" : "justifyLeft"); dirty(); }
+    function dropCols(tb){ var g = tb.querySelector("colgroup"); if (g) g.remove(); tb.style.tableLayout = ""; }
+    function closePop(){ if (pop){ pop.remove(); pop = null; } }
+    var NOTE_T = [["info", "파랑 · 안내", "참고로 알아 둘 내용", "안내"], ["tip", "초록 · 팁", "권장하는 방법, 요령", "팁"], ["warn", "노랑 · 주의", "틀리기 쉬운 것, 조심할 것", "주의"], ["danger", "빨강 · 중요", "반드시 지켜야 하는 것", "중요"]];
+    function noteMenu(btn){ if (pop){ closePop(); return; } var n = curEl(), cur = n && n.closest(".note"); if (cur && !inBody(cur)) cur = null;
+      pop = document.createElement("div"); pop.className = "ed-pop";
+      pop.innerHTML = '<div class="ep-h">' + (cur ? "이 박스의 종류 바꾸기" : "넣을 박스 고르기") + '</div>' +
+        NOTE_T.map(function(t){ return '<button type="button" data-nt="' + t[0] + '"><i class="sw ' + t[0] + '"></i><b>' + t[1] + '</b><small>' + t[2] + '</small></button>'; }).join("") +
+        (cur ? '<div class="ep-h" style="margin-top:6px">박스 없애기</div><button type="button" data-nt="unbox"><b>박스만 없애기</b><small>글은 본문으로 남깁니다</small></button><button type="button" data-nt="del"><b>박스 통째로 삭제</b><small>안의 글도 함께 지웁니다</small></button>' : '');
+      btn.parentNode.appendChild(pop); pop.style.left = btn.offsetLeft + "px"; pop.style.top = (btn.offsetTop + btn.offsetHeight + 4) + "px";
+      pop.addEventListener("mousedown", function(e){ e.preventDefault(); });
+      pop.addEventListener("click", function(e){ var b = e.target.closest("[data-nt]"); if (!b) return; var k = b.getAttribute("data-nt"); closePop(); restore();
+        var def = NOTE_T.map(function(t){ return t[3]; });
+        if (k === "del"){ if (cur && confirm("이 박스와 안의 글을 모두 삭제할까요?")){ cur.remove(); dirty(); } return; }
+        if (k === "unbox"){ if (!cur) return; var nt = cur.querySelector(".nt"); if (nt) nt.remove(); var pp = document.createElement("p"); while (cur.firstChild) pp.appendChild(cur.firstChild); cur.parentNode.replaceChild(pp, cur); dirty(); return; }
+        var t = NOTE_T.filter(function(x){ return x[0] === k; })[0];
+        if (cur){ cur.className = "note " + k; var lb = cur.querySelector(".nt"); if (lb && def.indexOf(lb.textContent.trim()) >= 0) lb.textContent = t[3]; dirty(); }
+        else { document.execCommand("insertHTML", false, '<div class="note ' + k + '"><span class="nt">' + t[3] + '</span>내용을 입력하세요.</div><p><br></p>'); dirty(); } });
+    }
+    document.addEventListener("mousedown", function(e){ if (pop && !pop.contains(e.target) && !(e.target.closest && e.target.closest('[data-ed="note"]'))) closePop(); });
+    /* 열 경계선 끌어서 너비 조절 */
+    var drag = null;
+    function edge(e){ var c = e.target.closest && e.target.closest("td,th"); if (!c || !inBody(c)) return null; var b = c.getBoundingClientRect(); var tr = c.parentNode;
+      if (b.right - e.clientX <= 5 && c.cellIndex < tr.cells.length - 1 && c.colSpan === 1) return c; if (e.clientX - b.left <= 5 && c.cellIndex > 0){ var pv = tr.cells[c.cellIndex - 1]; if (pv.colSpan === 1) return pv; } return null; }
+    body.addEventListener("mousemove", function(e){ if (drag) return; body.style.cursor = edge(e) ? "col-resize" : ""; });
+    body.addEventListener("mousedown", function(e){ var c = edge(e); if (!c) return; e.preventDefault(); var tb = c.closest("table"), first = null;
+      $all("tr", tb).some(function(tr){ var ok = Array.prototype.every.call(tr.cells, function(x){ return x.colSpan === 1; }); if (ok) first = tr; return ok; }); if (!first) return;
+      var ws = Array.prototype.map.call(first.cells, function(x){ return x.getBoundingClientRect().width; }), g = tb.querySelector("colgroup");
+      if (!g || g.children.length !== ws.length){ if (g) g.remove(); g = document.createElement("colgroup"); ws.forEach(function(){ g.appendChild(document.createElement("col")); }); tb.insertBefore(g, tb.firstChild); }
+      drag = { tb: tb, g: g, ws: ws, i: c.cellIndex, x: e.clientX, sum: ws.reduce(function(a, b){ return a + b; }, 0) }; });
+    document.addEventListener("mousemove", function(e){ if (!drag) return; var d = e.clientX - drag.x, a = drag.ws[drag.i], b = drag.ws[drag.i + 1]; d = Math.max(40 - a, Math.min(b - 40, d));
+      var ws = drag.ws.slice(); ws[drag.i] = a + d; ws[drag.i + 1] = b - d; drag.tb.style.tableLayout = "fixed";
+      ws.forEach(function(w, k){ drag.g.children[k].style.width = (Math.round(w / drag.sum * 1000) / 10) + "%"; }); e.preventDefault(); });
+    document.addEventListener("mouseup", function(){ if (drag){ drag = null; body.style.cursor = ""; dirty(); } });
     var A = {
+      under: function(){ document.execCommand("underline"); },
+      alL: function(){ align("left"); }, alC: function(){ align("center"); }, alR: function(){ align("right"); },
+      colAll: function(){ colAll = !colAll; var b = $('[data-ed="colAll"]', host); b.textContent = colAll ? "정렬: 열 전체" : "정렬: 칸만"; b.classList.toggle("on", colAll); },
+      colAdd: function(){ var c = cell(); if (!c){ alert("표 안의 칸을 먼저 클릭하세요."); return; } var tb = c.closest("table"), ix = c.cellIndex; dropCols(tb);
+        $all("tr", tb).forEach(function(tr){ var ref = tr.cells[Math.min(ix, tr.cells.length - 1)]; var n = document.createElement(ref.tagName === "TH" ? "th" : "td"); n.innerHTML = ref.tagName === "TH" && tr.parentNode.tagName === "THEAD" ? "새 열" : "<br>"; tr.insertBefore(n, ref.nextSibling); }); dirty(); },
+      colDel: function(){ var c = cell(); if (!c){ alert("지울 열의 칸을 먼저 클릭하세요."); return; } var tb = c.closest("table"), ix = c.cellIndex;
+        if (c.parentNode.cells.length <= 1){ alert("마지막 열은 지울 수 없습니다."); return; } if (!confirm("이 열을 삭제할까요?")) return; dropCols(tb);
+        $all("tr", tb).forEach(function(tr){ if (tr.cells[ix]) tr.cells[ix].remove(); }); dirty(); },
+      fs: function(v){ restore(); if (v === "normal"){ var n = curEl(), sp = n && n.closest("span.fs-s,span.fs-l,span.fs-xl"); if (sp && inBody(sp)){ while (sp.firstChild) sp.parentNode.insertBefore(sp.firstChild, sp); sp.remove(); dirty(); } else alert("크기를 바꾼 글자 안을 클릭한 뒤 「보통」을 고르세요."); return; } wrap(v); },
+      tw: function(v){ restore(); var c = cell(); if (!c){ alert("표 안의 칸을 먼저 클릭하세요."); return; } var tb = c.closest("table"), w = tb.closest(".tbl-w") || tb; w.style.width = v === "100" ? "" : v + "%"; tb.style.minWidth = v === "100" ? "" : "0"; [w, tb].forEach(function(x){ if (!x.getAttribute("style")) x.removeAttribute("style"); }); dirty(); },
       bold: function(){ document.execCommand("bold"); }, red: function(){ wrap("red"); }, blue: function(){ wrap("blue"); }, plain: unwrap,
       h2: function(){ document.execCommand("formatBlock", false, "h2"); }, h3: function(){ document.execCommand("formatBlock", false, "h3"); }, p: function(){ document.execCommand("formatBlock", false, "p"); },
       ul: function(){ document.execCommand("insertUnorderedList"); }, ol: function(){ document.execCommand("insertOrderedList"); },
       link: function(){ var r = rng(); if (!r || r.collapsed){ alert("링크를 걸 글자를 먼저 선택하세요."); return; } var saved = r.cloneRange();
         linkPicker(function(u){ body.focus(); var s = window.getSelection(); s.removeAllRanges(); s.addRange(saved); document.execCommand("createLink", false, u.trim()); dirty(); }); },
       unlink: function(){ document.execCommand("unlink"); },
-      note: function(){ document.execCommand("insertHTML", false, '<div class="note info"><span class="nt">안내</span>내용을 입력하세요.</div><p><br></p>'); },
+      note: function(){ noteMenu($('[data-ed="note"]', host)); },
       table: function(){ document.execCommand("insertHTML", false, '<div class="tbl-w"><table class="t"><thead><tr><th>항목</th><th>내용</th></tr></thead><tbody><tr><td><br></td><td><br></td></tr></tbody></table></div><p><br></p>'); },
       rowAdd: function(){ var tr = row(); if (!tr){ alert("표 안의 칸을 먼저 클릭하세요."); return; } var n = tr.cloneNode(true); $all("td,th", n).forEach(function(c){ c.innerHTML = "<br>"; }); if (tr.parentNode.tagName === "THEAD"){ var tb = tr.closest("table").querySelector("tbody"); n = document.createElement("tr"); $all("th", tr).forEach(function(){ var td = document.createElement("td"); td.innerHTML = "<br>"; n.appendChild(td); }); tb.insertBefore(n, tb.firstChild); } else tr.parentNode.insertBefore(n, tr.nextSibling); dirty(); },
       rowDel: function(){ var tr = row(); if (!tr){ alert("지울 행의 칸을 먼저 클릭하세요."); return; } if (tr.parentNode.tagName === "THEAD"){ alert("머리글 행은 지울 수 없습니다."); return; } if (confirm("이 행을 삭제할까요?")){ tr.remove(); dirty(); } },
@@ -131,13 +190,14 @@
       html: function(){ htmlMode = !htmlMode;
         if (htmlMode){ box.value = cleanHtml(body.innerHTML); body.style.display = "none"; box.style.display = "block"; }
         else { body.innerHTML = cleanHtml(box.value); box.style.display = "none"; body.style.display = ""; }
-        $all("[data-ed]", host).forEach(function(b){ if (b.getAttribute("data-ed") !== "html") b.disabled = htmlMode; });
+        $all("[data-ed],[data-edsel]", host).forEach(function(b){ if (b.getAttribute("data-ed") !== "html") b.disabled = htmlMode; });
         $('[data-ed="html"]', host).textContent = htmlMode ? "화면으로 보기" : "HTML로 보기"; }
     };
     $all("[data-ed]", host).forEach(function(b){
       b.addEventListener("mousedown", function(e){ e.preventDefault(); });
       b.addEventListener("click", function(){ var k = b.getAttribute("data-ed"); if (k !== "html") body.focus(); if (A[k]) A[k](); });
     });
+    $all("[data-edsel]", host).forEach(function(sl){ sl.addEventListener("change", function(){ var v = sl.value, k = sl.getAttribute("data-edsel"); sl.value = ""; if (v && A[k]) A[k](v); }); });
     st.getHtml = function(){ return cleanHtml(htmlMode ? box.value : body.innerHTML); };
     return st;
   }
@@ -1106,7 +1166,7 @@
       return '<div class="grp' + (open ? " open" : "") + '"><button class="grp-h" type="button">' + esc(g) + '<span class="chev">▶</span></button><ul>' +
         inG.filter(function(p){ return !p.parent; }).map(function(p){
           var kids = inG.filter(function(k){ return k.parent === p.id; });
-          return '<li>' + a(p, "") + (kids.length ? '<ul class="sub">' + kids.map(function(k){ return '<li>' + a(k, "s2") + '</li>'; }).join("") + '</ul>' : '') + '</li>';
+          return '<li>' + a(p, "") + (kids.length ? '<ul class="sub">' + kids.map(function(k){ return '<li>' + a(k, "toc-sub") + '</li>'; }).join("") + '</ul>' : '') + '</li>';
         }).join("") + '</ul></div>';
     }).join("") + '<div style="padding:12px 10px;display:flex;gap:6px;flex-wrap:wrap">' + (ed ? '<button class="btn sm" id="tocEdit">↕ 목차 편집</button>' : '') + (can(key, "manage") ? '<button class="btn sm" id="pgAdd">+ 문서 추가</button>' : '') + '</div></aside>';
   }
