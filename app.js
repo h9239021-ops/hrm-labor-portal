@@ -1780,6 +1780,7 @@
   function pRecs(key, name, types){
     return (S.recs[key] || []).filter(function(x){ var d = x.data || {}; return String(d.target || "").trim() === name && types.indexOf(recType(key, d)) >= 0; });
   }
+  function uRecs(key, name, types){ var seen = {}; return pRecs(key, name, types).filter(function(x){ var d = x.data, k = [d.type, d.start, d.end].join("|"); if (seen[k]) return false; seen[k] = 1; return true; }); }
   function linkedRows(name, types){
     var out = [];
     LINK_SRC.forEach(function(s){ pRecs(s[0], name, types).forEach(function(x){ out.push({ key: s[0], cat: s[1], defKey: s[2], catName: s[3], rec: x, type: recType(s[0], x.data) }); }); });
@@ -1796,12 +1797,12 @@
 
   /* --- 배우자 출산휴가: 출산 건별 누적 --- */
   function spouseInfo(d){
-    var L = LEAVE_LIMITS.spouse, l = pRecs("leave.status", nm(d), ["배우자 출산휴가"]).sort(function(a, b){ return String(a.data.start || "").localeCompare(String(b.data.start || "")); });
+    var L = LEAVE_LIMITS.spouse, l = uRecs("leave.status", nm(d), ["배우자 출산휴가"]).sort(function(a, b){ return String(a.data.start || "").localeCompare(String(b.data.start || "")); });
     var cl = [], cur = null;
     l.forEach(function(x){ var e = x.data, b = e.birth || "";
       if (cur && ((b && cur.birth && b === cur.birth) || (!(b && cur.birth) && dT(e.start) - dT(cur.first) <= 150 * 864e5))){ cur.list.push(x); if (b) cur.birth = b; }
       else { cur = { birth: b, first: e.start || "", list: [x] }; cl.push(cur); } });
-    var c = cl.filter(function(k){ return k.list.some(function(x){ return x.data === d; }); })[0] || cl[cl.length - 1]; if (!c) return null;
+    var c = cl.filter(function(k){ return k.list.some(function(x){ return x.data === d || (x.data.start === d.start && x.data.end === d.end); }); })[0] || cl[cl.length - 1]; if (!c) return null;
     var ref = c.birth || c.first, isNew = ref >= L.cut, multi = c.list.some(function(x){ return x.data.multi === "다태아"; });
     var limit = isNew ? (multi ? L.multi : L.days) : L.daysOld, used = c.list.reduce(function(a, x){ return a + lvDays(x.data); }, 0);
     var due = ref ? addDay(ref, isNew ? L.within : L.withinOld) : "";
@@ -1810,7 +1811,7 @@
   /* --- 육아휴직: 자녀별 누적 --- */
   function birthsOf(name){
     var s = {};
-    pRecs("leave.status", name, ["출산전후휴가"]).forEach(function(x){ var b = x.data.birth || x.data.due_date; if (b) s[b] = 1; });
+    pRecs("leave.status", name, ["출산전후휴가"]).forEach(function(x){ var b = x.data.birth || x.data.due_date || x.data.start; if (b) s[b] = 1; });   // 출산일이 없으면 출산휴가 시작일로 자녀를 구분
     pRecs("leave.status", name, ["배우자 출산휴가"]).forEach(function(x){ var b = x.data.birth || x.data.start; if (b) s[b] = 1; });
     pRecs("absence.status", name, PL_TYPES).forEach(function(x){ var b = x.data.birth || x.data.due_date; if (b) s[b] = 1; });
     var out = []; Object.keys(s).sort().forEach(function(b){ if (!out.length || dT(b) - dT(out[out.length - 1]) > 150 * 864e5) out.push(b); });   // 150일 안의 날짜는 같은 자녀로 봄
@@ -1824,9 +1825,12 @@
   }
   function parentalInfo(d){
     var L = LEAVE_LIMITS.parental, name = nm(d), bs = birthsOf(name), g = {}, order = [];
-    pRecs("absence.status", name, PL_TYPES).forEach(function(x){ var k = childKey(name, x.data, bs); if (!g[k]){ g[k] = { key: k, list: [], used: 0, ext: false, open: false }; order.push(k); } g[k].list.push(x); g[k].used += abDays(x.data); if (x.data.ext6 === "대상") g[k].ext = true; if (!abEnd(x.data)) g[k].open = true; });
+    var prevEnd = "", seq = 0;
+    uRecs("absence.status", name, PL_TYPES).sort(function(a, b){ return String(a.data.start || "").localeCompare(String(b.data.start || "")); }).forEach(function(x){ var k = childKey(name, x.data, bs);
+      if (!k){ if (!seq || (prevEnd && dT(x.data.start) - dT(prevEnd) > 365 * 864e5)) seq++; prevEnd = abEnd(x.data) || x.data.start || prevEnd; k = "?" + seq; }   // 자녀 정보가 없으면 1년 넘게 떨어진 휴직은 다른 자녀로 추정
+      if (!g[k]){ g[k] = { key: k, list: [], used: 0, ext: false, open: false }; order.push(k); } g[k].list.push(x); g[k].used += abDays(x.data); if (x.data.ext6 === "대상") g[k].ext = true; if (!abEnd(x.data)) g[k].open = true; });
     order.sort();
-    var kids = order.map(function(k){ var c = g[k]; c.remain = Math.max(0, L.base - c.used); c.remainExt = Math.max(0, L.ext - c.used); c.over = c.used > (c.ext ? L.ext : L.base); c.mine = c.list.some(function(x){ return x.data === d; }); return c; });
+    var kids = order.map(function(k){ var c = g[k]; c.remain = Math.max(0, L.base - c.used); c.remainExt = Math.max(0, L.ext - c.used); c.unknown = k.charAt(0) === "?"; c.label = c.unknown ? "자녀 미지정 " + k.slice(1) : k; c.over = c.used > L.ext; c.overBase = !c.ext && c.used > L.base; c.mine = c.list.some(function(x){ return x.data === d || (x.data.start === d.start && x.data.end === d.end && x.data.type === d.type); }); return c; });
     return { kids: kids, cur: kids.filter(function(c){ return c.mine; })[0] || null };
   }
   /* --- 가족돌봄: 회계연도(1.1~12.31)별 휴가 + 휴직 --- */
@@ -1834,8 +1838,8 @@
   function familyInfo(d){
     var L = LEAVE_LIMITS.family, name = nm(d), ys = {}, cy = todayStr().slice(0, 4);
     function yr(y){ return ys[y] || (ys[y] = { y: y, lv: 0, ab: 0 }); } yr(cy);
-    pRecs("leave.status", name, ["가족돌봄휴가"]).forEach(function(x){ var y = String(x.data.start || "").slice(0, 4); if (y) yr(y).lv += lvDays(x.data); });
-    pRecs("absence.status", name, ["가족돌봄휴직"]).forEach(function(x){ var s = String(x.data.start || "").slice(0, 4), e = String(abEnd(x.data) || todayStr()).slice(0, 4); if (!s) return; for (var y = +s; y <= +e; y++){ var n = clipDays(x.data, String(y)); if (n) yr(String(y)).ab += n; } });
+    uRecs("leave.status", name, ["가족돌봄휴가"]).forEach(function(x){ var y = String(x.data.start || "").slice(0, 4); if (y) yr(y).lv += lvDays(x.data); });
+    uRecs("absence.status", name, ["가족돌봄휴직"]).forEach(function(x){ var s = String(x.data.start || "").slice(0, 4), e = String(abEnd(x.data) || todayStr()).slice(0, 4); if (!s) return; for (var y = +s; y <= +e; y++){ var n = clipDays(x.data, String(y)); if (n) yr(String(y)).ab += n; } });
     var list = Object.keys(ys).sort().map(function(y){ var o = ys[y]; o.total = o.lv + o.ab; o.remain = Math.max(0, L.total - o.total); o.lvRemain = Math.max(0, Math.min(L.leave - o.lv, L.total - o.total)); return o; });
     return { years: list, cur: ys[cy] };
   }
@@ -1843,7 +1847,7 @@
   function infertInfo(d){
     var L = LEAVE_LIMITS.infertility, name = nm(d), ys = {}, cy = todayStr().slice(0, 4);
     function yr(y){ return ys[y] || (ys[y] = { y: y, used: 0, n: 0, limit: +y < L.cutYear ? L.daysOld : L.days }); } yr(cy);
-    pRecs("leave.status", name, ["난임치료휴가"]).forEach(function(x){ var y = String(x.data.start || "").slice(0, 4); if (!y) return; var o = yr(y); o.used += lvDays(x.data); o.n++; });
+    uRecs("leave.status", name, ["난임치료휴가"]).forEach(function(x){ var y = String(x.data.start || "").slice(0, 4); if (!y) return; var o = yr(y); o.used += lvDays(x.data); o.n++; });
     var list = Object.keys(ys).sort().map(function(y){ var o = ys[y]; o.remain = Math.max(0, o.limit - o.used); return o; });
     var paidCap = todayStr() >= L.paidCut ? L.paid : L.paidOld;
     return { years: list, cur: ys[cy], paidCap: paidCap, paidUsed: Math.min(ys[cy].used, paidCap) };
@@ -1853,7 +1857,7 @@
     var k = limitKind(d.type || ""); if (!k || !nm(d)) return "";
     function b(txt, cls){ return '<span class="badge ' + (cls || "neutral") + '">' + txt + '</span>'; }
     if (k === "spouse"){ var s = spouseInfo(d); if (!s) return ""; return b("잔여 " + fmtN(s.remain) + "/" + s.limit + "일", s.over ? "danger" : s.remain ? "good" : "neutral") + (s.due ? ' <span class="hint" style="font-size:11.5px">' + (s.expired ? "기한 경과" : "~" + esc(s.due)) + '</span>' : ''); }
-    if (k === "parental"){ var p = parentalInfo(d).cur; if (!p) return ""; return b("잔여 " + p.remain + "일 · 연장 시 " + p.remainExt + "일", p.over ? "danger" : "good") + (p.key ? "" : ' <span class="badge warn">자녀 미지정</span>'); }
+    if (k === "parental"){ var p = parentalInfo(d).cur; if (!p) return ""; return b("잔여 " + p.remain + "일 · 연장 시 " + p.remainExt + "일", p.over ? "danger" : p.overBase ? "warn" : "good") + (p.unknown ? ' <span class="badge warn">자녀 미지정</span>' : ''); }
     if (k === "family"){ var f = familyInfo(d), y = String(d.start || "").slice(0, 4), o = f.years.filter(function(z){ return z.y === y; })[0] || f.cur; return b(o.y + " 잔여 " + fmtN(o.remain) + "/90일", o.total > 90 ? "danger" : "good"); }
     var i = infertInfo(d), yy = String(d.start || "").slice(0, 4), io = i.years.filter(function(z){ return z.y === yy; })[0] || i.cur; return b(io.y + " 잔여 " + fmtN(io.remain) + "/" + io.limit + "일", io.used > io.limit ? "danger" : "good");
   }
@@ -1868,8 +1872,8 @@
     if (k === "parental"){ var p = parentalInfo(d); if (!p.kids.length) return "";
       return wrap("육아휴직 한도 · 자녀별 누적",
         '<table class="rec compact lim-t"><thead><tr><th>자녀(출산일 기준)</th><th>사용</th><th>잔여 (1년)</th><th>잔여 (1년 6개월)</th><th>횟수</th></tr></thead><tbody>' + p.kids.map(function(c){
-          return '<tr class="' + (c.mine ? "cur" : "") + '"><td>' + (c.key ? esc(c.key) : '<span class="badge warn">자녀 미지정</span>') + (c.ext ? ' <span class="badge info">6개월 연장 대상</span>' : '') + '</td><td>' + c.used + '일' + (c.open ? ' <span class="hint">(진행 중·오늘까지)</span>' : '') + '</td><td>' + (c.ext ? '<span class="hint">' + c.remain + '일</span>' : '<b>' + c.remain + '일</b>') + '</td><td>' + (c.ext ? '<b>' + c.remainExt + '일</b>' : c.remainExt + '일') + '</td><td>' + c.list.length + '회</td></tr>'; }).join("") + '</tbody></table>',
-        "자녀 1명당 1년(365일), 부모 모두 3개월 이상 사용·한부모·중증장애아동이면 1년 6개월(547일). 단기 육아휴직·배우자 임신 중 육아휴직 포함. 자녀는 「자녀 생년월일」→ 같은 사람의 출산전후휴가·배우자 출산휴가 출산일 순으로 자동 연결합니다." + (p.kids.some(function(c){ return !c.key; }) ? " <b>자녀 미지정 기록은 「자녀 생년월일」을 입력해야 정확합니다.</b>" : "")); }
+          return '<tr class="' + (c.mine ? "cur" : "") + '"><td>' + (c.unknown ? '<span class="badge warn">' + esc(c.label) + '</span> <span class="hint">기간으로 추정</span>' : esc(c.label)) + (c.overBase ? ' <span class="badge warn">1년 초과 · 연장 대상 확인</span>' : '') + (c.over ? ' <span class="badge danger">1년 6개월 초과</span>' : '') + (c.ext ? ' <span class="badge info">6개월 연장 대상</span>' : '') + '</td><td>' + c.used + '일' + (c.open ? ' <span class="hint">(진행 중·오늘까지)</span>' : '') + '</td><td>' + (c.ext ? '<span class="hint">' + c.remain + '일</span>' : '<b>' + c.remain + '일</b>') + '</td><td>' + (c.ext ? '<b>' + c.remainExt + '일</b>' : c.remainExt + '일') + '</td><td>' + c.list.length + '회</td></tr>'; }).join("") + '</tbody></table>',
+        "자녀 1명당 1년(365일), 부모 모두 3개월 이상 사용·한부모·중증장애아동이면 1년 6개월(547일). 단기 육아휴직·배우자 임신 중 육아휴직 포함. 자녀는 「자녀 생년월일」→ 같은 사람의 출산전후휴가·배우자 출산휴가 출산일 순으로 자동 연결합니다." + " 예정된 휴직 기간도 사용일에 포함합니다(진행 중이고 종료일이 없으면 오늘까지). 출산일 기록이 없으면 출산전후휴가 시작일로 자녀를 구분합니다." + (p.kids.some(function(c){ return c.unknown; }) ? " <b>자녀 미지정 기록은 「자녀 생년월일」을 입력해야 정확합니다(1년 넘게 떨어진 휴직은 다른 자녀로 추정).</b>" : "")); }
     if (k === "family"){ var f = familyInfo(d);
       return wrap("가족돌봄 한도 · 회계연도(1.1~12.31)별",
         '<table class="rec compact lim-t"><thead><tr><th>연도</th><th>가족돌봄휴가</th><th>가족돌봄휴직</th><th>합계</th><th>잔여 (연 90일)</th><th>휴가 잔여 (연 10일)</th></tr></thead><tbody>' + f.years.map(function(o){
