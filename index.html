@@ -254,6 +254,25 @@
   .cc>ul{margin:0;padding:4px 14px 12px 30px;font-size:12.5px;line-height:1.65;color:var(--ink-700);border-top:1px dashed var(--line);}
   .cc>ul li{margin:4px 0;}
   table.rec tr.kid-sep td{border-top:2px solid var(--accent-100);}
+  /* 블록 핸들 */
+  .blk-h{position:absolute;z-index:15;display:flex;gap:1px;}
+  .blk-h button{width:21px;height:22px;border:0;background:transparent;color:var(--ink-300);border-radius:5px;cursor:pointer;font-size:14px;line-height:1;padding:0;font-family:var(--font-body);}
+  .blk-h button:hover{background:var(--paper-0);color:var(--ink-700);}
+  .blk-h .bh-drag{cursor:grab;letter-spacing:-3px;font-size:13px;}
+  .blk-line{position:absolute;height:3px;background:var(--accent-500);border-radius:2px;z-index:16;pointer-events:none;}
+  .blk-dragging{opacity:.35;}
+  .blk-menu{width:170px;} .blk-menu button{display:block;width:100%;text-align:left;font-size:13px;color:var(--ink-900);}
+  /* 목차 3단계 */
+  .grp ul.sub2{padding-left:14px;} .grp li a.toc-sub2{font-size:12px;color:var(--ink-500);}
+  .toc-edit .te-p.sub2{padding-left:36px;}
+  /* 상태 필터 · 이상자 */
+  .st-pick{display:inline-flex;gap:0;border:1px solid var(--line);border-radius:8px;overflow:hidden;}
+  .st-pick button{border:0;border-right:1px solid var(--line-soft);background:var(--surface);padding:5px 10px;font-size:12.5px;cursor:pointer;color:var(--ink-700);font-family:var(--font-body);}
+  .st-pick button:last-child{border-right:0;} .st-pick button.on{background:var(--accent-050);color:var(--accent-700);font-weight:700;}
+  .st-pick small{color:var(--ink-300);font-weight:500;}
+  .ms-btn.iss{border-color:var(--danger-100);} .ms-btn.iss b{color:var(--danger-700);} .ms-btn.iss.on{background:var(--danger-100);border-color:var(--danger-700);}
+  .org-hist{margin:12px 0 4px;padding:10px 14px;border:1px solid var(--line);border-radius:10px;background:var(--paper-50);font-size:12.5px;}
+  .org-hist ul{margin:6px 0;padding-left:18px;} .org-hist li{margin:2px 0;}
   .kid-h .kid-a{margin-left:auto;display:inline-flex;gap:6px;flex-wrap:wrap;}
   .cc .cc-d{color:var(--ink-500);} .cc.gone>summary b{color:var(--ink-500);text-decoration:line-through;text-decoration-thickness:1px;}
   form.f label .rq{color:var(--danger-700);font-weight:800;}
@@ -849,6 +868,6 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="config.js?v=202611131730"></script>
 <script src="logo.js?v=202611131730"></script>
-<script src="app.js?v=202611181000"></script>
+<script src="app.js?v=202611191000"></script>
 </body>
 </html>
