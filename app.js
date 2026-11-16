@@ -341,7 +341,7 @@
     }
     if (can("absence.status", "read")){
       (await get("absence", "status")).forEach(function(x){
-        var d = x.data || {}, t = d.type || "휴직", href = "#/c/absence/status";
+        var d = x.data || {}, t = d.type || "휴직", href = "#/c/absence/status/list";
         if (/휴가/.test(t)){ push(x, d.start, "시작", "start", t, href); push(x, d.end, "종료", "end", t, href); }
         else { push(x, d.start, "휴직", "start", t, href); }
         var back = d.return_date || (d.end ? addDay(d.end, 1) : ""); if (back && !d.ended) push(x, back, "복직", "back", t + " 종료", href);
@@ -349,7 +349,7 @@
     }
     if (can("leave.status", "read")){
       (await get("leave", "status")).forEach(function(x){
-        var d = x.data || {}, t = d.type || "휴가", href = "#/c/leave/status";
+        var d = x.data || {}, t = d.type || "휴가", href = "#/c/leave/status/list";
         if (!d.start || (!d.end || d.end === d.start) && /보건휴가|태아검진|예비군|공가|무급휴가|가족돌봄휴가|난임치료휴가|수유시간/.test(t)) return;   // 하루짜리 수시 휴가는 알림에서 제외
         if (d.start === d.end || !d.end){ push(x, d.start, "1일", "one", t, href); return; }
         push(x, d.start, "시작", "start", t, href); push(x, d.end, "종료", "end", t, href);
@@ -1374,6 +1374,7 @@
       }).join("") +
       '<div class="form-actions">' + (!isNew && can(key, "edit") ? '<button type="button" class="btn danger" id="rDel" style="margin-right:auto">삭제</button>' : '') + '<button type="button" class="btn ghost" id="rNo">취소</button><button class="btn primary">저장</button></div></form>', "wide");
     $("#rNo", m).onclick = closeModal;
+    markRequired(m, defKey);
     if ($("#rDel", m)) $("#rDel", m).onclick = async function(){
       if (!confirm("이 항목을 삭제할까요?")) return;
       var r = await sb.from("portal_records").delete().eq("id", x.id).select("id");
@@ -1386,11 +1387,15 @@
       if (def.list) data.list = def.list;
       if (def.fields[0][2] === "multi" && !data[def.fields[0][0]]){ alert(def.fields[0][1] + "을(를) 하나 이상 고르세요."); return; }
       if (defKey === "violations" && data.quarter && !/^\d{4}-[1-4]Q$/.test(data.quarter)){ alert("분기는 2026-3Q 형식으로 입력하세요."); return; }
+      if (REQ_FIELDS[defKey]){ var miss = missingRequired(def, defKey, data); if (miss.length && !confirm("필수 항목이 비어 있습니다: " + miss.join(", ") + "\n\n그래도 저장할까요?")) return; }
+      var oldBirth = x ? x.data.birth : "";
       var r = isNew ? await sb.from("portal_records").insert({ cat: c.id, menu: def.menu, data: data, updated_by: me.email }).select("*")
                     : await sb.from("portal_records").update({ data: data, updated_by: me.email, updated_at: new Date().toISOString() }).eq("id", x.id).select("*");
       if (r.error || !r.data || !r.data.length){ alert("저장하지 못했습니다: " + errMsg(r)); return; }
       if (isNew) S.recs[key].push(r.data[0]); else Object.assign(x, r.data[0]);
-      logp(key, isNew ? "add" : "edit", data.name || data.target); closeModal(); toast("저장했습니다."); after();
+      logp(key, isNew ? "add" : "edit", data.name || data.target); closeModal(); toast("저장했습니다.");
+      if (REQ_FIELDS[defKey]){ try { await propagateBirth(isNew ? r.data[0] : x, oldBirth); } catch(err){} }
+      after();
     });
   }
   function downloadCsv(name, cols, rows){
@@ -1411,10 +1416,10 @@
   // 단축근무 사용 회차: 같은 이름의 단축 기록을 시작일 순으로 번호 매김
   function shortRounds(records){
     var by = {}, out = {};
-    records.forEach(function(x){ if (!wtHas(x.data, SHORT_T)) return; var k = String(x.data.target || "").trim(); (by[k] = by[k] || []).push(x); });
+    records.forEach(function(x){ if (!wtHas(x.data, SHORT_T)) return; var k = String(x.data.target || "").trim() + "|" + shortReason(x.data); (by[k] = by[k] || []).push(x); });
     Object.keys(by).forEach(function(k){
       var l = by[k].sort(function(a, b){ return String(a.data.start || "").localeCompare(String(b.data.start || "")); });
-      l.forEach(function(x, i){ out[x.id] = { n: i + 1, total: l.length, key: k, list: l }; });
+      l.forEach(function(x, i){ out[x.id] = { n: i + 1, total: l.length, key: k, list: l, reason: k.split("|")[1] }; });
     });
     return out;
   }
@@ -1684,14 +1689,16 @@
   function genColLabel(def, k){ return k === "_period" ? (def.gen.periodLabel || "기간") : k === "_status" ? "상태" : k === "_files" ? "첨부" : k === "_limit" ? "한도·잔여" : fLabel(def, k); }
   function genNav(c, menu, def, cur){
     if (!def.gen.stats) return "";
-    return '<nav class="subtabs"><a href="#/c/' + c.id + '/' + menu + '" class="' + (cur === "list" ? "on" : "") + '">' + esc(def.title) + '</a><a href="#/c/' + c.id + '/' + menu + '/stats" class="' + (cur === "stats" ? "on" : "") + '">📊 통계</a></nav>';
+    var base = '#/c/' + c.id + '/' + menu;
+    if (def.gen.statsFirst) return '<nav class="subtabs"><a href="' + base + '" class="' + (cur === "stats" ? "on" : "") + '">📊 통계</a><a href="' + base + '/list" class="' + (cur === "list" ? "on" : "") + '">' + esc(def.title) + '</a></nav>';
+    return '<nav class="subtabs"><a href="' + base + '" class="' + (cur === "list" ? "on" : "") + '">' + esc(def.title) + '</a><a href="' + base + '/stats" class="' + (cur === "stats" ? "on" : "") + '">📊 통계</a></nav>';
   }
   function genRows(c, def){ var key = c.id + "." + def.menu; return (S.recs[key] || []).filter(function(x){ return !def.list || (x.data.list || def.gen.defaultList) === def.list; }); }
   async function renderGen(c, defKey, sub, hostSel){
     var def = REC_DEF[defKey], g = def.gen, key = c.id + "." + def.menu, host = $(hostSel || "#cm"), f = genFilter(defKey);
     try { await loadRecs(c.id, def.menu); } catch(err){ host.innerHTML = '<div class="banner danger">불러오지 못했습니다: ' + esc(err.message) + '</div>'; return; }
     if (!$(hostSel || "#cm")) return;
-    if (sub === "stats" && g.stats){ drawGenStats(c, defKey, host); return; }
+    if (g.stats && (g.statsFirst ? sub !== "list" : sub === "stats")){ drawGenStats(c, defKey, host); return; }
     var all = genRows(c, def), w = can(key, "write");
     var types = g.typeF ? (def.fields.filter(function(x){ return x[0] === g.typeF; })[0][3] || []) : [];
     var byType = tally(all, function(x){ return String(x.data[g.typeF] || "").split(",").map(function(s){ return s.trim(); }).filter(Boolean); });
@@ -1750,21 +1757,25 @@
     window.open(r.data.signedUrl, "_blank", "noopener");
   }
   /* =====================================================================
-     연계 이력 + 법정 한도 누적 (휴가 · 휴직 · 근로시간 단축)
-     한도 값은 LEAVE_LIMITS 한 곳에서 관리합니다. 법이 바뀌면 여기만 고치면 됩니다.
+     연계 이력 + 법정 한도·사용 기한 (휴가 · 휴직 · 근로시간 단축)
+     한도·기한 값은 LEAVE_LIMITS 한 곳에서 관리합니다. 법이 바뀌면 여기만 고치면 됩니다.
      ===================================================================== */
   var LEAVE_LIMITS = {
-    spouse: { cut: "2025-02-23", days: 20, within: 120, split: 3, daysOld: 10, withinOld: 90, splitOld: 1, multi: 25 },   // 배우자 출산휴가(출산 건별)
-    parental: { base: 365, ext: 547 },                    // 육아휴직(자녀 1명당 1년, 요건 충족 시 1년 6개월)
-    family: { total: 90, leave: 10 },                     // 가족돌봄: 휴직+휴가 연 90일, 그중 휴가 연 10일
-    infertility: { days: 6, daysOld: 3, cutYear: 2025, paid: 4, paidOld: 2, paidCut: "2026-11-27" }   // 난임치료휴가(연)
+    spouse: { cut: "2025-02-23", days: 20, within: 120, split: 3, daysOld: 10, withinOld: 90, splitOld: 1, preFrom: "2026-09-18", preDays: 50 },   // 배우자 출산휴가(출산 건별)
+    maternity: { single: 90, multi: 120, preterm: 100, postSingle: 45, postMulti: 60 },   // 출산전후휴가(달력일, 출산 후 확보 일수)
+    parental: { base: 365, ext: 547, age: 9, grade: 9 },          // 육아휴직: 자녀 1명당 1년(요건 충족 시 1년 6개월) · 만 8세 이하 또는 초2 이하
+    shortChild: { age: 13, grade: 13 },                           // 육아기 근로시간 단축: 만 12세 이하 또는 초6 이하
+    family: { total: 90, leave: 10 },                             // 가족돌봄: 휴직+휴가 연 90일, 그중 휴가 연 10일
+    infertility: { days: 6, daysOld: 3, cutYear: 2025, paid: 4, paidOld: 2, paidCut: "2026-11-27" },   // 난임치료휴가(연)
+    once: { types: ["질병휴직", "무급휴직", "기타휴직"], times: 1 }  // 재직 중 종류별 1회
   };
-  var PL_TYPES = ["육아휴직", "단기 육아휴직", "배우자 임신 중 육아휴직"];
+  var PL_TYPES = ["육아휴직", "단기 육아휴직", "임신 중 육아휴직", "배우자 임신 중 육아휴직"];
   var LINK_GROUPS = [
-    ["모성·육아", ["출산전후휴가", "유산·사산휴가", "배우자 유산·사산휴가", "배우자 출산휴가", "태아검진휴가", "육아휴직", "단기 육아휴직", "배우자 임신 중 육아휴직", "육아기 근로시간 단축", "임신기 근로시간 단축"]],
+    ["모성·육아", ["출산전후휴가", "유산·사산휴가", "배우자 유산·사산휴가", "배우자 출산휴가", "태아검진휴가", "육아휴직", "단기 육아휴직", "임신 중 육아휴직", "배우자 임신 중 육아휴직", "육아기 근로시간 단축", "임신기 근로시간 단축"]],
     ["가족돌봄", ["가족돌봄휴가", "가족돌봄휴직", "가족돌봄 근로시간 단축"]],
     ["병가·질병휴직", ["병가", "질병휴직"]],
-    ["난임치료", ["난임치료휴가"]]
+    ["난임치료", ["난임치료휴가"]],
+    ["무급휴직", ["무급휴직"]], ["기타휴직", ["기타휴직"]]
   ];
   var LINK_SRC = [["leave.status", "leave", "leave", "휴가"], ["absence.status", "absence", "absence", "휴직"], ["att.worktypes", "att", "worktypes", "단축근무"]];
   function recType(key, d){
@@ -1780,13 +1791,16 @@
   function pRecs(key, name, types){
     return (S.recs[key] || []).filter(function(x){ var d = x.data || {}; return String(d.target || "").trim() === name && types.indexOf(recType(key, d)) >= 0; });
   }
-  function uRecs(key, name, types){ var seen = {}; return pRecs(key, name, types).filter(function(x){ var d = x.data, k = [d.type, d.start, d.end].join("|"); if (seen[k]) return false; seen[k] = 1; return true; }); }
+  // 같은 구분·같은 기간이 두 번 들어간 기록은 한도 계산에서 한 번만 센다
+  function uRecs(key, name, types){ var seen = {}; return pRecs(key, name, types).filter(function(x){ var d = x.data, k = [d.type, d.start, d.end].join("|"); if (seen[k]) return false; seen[k] = 1; return true; }).sort(function(a, b){ return String(a.data.start || "").localeCompare(String(b.data.start || "")); }); }
+  function sameRec(a, d){ return a === d || (a.type === d.type && a.start === d.start && a.end === d.end); }
   function linkedRows(name, types){
     var out = [];
     LINK_SRC.forEach(function(s){ pRecs(s[0], name, types).forEach(function(x){ out.push({ key: s[0], cat: s[1], defKey: s[2], catName: s[3], rec: x, type: recType(s[0], x.data) }); }); });
     return out.sort(function(a, b){ return String(a.rec.data.start || "").localeCompare(String(b.rec.data.start || "")); });
   }
   function dT(s){ return /^\d{4}-\d{2}-\d{2}$/.test(s || "") ? Date.UTC(+s.slice(0, 4), +s.slice(5, 7) - 1, +s.slice(8, 10)) : NaN; }
+  function dS(t){ var d = new Date(t); return d.getUTCFullYear() + "-" + pad(d.getUTCMonth() + 1) + "-" + pad(d.getUTCDate()); }
   function calDays(a, b){ var x = dT(a), y = dT(b); return isNaN(x) || isNaN(y) || y < x ? 0 : Math.round((y - x) / 864e5) + 1; }
   function bizDays(a, b){ var x = dT(a), y = dT(b || a); if (isNaN(x)) return 0; if (isNaN(y) || y < x) y = x; var n = 0; for (var t = x; t <= y; t += 864e5){ var w = new Date(t).getUTCDay(); if (w !== 0 && w !== 6) n++; } return n; }
   function lvDays(d){ var n = parseFloat(d.days); return n > 0 ? n : bizDays(d.start, d.end); }
@@ -1794,44 +1808,80 @@
   function abDays(d){ var e = abEnd(d); if (!e) e = d.start && d.start <= todayStr() ? todayStr() : d.start; return calDays(d.start, e); }
   function fmtN(n){ return String(Math.round(n * 10) / 10); }
   function nm(d){ return String(d.target || "").trim(); }
+  function near(a, b, days){ return Math.abs(dT(a) - dT(b)) <= days * 864e5; }
+  function kidsOf(list){ var n = 1; list.forEach(function(x){ var m = (x.data || x).multi || ""; if (/세쌍둥이/.test(m)) n = Math.max(n, 3); else if (/쌍둥이|다태아/.test(m)) n = Math.max(n, 2); }); return n; }
+  function kidsLabel(n){ return n >= 3 ? "세쌍둥이 이상" : n === 2 ? "쌍둥이" : ""; }
+
+  /* --- 자녀(출산) 묶음: 실제 출산일 > 출산 예정일 > 출산휴가 시작일 순으로 기준일을 잡고 150일 안은 같은 출산으로 봄 --- */
+  function childrenOf(name){
+    var pts = [];
+    function add(x, real, due, fallback){ var b = real || due || fallback; if (b) pts.push({ date: b, real: real || "", due: due || "", rec: x }); }
+    pRecs("leave.status", name, ["출산전후휴가"]).forEach(function(x){ add(x, x.data.birth, x.data.due_date, x.data.start); });
+    pRecs("leave.status", name, ["배우자 출산휴가"]).forEach(function(x){ add(x, x.data.birth, x.data.due_date, x.data.start); });
+    pRecs("absence.status", name, PL_TYPES).forEach(function(x){ add(x, x.data.birth, x.data.due_date, ""); });
+    pts.sort(function(a, b){ return a.date.localeCompare(b.date); });
+    var out = [];
+    pts.forEach(function(p){ var c = out[out.length - 1];
+      if (!c || !near(p.date, c.first, 150)){ c = { first: p.date, real: "", due: "", recs: [] }; out.push(c); }
+      c.recs.push(p.rec); if (p.real && !c.real) c.real = p.real; if (p.due && !c.due) c.due = p.due; });
+    out.forEach(function(c){ c.ref = c.real || c.due || c.first; c.key = c.first; c.est = !c.real; c.kids = kidsOf(c.recs);
+      c.label = c.real ? c.real : c.due ? c.due + " 예정" : c.first + "경(출산휴가 시작일 기준)"; });
+    return out;
+  }
+  function childFor(name, d, kids){
+    var own = d.birth || d.due_date || "", hit = null;
+    if (own){ kids.forEach(function(c){ if (near(c.first, own, 150) || near(c.ref, own, 150)) hit = c; }); if (hit) return hit; }
+    var st = d.start || ""; kids.forEach(function(c){ if (c.ref <= addDay(st, 60) || c.first <= addDay(st, 60)) hit = c; });   // 휴직 시작 60일 뒤까지의 가장 최근 출산
+    return hit;
+  }
+  // 사용 기한: 「만 n세 생일 전날」과 「출생연도+n년 2월 말(학년 말)」 중 늦은 날
+  function childDeadline(ref, age, grade){
+    if (isNaN(dT(ref))) return "";
+    var y = +ref.slice(0, 4), md = ref.slice(4), bday = (y + age) + (md === "-02-29" ? "-03-01" : md), a = addDay(bday, -1);
+    var gy = y + grade, feb = gy + "-02-" + ((gy % 4 === 0 && gy % 100 !== 0) || gy % 400 === 0 ? "29" : "28");
+    return a > feb ? a : feb;
+  }
 
   /* --- 배우자 출산휴가: 출산 건별 누적 --- */
   function spouseInfo(d){
-    var L = LEAVE_LIMITS.spouse, l = uRecs("leave.status", nm(d), ["배우자 출산휴가"]).sort(function(a, b){ return String(a.data.start || "").localeCompare(String(b.data.start || "")); });
+    var L = LEAVE_LIMITS.spouse, l = uRecs("leave.status", nm(d), ["배우자 출산휴가"]);
     var cl = [], cur = null;
     l.forEach(function(x){ var e = x.data, b = e.birth || "";
-      if (cur && ((b && cur.birth && b === cur.birth) || (!(b && cur.birth) && dT(e.start) - dT(cur.first) <= 150 * 864e5))){ cur.list.push(x); if (b) cur.birth = b; }
-      else { cur = { birth: b, first: e.start || "", list: [x] }; cl.push(cur); } });
-    var c = cl.filter(function(k){ return k.list.some(function(x){ return x.data === d || (x.data.start === d.start && x.data.end === d.end); }); })[0] || cl[cl.length - 1]; if (!c) return null;
-    var ref = c.birth || c.first, isNew = ref >= L.cut, multi = c.list.some(function(x){ return x.data.multi === "다태아"; });
-    var limit = isNew ? (multi ? L.multi : L.days) : L.daysOld, used = c.list.reduce(function(a, x){ return a + lvDays(x.data); }, 0);
-    var due = ref ? addDay(ref, isNew ? L.within : L.withinOld) : "";
-    return { birth: c.birth, ref: ref, limit: limit, used: used, remain: Math.max(0, limit - used), over: used > limit, due: due, expired: due && due < todayStr(), n: c.list.length, split: isNew ? L.split : L.splitOld, list: c.list, all: cl };
+      if (cur && ((b && cur.birth && b === cur.birth) || (!(b && cur.birth) && dT(e.start) - dT(cur.first) <= 150 * 864e5))){ cur.list.push(x); if (b) cur.birth = b; if (e.due_date) cur.due = e.due_date; }
+      else { cur = { birth: b, due: e.due_date || "", first: e.start || "", list: [x] }; cl.push(cur); } });
+    var c = cl.filter(function(k){ return k.list.some(function(x){ return sameRec(x.data, d); }); })[0] || cl[cl.length - 1]; if (!c) return null;
+    var ref = c.birth || c.first, isNew = ref >= L.cut;
+    var limit = isNew ? L.days : L.daysOld, used = c.list.reduce(function(a, x){ return a + lvDays(x.data); }, 0);
+    var due = ref ? addDay(ref, isNew ? L.within : L.withinOld) : "", last = c.list.reduce(function(a, x){ var e = x.data.end || x.data.start || ""; return e > a ? e : a; }, "");
+    return { birth: c.birth, expect: c.due, ref: ref, limit: limit, used: used, remain: Math.max(0, limit - used), over: used > limit, due: due, expired: due && due < todayStr(), late: due && last > due,
+      from: c.due && todayStr() >= L.preFrom ? addDay(c.due, -L.preDays) : "", n: c.list.length, split: isNew ? L.split : L.splitOld, list: c.list, all: cl };
   }
-  /* --- 육아휴직: 자녀별 누적 --- */
-  function birthsOf(name){
-    var s = {};
-    pRecs("leave.status", name, ["출산전후휴가"]).forEach(function(x){ var b = x.data.birth || x.data.due_date || x.data.start; if (b) s[b] = 1; });   // 출산일이 없으면 출산휴가 시작일로 자녀를 구분
-    pRecs("leave.status", name, ["배우자 출산휴가"]).forEach(function(x){ var b = x.data.birth || x.data.start; if (b) s[b] = 1; });
-    pRecs("absence.status", name, PL_TYPES).forEach(function(x){ var b = x.data.birth || x.data.due_date; if (b) s[b] = 1; });
-    var out = []; Object.keys(s).sort().forEach(function(b){ if (!out.length || dT(b) - dT(out[out.length - 1]) > 150 * 864e5) out.push(b); });   // 150일 안의 날짜는 같은 자녀로 봄
-    return out;
+  /* --- 출산전후휴가: 출산 건별(달력일) --- */
+  function maternityInfo(d){
+    var L = LEAVE_LIMITS.maternity, name = nm(d), kids = childrenOf(name), l = uRecs("leave.status", name, ["출산전후휴가"]);
+    var mine = l.filter(function(x){ return sameRec(x.data, d); })[0]; var c = mine ? childFor(name, mine.data, kids) : null; if (!c) return null;
+    var list = l.filter(function(x){ return childFor(name, x.data, kids) === c; });
+    var multi = c.kids > 1, pre = list.some(function(x){ return x.data.preterm === "미숙아"; });
+    var limit = multi ? L.multi : pre ? L.preterm : L.single, used = list.reduce(function(a, x){ return a + (calDays(x.data.start, x.data.end) || parseFloat(x.data.days) || 0); }, 0);
+    var lastEnd = list.reduce(function(a, x){ return (x.data.end || "") > a ? x.data.end : a; }, ""), needPost = multi ? L.postMulti : L.postSingle;
+    var post = c.real ? list.reduce(function(a, x){ var s = x.data.start > c.real ? x.data.start : addDay(c.real, 1); return a + calDays(s, x.data.end); }, 0) : null;
+    return { child: c, limit: limit, used: used, remain: Math.max(0, limit - used), over: used > limit, multi: multi, pre: pre, post: post, needPost: needPost, postShort: post != null && post < needPost, n: list.length, lastEnd: lastEnd };
   }
-  function childKey(name, d, bs){
-    var own = d.birth || d.due_date || "", k = "";
-    if (own){ bs.forEach(function(b){ if (Math.abs(dT(b) - dT(own)) <= 150 * 864e5) k = b; }); return k || own; }
-    var st = d.start || ""; bs.forEach(function(b){ if (b <= addDay(st, 60)) k = b; });   // 휴직 시작 60일 뒤까지의 가장 최근 출산
-    return k;
-  }
+  /* --- 육아휴직: 자녀별 누적(다태아는 자녀 수만큼) + 사용 기한 --- */
   function parentalInfo(d){
-    var L = LEAVE_LIMITS.parental, name = nm(d), bs = birthsOf(name), g = {}, order = [];
-    var prevEnd = "", seq = 0;
-    uRecs("absence.status", name, PL_TYPES).sort(function(a, b){ return String(a.data.start || "").localeCompare(String(b.data.start || "")); }).forEach(function(x){ var k = childKey(name, x.data, bs);
+    var L = LEAVE_LIMITS.parental, name = nm(d), kids = childrenOf(name), g = {}, order = [], prevEnd = "", seq = 0;
+    uRecs("absence.status", name, PL_TYPES).forEach(function(x){ var c = childFor(name, x.data, kids), k = c ? c.key : "";
       if (!k){ if (!seq || (prevEnd && dT(x.data.start) - dT(prevEnd) > 365 * 864e5)) seq++; prevEnd = abEnd(x.data) || x.data.start || prevEnd; k = "?" + seq; }   // 자녀 정보가 없으면 1년 넘게 떨어진 휴직은 다른 자녀로 추정
-      if (!g[k]){ g[k] = { key: k, list: [], used: 0, ext: false, open: false }; order.push(k); } g[k].list.push(x); g[k].used += abDays(x.data); if (x.data.ext6 === "대상") g[k].ext = true; if (!abEnd(x.data)) g[k].open = true; });
+      if (!g[k]){ g[k] = { key: k, child: c, list: [], used: 0, ext: false, open: false }; order.push(k); }
+      g[k].list.push(x); g[k].used += abDays(x.data); if (x.data.ext6 === "대상") g[k].ext = true; if (!abEnd(x.data)) g[k].open = true; });
     order.sort();
-    var kids = order.map(function(k){ var c = g[k]; c.remain = Math.max(0, L.base - c.used); c.remainExt = Math.max(0, L.ext - c.used); c.unknown = k.charAt(0) === "?"; c.label = c.unknown ? "자녀 미지정 " + k.slice(1) : k; c.over = c.used > L.ext; c.overBase = !c.ext && c.used > L.base; c.mine = c.list.some(function(x){ return x.data === d || (x.data.start === d.start && x.data.end === d.end && x.data.type === d.type); }); return c; });
-    return { kids: kids, cur: kids.filter(function(c){ return c.mine; })[0] || null };
+    var out = order.map(function(k){ var c = g[k]; c.unknown = k.charAt(0) === "?"; c.kids = Math.max(c.child ? c.child.kids : 1, kidsOf(c.list));
+      c.base = L.base * c.kids; c.extMax = L.ext * c.kids; c.remain = Math.max(0, c.base - c.used); c.remainExt = Math.max(0, c.extMax - c.used);
+      c.label = c.unknown ? "자녀 미지정 " + k.slice(1) : c.child.label; c.over = c.used > c.extMax; c.overBase = !c.ext && c.used > c.base;
+      c.deadline = c.unknown ? "" : childDeadline(c.child.ref, L.age, L.grade); c.est = !c.unknown && c.child.est;
+      c.lastEnd = c.list.reduce(function(a, x){ var e = abEnd(x.data) || ""; return e > a ? e : a; }, ""); c.late = c.deadline && c.lastEnd > c.deadline; c.expired = c.deadline && c.deadline < todayStr();
+      c.mine = c.list.some(function(x){ return sameRec(x.data, d); }); return c; });
+    return { kids: out, cur: out.filter(function(c){ return c.mine; })[0] || null };
   }
   /* --- 가족돌봄: 회계연도(1.1~12.31)별 휴가 + 휴직 --- */
   function clipDays(d, y){ var s = d.start, e = abEnd(d) || (s && s <= todayStr() ? todayStr() : s); if (!s) return 0; var a = s < y + "-01-01" ? y + "-01-01" : s, b = e > y + "-12-31" ? y + "-12-31" : e; return calDays(a, b); }
@@ -1852,38 +1902,79 @@
     var paidCap = todayStr() >= L.paidCut ? L.paid : L.paidOld;
     return { years: list, cur: ys[cy], paidCap: paidCap, paidUsed: Math.min(ys[cy].used, paidCap) };
   }
-  function limitKind(t){ return t === "배우자 출산휴가" ? "spouse" : PL_TYPES.indexOf(t) >= 0 ? "parental" : t === "가족돌봄휴가" || t === "가족돌봄휴직" ? "family" : t === "난임치료휴가" ? "infert" : ""; }
+  /* --- 질병휴직 · 무급휴직 · 기타휴직: 재직 중 종류별 1회 (끊김 없이 이어진 연장은 1회로 묶음) --- */
+  function onceInfo(d){
+    var L = LEAVE_LIMITS.once, l = uRecs("absence.status", nm(d), [d.type]), runs = [];
+    l.forEach(function(x){ var e = x.data, r = runs[runs.length - 1], end = abEnd(e) || e.start || "";
+      if (r && e.start && r.end && dT(e.start) - dT(r.end) <= 864e5 * 1){ r.list.push(x); if (end > r.end) r.end = end; }
+      else runs.push({ start: e.start || "", end: end, list: [x] }); });
+    runs.forEach(function(r, i){ r.no = i + 1; r.days = calDays(r.start, r.end); r.mine = r.list.some(function(x){ return sameRec(x.data, d); }); });
+    return { runs: runs, n: runs.length, limit: L.times, remain: Math.max(0, L.times - runs.length), over: runs.length > L.times, cur: runs.filter(function(r){ return r.mine; })[0] || null };
+  }
+  function limitKind(t){ return t === "배우자 출산휴가" ? "spouse" : t === "출산전후휴가" ? "maternity" : PL_TYPES.indexOf(t) >= 0 ? "parental" : t === "가족돌봄휴가" || t === "가족돌봄휴직" ? "family" : t === "난임치료휴가" ? "infert" : LEAVE_LIMITS.once.types.indexOf(t) >= 0 ? "once" : ""; }
   function limitShort(d){
     var k = limitKind(d.type || ""); if (!k || !nm(d)) return "";
     function b(txt, cls){ return '<span class="badge ' + (cls || "neutral") + '">' + txt + '</span>'; }
-    if (k === "spouse"){ var s = spouseInfo(d); if (!s) return ""; return b("잔여 " + fmtN(s.remain) + "/" + s.limit + "일", s.over ? "danger" : s.remain ? "good" : "neutral") + (s.due ? ' <span class="hint" style="font-size:11.5px">' + (s.expired ? "기한 경과" : "~" + esc(s.due)) + '</span>' : ''); }
-    if (k === "parental"){ var p = parentalInfo(d).cur; if (!p) return ""; return b("잔여 " + p.remain + "일 · 연장 시 " + p.remainExt + "일", p.over ? "danger" : p.overBase ? "warn" : "good") + (p.unknown ? ' <span class="badge warn">자녀 미지정</span>' : ''); }
+    function h(txt){ return ' <span class="hint" style="font-size:11.5px">' + txt + '</span>'; }
+    if (k === "spouse"){ var s = spouseInfo(d); if (!s) return ""; return b("잔여 " + fmtN(s.remain) + "/" + s.limit + "일", s.over ? "danger" : s.remain ? "good" : "neutral") + (s.due ? h(s.expired ? "기한 경과" : "~" + esc(s.due)) : '') + (s.late ? ' ' + b("기한 초과 사용", "danger") : ''); }
+    if (k === "maternity"){ var mt = maternityInfo(d); if (!mt) return ""; return b("잔여 " + mt.remain + "/" + mt.limit + "일", mt.over ? "danger" : "good") + (mt.multi ? ' ' + b("다태아", "info") : mt.pre ? ' ' + b("미숙아", "info") : '') + (mt.postShort ? ' ' + b("산후 " + mt.post + "/" + mt.needPost + "일", "danger") : ''); }
+    if (k === "parental"){ var p = parentalInfo(d).cur; if (!p) return ""; return b("잔여 " + p.remain + "일 · 연장 시 " + p.remainExt + "일", p.over ? "danger" : p.overBase ? "warn" : "good") + (p.kids > 1 ? ' ' + b(kidsLabel(p.kids), "info") : '') + (p.unknown ? ' ' + b("자녀 미지정", "warn") : p.late ? ' ' + b("기한 초과", "danger") : h("~" + esc(p.deadline))); }
     if (k === "family"){ var f = familyInfo(d), y = String(d.start || "").slice(0, 4), o = f.years.filter(function(z){ return z.y === y; })[0] || f.cur; return b(o.y + " 잔여 " + fmtN(o.remain) + "/90일", o.total > 90 ? "danger" : "good"); }
+    if (k === "once"){ var on = onceInfo(d); return on.over ? b("한도 초과 (" + on.n + "회 사용)", "danger") : b("1회 중 " + on.n + "회 사용 · 잔여 " + on.remain + "회", "neutral"); }
     var i = infertInfo(d), yy = String(d.start || "").slice(0, 4), io = i.years.filter(function(z){ return z.y === yy; })[0] || i.cur; return b(io.y + " 잔여 " + fmtN(io.remain) + "/" + io.limit + "일", io.used > io.limit ? "danger" : "good");
   }
   function limitCard(d){
     var k = limitKind(d.type || ""); if (!k || !nm(d)) return "";
     function wrap(title, body, note){ return '<div class="lim"><div class="lim-h">' + title + '</div>' + body + (note ? '<div class="lim-n">' + note + '</div>' : '') + '</div>'; }
     function stat(label, val, cls){ return '<div class="lim-s' + (cls ? " " + cls : "") + '"><span>' + label + '</span><b>' + val + '</b></div>'; }
-    if (k === "spouse"){ var s = spouseInfo(d); if (!s) return "";
-      return wrap("배우자 출산휴가 한도 · " + (s.birth ? "출산일 " + esc(s.birth) : "출산일 미입력(첫 사용일 " + esc(s.ref) + " 기준 추정)"),
-        '<div class="lim-g">' + stat("법정 일수", s.limit + "일") + stat("사용", fmtN(s.used) + "일 (" + s.n + "번)") + stat("잔여", fmtN(s.remain) + "일", s.over ? "bad" : s.remain ? "ok" : "") + stat("사용 기한", s.due ? esc(s.due) + (s.expired ? " (경과)" : "") : "-", s.expired && s.remain ? "bad" : "") + '</div>',
-        "출산일 " + LEAVE_LIMITS.spouse.cut + " 이후 " + LEAVE_LIMITS.spouse.days + "일·출산 후 " + LEAVE_LIMITS.spouse.within + "일 이내·" + LEAVE_LIMITS.spouse.split + "회 분할, 그 전 " + LEAVE_LIMITS.spouse.daysOld + "일·" + LEAVE_LIMITS.spouse.withinOld + "일 이내 기준. 분할 " + Math.max(0, s.n - 1) + "회 사용(최대 " + s.split + "회)." + (s.over ? " <b>법정 일수를 넘었습니다. 기록을 확인하세요.</b>" : "") + (s.all.length > 1 ? " 이 근로자의 출산 건 " + s.all.length + "건 중 현재 건 기준입니다." : "")); }
+    if (k === "spouse"){ var s = spouseInfo(d); if (!s) return ""; var SL = LEAVE_LIMITS.spouse;
+      return wrap("배우자 출산휴가 한도·기한 · " + (s.birth ? "출산일 " + esc(s.birth) + (s.expect && s.expect !== s.birth ? " (예정 " + esc(s.expect) + ")" : "") : "출산일 미입력(첫 사용일 " + esc(s.ref) + " 기준 추정)"),
+        '<div class="lim-g">' + stat("법정 일수", s.limit + "일") + stat("사용", fmtN(s.used) + "일 (" + s.n + "번)") + stat("잔여", fmtN(s.remain) + "일", s.over ? "bad" : s.remain ? "ok" : "") + stat("사용 기한", s.due ? esc(s.due) + (s.expired ? " (경과)" : "") : "-", (s.expired && s.remain) || s.late ? "bad" : "") + '</div>',
+        "출산일 " + SL.cut + " 이후 " + SL.days + "일·출산 후 " + SL.within + "일 이내·" + SL.split + "회 분할, 그 전 " + SL.daysOld + "일·" + SL.withinOld + "일 이내 기준(" + SL.preFrom + "부터 출산 예정일 " + SL.preDays + "일 전부터 사용 가능" + (s.from ? ": " + esc(s.from) + "부터" : "") + "). 분할 " + Math.max(0, s.n - 1) + "회 사용(최대 " + s.split + "회)." +
+        (s.late ? " <b>사용 기한 뒤에 쓴 기록이 있습니다.</b>" : "") + (s.over ? " <b>법정 일수를 넘었습니다. 기록을 확인하세요.</b>" : "") + (s.all.length > 1 ? " 이 근로자의 출산 건 " + s.all.length + "건 중 현재 건 기준입니다." : "") + " 다태아 가산은 사내 기준에 없어 적용하지 않았습니다."); }
+    if (k === "maternity"){ var mt = maternityInfo(d); if (!mt) return ""; var ML = LEAVE_LIMITS.maternity, c0 = mt.child;
+      return wrap("출산전후휴가 한도 · " + (c0.real ? "출산일 " + esc(c0.real) + (c0.due && c0.due !== c0.real ? " (예정 " + esc(c0.due) + ")" : "") : c0.due ? "출산 예정일 " + esc(c0.due) : "출산일·예정일 미입력") + (mt.multi ? " · " + kidsLabel(c0.kids) : mt.pre ? " · 미숙아" : ""),
+        '<div class="lim-g">' + stat("법정 일수", mt.limit + "일") + stat("사용", mt.used + "일 (" + mt.n + "번)") + stat("잔여", mt.remain + "일", mt.over ? "bad" : mt.remain ? "ok" : "") + stat("출산 후 확보", mt.post == null ? "출산일 입력 필요" : mt.post + "일 / " + mt.needPost + "일 이상", mt.postShort ? "bad" : mt.post != null ? "ok" : "") + '</div>',
+        "단태아 " + ML.single + "일(출산 후 " + ML.postSingle + "일 이상), 다태아 " + ML.multi + "일(출산 후 " + ML.postMulti + "일 이상), 미숙아 " + ML.preterm + "일. 달력일 기준이며 출산일은 일수에서 제외합니다." + (mt.postShort ? " <b>출산 후 일수가 부족합니다. 종료일을 확인하세요.</b>" : "") + (mt.over ? " <b>법정 일수를 넘었습니다.</b>" : "") + (c0.est ? " 실제 출산일을 입력하면 출산 후 일수와 이후 육아휴직·단축 기한이 정확해집니다." : "")); }
     if (k === "parental"){ var p = parentalInfo(d); if (!p.kids.length) return "";
-      return wrap("육아휴직 한도 · 자녀별 누적",
-        '<table class="rec compact lim-t"><thead><tr><th>자녀(출산일 기준)</th><th>사용</th><th>잔여 (1년)</th><th>잔여 (1년 6개월)</th><th>횟수</th></tr></thead><tbody>' + p.kids.map(function(c){
-          return '<tr class="' + (c.mine ? "cur" : "") + '"><td>' + (c.unknown ? '<span class="badge warn">' + esc(c.label) + '</span> <span class="hint">기간으로 추정</span>' : esc(c.label)) + (c.overBase ? ' <span class="badge warn">1년 초과 · 연장 대상 확인</span>' : '') + (c.over ? ' <span class="badge danger">1년 6개월 초과</span>' : '') + (c.ext ? ' <span class="badge info">6개월 연장 대상</span>' : '') + '</td><td>' + c.used + '일' + (c.open ? ' <span class="hint">(진행 중·오늘까지)</span>' : '') + '</td><td>' + (c.ext ? '<span class="hint">' + c.remain + '일</span>' : '<b>' + c.remain + '일</b>') + '</td><td>' + (c.ext ? '<b>' + c.remainExt + '일</b>' : c.remainExt + '일') + '</td><td>' + c.list.length + '회</td></tr>'; }).join("") + '</tbody></table>',
-        "자녀 1명당 1년(365일), 부모 모두 3개월 이상 사용·한부모·중증장애아동이면 1년 6개월(547일). 단기 육아휴직·배우자 임신 중 육아휴직 포함. 자녀는 「자녀 생년월일」→ 같은 사람의 출산전후휴가·배우자 출산휴가 출산일 순으로 자동 연결합니다." + " 예정된 휴직 기간도 사용일에 포함합니다(진행 중이고 종료일이 없으면 오늘까지). 출산일 기록이 없으면 출산전후휴가 시작일로 자녀를 구분합니다." + (p.kids.some(function(c){ return c.unknown; }) ? " <b>자녀 미지정 기록은 「자녀 생년월일」을 입력해야 정확합니다(1년 넘게 떨어진 휴직은 다른 자녀로 추정).</b>" : "")); }
+      return wrap("육아휴직 한도·기한 · 자녀별 누적",
+        '<table class="rec compact lim-t"><thead><tr><th>자녀(출산일 기준)</th><th>사용</th><th>잔여 (1년)</th><th>잔여 (1년 6개월)</th><th>사용 기한</th><th>횟수</th></tr></thead><tbody>' + p.kids.map(function(c){
+          return '<tr class="' + (c.mine ? "cur" : "") + '"><td>' + (c.unknown ? '<span class="badge warn">' + esc(c.label) + '</span> <span class="hint">기간으로 추정</span>' : esc(c.label)) + (c.kids > 1 ? ' <span class="badge info">' + kidsLabel(c.kids) + ' · 자녀 ' + c.kids + '명 기준</span>' : '') + (c.overBase ? ' <span class="badge warn">1년 초과 · 연장 대상 확인</span>' : '') + (c.over ? ' <span class="badge danger">1년 6개월 초과</span>' : '') + (c.ext ? ' <span class="badge info">6개월 연장 대상</span>' : '') +
+            '</td><td>' + c.used + '일' + (c.open ? ' <span class="hint">(진행 중·오늘까지)</span>' : '') + '</td><td>' + (c.ext ? '<span class="hint">' + c.remain + '일</span>' : '<b>' + c.remain + '일</b>') + '</td><td>' + (c.ext ? '<b>' + c.remainExt + '일</b>' : c.remainExt + '일') +
+            '</td><td>' + (c.deadline ? esc(c.deadline) + (c.est ? ' <span class="hint">추정</span>' : '') + (c.late ? ' <span class="badge danger">기한 초과</span>' : c.expired ? ' <span class="badge neutral">경과</span>' : '') : '<span class="hint">자녀 정보 필요</span>') + '</td><td>' + c.list.length + '회</td></tr>'; }).join("") + '</tbody></table>',
+        "자녀 1명당 1년(365일), 부모 모두 3개월 이상 사용·한부모·중증장애아동이면 1년 6개월(547일). 쌍둥이 등 다태아는 자녀 수만큼 한도가 늘어납니다(자녀 1명당 기준). 단기·임신 중·배우자 임신 중 육아휴직 포함, 예정된 휴직 기간도 사용일에 넣습니다. " +
+        "사용 기한은 만 8세 이하 또는 초등학교 2학년 이하 — 만 9세 생일 전날과 출생연도+9년 2월 말 중 늦은 날입니다(입학 시기는 출생연도로 추정). 자녀 기준일은 실제 출산일 → 출산 예정일 → 출산전후휴가 시작일 순으로 잡습니다." +
+        (p.kids.some(function(c){ return c.unknown; }) ? " <b>자녀 미지정 기록은 「자녀 생년월일」을 입력해야 정확합니다(1년 넘게 떨어진 휴직은 다른 자녀로 추정).</b>" : "")); }
     if (k === "family"){ var f = familyInfo(d);
       return wrap("가족돌봄 한도 · 회계연도(1.1~12.31)별",
         '<table class="rec compact lim-t"><thead><tr><th>연도</th><th>가족돌봄휴가</th><th>가족돌봄휴직</th><th>합계</th><th>잔여 (연 90일)</th><th>휴가 잔여 (연 10일)</th></tr></thead><tbody>' + f.years.map(function(o){
           return '<tr class="' + (o === f.cur ? "cur" : "") + '"><td>' + o.y + '</td><td>' + fmtN(o.lv) + '일</td><td>' + o.ab + '일</td><td>' + fmtN(o.total) + '일</td><td><b>' + fmtN(o.remain) + '일</b></td><td>' + fmtN(o.lvRemain) + '일</td></tr>'; }).join("") + '</tbody></table>',
         "가족돌봄휴직은 연 90일이며 가족돌봄휴가(연 10일) 사용일을 포함합니다. 잔여는 올해(" + f.cur.y + ") 기준입니다."); }
+    if (k === "once"){ var on = onceInfo(d);
+      return wrap(esc(d.type) + " 한도 · 재직 중 1회",
+        '<div class="lim-g">' + stat("한도", on.limit + "회") + stat("사용", on.n + "회", on.over ? "bad" : "") + stat("잔여", on.remain + "회", on.over ? "bad" : on.remain ? "ok" : "") + stat("총 사용 기간", on.runs.reduce(function(a, r){ return a + r.days; }, 0) + "일") + '</div>' +
+        '<table class="rec compact lim-t" style="margin-top:8px"><thead><tr><th>회차</th><th>기간</th><th>일수</th><th>기록 수</th></tr></thead><tbody>' + on.runs.map(function(r){ return '<tr class="' + (r.mine ? "cur" : "") + '"><td>' + r.no + '회차' + (r.no > on.limit ? ' <span class="badge danger">한도 초과</span>' : '') + '</td><td>' + esc(r.start + " ~ " + r.end) + '</td><td>' + r.days + '일</td><td>' + r.list.length + '건' + (r.list.length > 1 ? ' <span class="hint">(연장 포함)</span>' : '') + '</td></tr>'; }).join("") + '</tbody></table>',
+        "질병휴직·무급휴직·기타휴직은 재직 기간 중 종류별로 1회 사용할 수 있습니다. 끊김 없이 이어진 연장 기록은 1회로 묶습니다. 기간 기준은 취업규칙 제22조(휴직사유 및 기간)를 따릅니다." + (on.over ? " <b>사용 횟수가 한도를 넘었습니다. 기록 또는 승인 사유를 확인하세요.</b>" : "")); }
     var i = infertInfo(d);
     return wrap("난임치료휴가 한도 · 회계연도(1.1~12.31)별",
       '<table class="rec compact lim-t"><thead><tr><th>연도</th><th>사용</th><th>횟수</th><th>한도</th><th>잔여</th></tr></thead><tbody>' + i.years.map(function(o){
         return '<tr class="' + (o === i.cur ? "cur" : "") + '"><td>' + o.y + '</td><td>' + fmtN(o.used) + '일</td><td>' + o.n + '회</td><td>' + o.limit + '일</td><td><b>' + fmtN(o.remain) + '일</b></td></tr>'; }).join("") + '</tbody></table>',
       "연 6일(2024년까지 3일). 올해 유급 한도 " + i.paidCap + "일 중 " + fmtN(i.paidUsed) + "일 사용(" + LEAVE_LIMITS.infertility.paidCut + "부터 유급 4일, 그 전 2일).");
+  }
+  /* --- 근로시간 단축 기록의 사용 기한(자녀·출산 예정일 기준) --- */
+  function shortDeadlineCard(d){
+    var r = shortReason(d), name = nm(d); if (!name || (r !== "육아기" && r !== "임신기")) return "";
+    var kids = childrenOf(name), st = d.start || "";
+    if (r === "육아기"){ var c = null; kids.forEach(function(k){ if (k.ref <= addDay(st, 30)) c = k; });
+      if (!c) return '<div class="lim"><div class="lim-h">육아기 근로시간 단축 사용 기한</div><div class="lim-n" style="margin-top:0">자녀 정보가 없습니다. 휴가·휴직 현황의 출산전후휴가·배우자 출산휴가·육아휴직 기록에 출산일(자녀 생년월일)을 입력하면 기한이 표시됩니다.</div></div>';
+      var dl = childDeadline(c.ref, LEAVE_LIMITS.shortChild.age, LEAVE_LIMITS.shortChild.grade), late = d.end && d.end > dl;
+      return '<div class="lim"><div class="lim-h">육아기 근로시간 단축 사용 기한 · 자녀 ' + esc(c.label) + '</div><div class="lim-g"><div class="lim-s' + (late ? " bad" : dl < todayStr() ? "" : " ok") + '"><span>사용 기한</span><b>' + esc(dl) + (c.est ? " (추정)" : "") + '</b></div><div class="lim-s"><span>이 기록 종료일</span><b>' + esc(d.end || "-") + (late ? " · 기한 초과" : "") + '</b></div></div>' +
+        '<div class="lim-n">만 12세 이하 또는 초등학교 6학년 이하 — 만 13세 생일 전날과 출생연도+13년 2월 말 중 늦은 날입니다(입학 시기는 출생연도로 추정). 자녀가 여럿이면 이 단축 시작일 이전에 태어난 가장 어린 자녀 기준입니다.</div></div>'; }
+    var k2 = null; kids.forEach(function(k){ var due = k.due || k.real; if (due && due >= st && dT(due) - dT(st) <= 300 * 864e5 && !k2) k2 = k; });
+    if (!k2) return '<div class="lim"><div class="lim-h">임신기 근로시간 단축 가능 기간</div><div class="lim-n" style="margin-top:0">출산 예정일 정보가 없습니다. 출산전후휴가 기록에 출산 예정일을 입력하면 12주 이내·32주 이후 구간이 표시됩니다.</div></div>';
+    var due2 = k2.due || k2.real, lmp = addDay(due2, -280), w12 = addDay(lmp, 84), w32 = addDay(lmp, 218);
+    return '<div class="lim"><div class="lim-h">임신기 근로시간 단축 가능 기간 · 출산 예정일 ' + esc(due2) + '</div><div class="lim-g"><div class="lim-s"><span>임신 12주 이내</span><b>~ ' + esc(w12) + '</b></div><div class="lim-s"><span>임신 32주 이후</span><b>' + esc(w32) + ' ~ 출산</b></div></div>' +
+      '<div class="lim-n">출산 예정일에서 역산한 값입니다(임신 후 84일까지, 218일부터). 진단서의 주수와 다르면 진단서를 따르고, 고위험 임신부는 전 기간 사용할 수 있습니다.</div></div>';
   }
   /* --- 연계 이력 표: 휴가 · 휴직 · 단축근무를 한 사람 기준으로 --- */
   function linkedHtml(name, t, curId){
@@ -1902,6 +1993,52 @@
     }; });
   }
   function ensureLinked(m, redraw){ if (!linkReady()) loadLinked().then(function(){ if (document.body.contains(m)) redraw(); }); }
+  /* --- 실제 출산일을 입력하면 같은 출산으로 묶인 다른 기록에도 반영 --- */
+  async function propagateBirth(saved, oldBirth){
+    var d = saved.data || {}, birth = d.birth; if (!birth || birth === oldBirth || !nm(d)) return;
+    await loadLinked();
+    var ref = d.due_date || birth, CH = ["출산전후휴가", "배우자 출산휴가", "유산·사산휴가", "배우자 유산·사산휴가"].concat(PL_TYPES), todo = [];
+    [["leave.status"], ["absence.status"]].forEach(function(s){ (S.recs[s[0]] || []).forEach(function(x){ var e = x.data || {};
+      if (x.id === saved.id || nm(e) !== nm(d) || CH.indexOf(e.type) < 0 || e.birth === birth) return;
+      var own = e.due_date || e.birth || (/출산전후휴가|배우자 출산휴가/.test(e.type) ? e.start : "");
+      if (own && near(own, ref, 150)) todo.push(x); }); });
+    if (!todo.length) return;
+    if (!confirm(nm(d) + " 님의 같은 출산으로 보이는 다른 기록 " + todo.length + "건에도 실제 출산일(" + birth + ")을 반영할까요?\n\n" + todo.map(function(x){ return "· " + x.data.type + " " + (x.data.start || "") + (x.data.birth ? " (현재 " + x.data.birth + ")" : x.data.due_date ? " (예정 " + x.data.due_date + ")" : ""); }).join("\n") + "\n\n출산 예정일 값은 그대로 남습니다.")) return;
+    var n = 0;
+    for (var i = 0; i < todo.length; i++){ var x = todo[i], e = x.data, line = todayStr() + " 출산일 반영: " + (e.birth ? "기존 " + e.birth : e.due_date ? "예정 " + e.due_date : "미입력") + " → 실제 " + birth;
+      var data = Object.assign({}, e, { birth: birth, content: (e.content ? e.content + "\n" : "") + line });
+      var r = await sb.from("portal_records").update({ data: data, updated_by: me.email, updated_at: new Date().toISOString() }).eq("id", x.id).select("*");
+      if (!r.error && r.data && r.data.length){ Object.assign(x, r.data[0]); n++; } }
+    toast("출산일을 " + n + "건에 반영했습니다.");
+  }
+  /* --- 구분별 필수 항목(붉은 별표) · 관련 없는 항목(흐리게) --- */
+  var REQ_COMMON = ["target", "org", "start", "end"], CHILD_F = ["due_date", "birth", "multi", "preterm", "ext6"];
+  var REQ_FIELDS = {
+    leave: { "출산전후휴가": ["due_date"], "배우자 출산휴가": ["birth"], "가족돌봄휴가": ["family"] },
+    absence: { "육아휴직": ["birth", "return_date"], "단기 육아휴직": ["birth", "return_date"], "임신 중 육아휴직": ["due_date", "return_date"], "배우자 임신 중 육아휴직": ["due_date", "return_date"], "가족돌봄휴직": ["family", "return_date"], "질병휴직": ["return_date"], "무급휴직": ["return_date"], "기타휴직": ["return_date"] }
+  };
+  var CHILD_TYPES = ["출산전후휴가", "배우자 출산휴가", "유산·사산휴가", "배우자 유산·사산휴가", "태아검진휴가", "수유시간"].concat(PL_TYPES);
+  function reqInfo(defKey, type){
+    var m = REQ_FIELDS[defKey]; if (!m) return null;
+    var req = REQ_COMMON.concat(m[type] || []), dim = [];
+    if (type){ if (CHILD_TYPES.indexOf(type) < 0) dim = dim.concat(CHILD_F); else { if (PL_TYPES.indexOf(type) < 0) dim.push("ext6"); if (type !== "출산전후휴가") dim.push("preterm"); }
+      if (!/가족돌봄/.test(type)) dim.push("family");
+      if (defKey === "leave" && type !== "출산전후휴가") dim = dim.concat(["return_date", "return_doc"]); }
+    return { req: req, dim: dim.filter(function(k){ return req.indexOf(k) < 0; }) };
+  }
+  function markRequired(m, defKey){
+    var sel = $('#rf select[name="type"]', m); if (!sel || !REQ_FIELDS[defKey]) return;
+    function draw(){ var info = reqInfo(defKey, sel.value);
+      $all("#rf label", m).forEach(function(lb){ var inp = lb.querySelector("input,select,textarea"); if (!inp) return; var k = inp.name, old = lb.querySelector(".rq"); if (old) old.remove();
+        lb.classList.toggle("dim", info.dim.indexOf(k) >= 0);
+        if (info.req.indexOf(k) >= 0 || k === "type"){ var s = document.createElement("span"); s.className = "rq"; s.textContent = " *"; s.title = "필수 항목"; lb.insertBefore(s, inp); } }); }
+    sel.addEventListener("change", draw); draw();
+  }
+  function missingRequired(def, defKey, data){
+    var info = reqInfo(defKey, data.type || ""); if (!info) return [];
+    var miss = info.req.filter(function(k){ if (k === "birth" && (data.birth || data.due_date)) return false; return data[k] == null || data[k] === ""; });
+    return miss.map(function(k){ return fLabel(def, k); });
+  }
 
   function genDetail(c, defKey, x, after){
     var def = REC_DEF[defKey], g = def.gen, d = x.data, key = c.id + "." + def.menu;
@@ -1993,21 +2130,21 @@
   REC_DEF.leave = { menu: "status", title: "휴가 현황", noun: "휴가",
     fields: [["type", "구분", "select", ["출산전후휴가", "배우자 출산휴가", "유산·사산휴가", "배우자 유산·사산휴가", "난임치료휴가", "태아검진휴가", "수유시간", "보건휴가", "가족돌봄휴가", "병가", "무급휴가", "공가", "경조휴가", "리프레쉬휴가", "기타"]],
       ["target", "이름", "text"], ["gender", "성별", "select", GENDER], ["org", "소속", "text"], ["team", "팀", "text"], ["start", "시작일", "date"], ["end", "종료일", "date"], ["days", "일수", "number"],
-      ["due_date", "출산 예정일", "date"], ["birth", "실제 출산일(자녀 생년월일)", "date"], ["multi", "다태아", "select", ["", "다태아"]], ["return_date", "복직일", "date"],
+      ["due_date", "출산 예정일", "date"], ["birth", "실제 출산일(자녀 생년월일)", "date"], ["multi", "다태아", "select", ["쌍둥이", "세쌍둥이 이상"]], ["preterm", "미숙아", "select", ["미숙아"]], ["family", "돌봄 대상 가족", "text"], ["return_date", "복직일", "date"],
       ["basis", "문서번호", "text"], ["return_doc", "복직원 문서번호", "text"], ["email", "개인 메일", "text"], ["tags", "태그", "text"], ["content", "세부 내용", "textarea"]],
     gen: { typeF: "type", nameF: "target", status: "period", history: true, files: true, cols: ["type", "target", "org", "team", "_period", "days", "_limit", "basis", "_status"],
-      groups: [["모성·육아", ["출산전후휴가", "배우자 출산휴가", "유산·사산휴가", "배우자 유산·사산휴가", "난임치료휴가", "태아검진휴가", "수유시간"]], ["가족돌봄", ["가족돌봄휴가"]], ["병가", ["병가"]], ["보건·무급·공가·기타", ["보건휴가", "무급휴가", "공가", "경조휴가", "리프레쉬휴가", "기타"]]],
+      statsFirst: true, groups: [["모성·육아", ["출산전후휴가", "배우자 출산휴가", "유산·사산휴가", "배우자 유산·사산휴가", "난임치료휴가", "태아검진휴가", "수유시간"]], ["가족돌봄", ["가족돌봄휴가"]], ["병가", ["병가"]], ["보건·무급·공가·기타", ["보건휴가", "무급휴가", "공가", "경조휴가", "리프레쉬휴가", "기타"]]],
       hint: "연차 외 휴가 사용 기록입니다(출산전후·배우자 출산·유산사산·난임치료·태아검진·가족돌봄·병가·보건·무급·공가 등). 이름을 누르면 휴직·단축근무까지 이어진 연계 이력과 법정 한도 대비 잔여가 함께 보입니다. 시작·종료일은 홈의 근무형태 변경 알림에 표시됩니다(하루짜리 수시 휴가는 제외).",
       stats: { date: "start", dims: [["휴가 유형별", "type"], ["사업부별", "org"], ["성별", "gender"], ["팀별", "team"]], duration: ["start", "end", "평균 사용 기간"] } } };
   REC_DEF.absence = { menu: "status", title: "휴직·복직 현황", noun: "휴직",
-    fields: [["type", "구분", "select", ["육아휴직", "단기 육아휴직", "배우자 임신 중 육아휴직", "가족돌봄휴직", "질병휴직", "무급휴직", "기타휴직"]],
+    fields: [["type", "구분", "select", ["육아휴직", "단기 육아휴직", "임신 중 육아휴직", "배우자 임신 중 육아휴직", "가족돌봄휴직", "질병휴직", "무급휴직", "기타휴직"]],
       ["target", "이름", "text"], ["gender", "성별", "select", GENDER], ["org", "소속", "text"], ["team", "팀", "text"], ["start", "휴직 시작일", "date"], ["end", "휴직 종료일", "date"], ["days", "일수", "number"],
-      ["return_date", "복직일", "date"], ["birth", "자녀 생년월일(출산일)", "date"], ["due_date", "출산 예정일", "date"], ["ext6", "육아휴직 6개월 연장", "select", ["", "대상"]], ["family", "돌봄 대상 가족", "text"],
+      ["return_date", "복직일", "date"], ["birth", "자녀 생년월일(실제 출산일)", "date"], ["due_date", "출산 예정일", "date"], ["multi", "다태아", "select", ["쌍둥이", "세쌍둥이 이상"]], ["ext6", "육아휴직 6개월 연장", "select", ["대상"]], ["family", "돌봄 대상 가족", "text"],
       ["basis", "휴직원 문서번호", "text"], ["return_doc", "복직원 문서번호", "text"], ["email", "개인 메일", "text"],
       ["tags", "태그", "text"], ["content", "세부 내용", "textarea"]],
     gen: { typeF: "type", nameF: "target", status: "period", history: true, files: true, cols: ["type", "target", "org", "team", "_period", "days", "_limit", "return_date", "_status"], periodLabel: "휴직 기간",
-      groups: [["육아휴직", ["육아휴직", "단기 육아휴직", "배우자 임신 중 육아휴직"]], ["가족돌봄", ["가족돌봄휴직"]], ["질병", ["질병휴직"]], ["무급·기타", ["무급휴직", "기타휴직"]]],
-      hint: "육아휴직(단기·배우자 임신 중 포함)·가족돌봄휴직·질병휴직(병가 1개월 이상)·무급휴직 기록입니다. 이름을 누르면 휴가·단축근무까지 이어진 연계 이력과 한도 대비 잔여가 함께 보입니다. 휴직 시작일과 복직일(종료 다음 날)은 홈의 근무형태 변경 알림에 표시됩니다.",
+      statsFirst: true, groups: [["육아휴직", ["육아휴직", "단기 육아휴직", "임신 중 육아휴직", "배우자 임신 중 육아휴직"]], ["가족돌봄", ["가족돌봄휴직"]], ["질병", ["질병휴직"]], ["무급·기타", ["무급휴직", "기타휴직"]]],
+      hint: "육아휴직(단기·배우자 임신 중 포함)·가족돌봄휴직·질병휴직(병가 1개월 이상)·무급휴직 기록입니다. 질병·무급·기타휴직은 재직 중 종류별 1회입니다. 이름을 누르면 휴가·단축근무까지 이어진 연계 이력과 한도·사용 기한이 함께 보입니다. 휴직 시작일과 복직일(종료 다음 날)은 홈의 근무형태 변경 알림에 표시됩니다.",
       stats: { date: "start", dims: [["휴직 유형별", "type"], ["사업부별", "org"], ["성별", "gender"], ["팀별", "team"]], duration: ["start", "end", "평균 휴직 기간"],
         extra: function(rows, all){
           var t = todayStr(), in90 = ymd(new Date(new Date().getFullYear(), new Date().getMonth(), new Date().getDate() + 90));
@@ -2359,12 +2496,12 @@
     var def = REC_DEF[tab], d = x.data, key = "att.worktypes";
     var canEd = can(key, "edit") || (can(key, "write") && String(x.created_by || "").toLowerCase() === me.email);
     var r = tab === "worktypes" ? shortRounds(S.recs[key])[x.id] : null;
-    var hist = r && r.total > 1 ? '<h4 style="margin:14px 0 6px;font-size:13px">근로시간 단축 사용 내역 (총 ' + r.total + '회)</h4><div class="tbl-box"><table class="rec compact"><thead><tr><th>회차</th><th>적용기간</th><th>단축</th><th>1주 소정근로시간</th><th>상태</th><th>문서</th></tr></thead><tbody>' +
+    var hist = r && r.total > 1 ? '<h4 style="margin:14px 0 6px;font-size:13px">' + esc(r.reason) + ' 근로시간 단축 사용 내역 (총 ' + r.total + '회) <span class="hint" style="font-weight:400">· 같은 사유끼리만 셉니다</span></h4><div class="tbl-box"><table class="rec compact"><thead><tr><th>회차</th><th>적용기간</th><th>단축</th><th>1주 소정근로시간</th><th>상태</th><th>문서</th></tr></thead><tbody>' +
       r.list.map(function(y, i){ var e = y.data; var m = /1일 (\d+(?:\.\d+)?)시간 단축/.exec(e.content || ""); return '<tr class="' + (y.id === x.id ? "cur" : "") + '"><td><b>' + (i + 1) + '회차</b></td><td>' + esc((e.start || "") + " ~ " + (e.end || "")) + '</td><td>' + esc((e.tags || "").replace(" 근로시간 단축", "")) + (m ? " · 1일 " + m[1] + "h" : "") + '</td><td>' + (e.weekly_hours ? esc(e.weekly_hours) + "시간" : "") + '</td><td>' + esc(wtStatus(e)) + '</td><td style="font-size:12px">' + esc(e.basis || "") + '</td></tr>'; }).join("") + '</tbody></table></div>' : '';
     var m = showModal('<div style="display:flex;justify-content:space-between;gap:10px"><div>' + typeBadges(d) + ' <span class="badge ' + (wtStatus(d) === "종료" ? "neutral" : "good") + '">' + wtStatus(d) + '</span>' + (r ? ' <span class="badge neutral">' + r.n + '회차' + (r.total > 1 ? ' / 총 ' + r.total + '회' : '') + '</span>' : '') + '<h3 style="font-size:18px;margin-top:6px">' + esc(d.target || "") + '</h3><div class="hint" style="font-size:12.5px">' + esc([wtOrg(d), wtTeam(d)].filter(Boolean).join(" · ")) + '</div></div><button class="btn sm ghost" id="dx">닫기 ✕</button></div>' +
       '<div class="kv" style="margin-top:12px">' + def.fields.filter(function(f){ return ["type", "target", "org", "team", "content"].indexOf(f[0]) < 0; }).map(function(f){ var v = d[f[0]]; return '<div class="row"><span class="hint">' + f[1] + '</span><span>' + (v == null || v === "" ? '<span class="hint">-</span>' : esc(v) + (f[0] === "weekly_hours" ? "시간" : "")) + '</span></div>'; }).join("") +
       (d.op_flag ? '<div class="row"><span class="hint">운영여부(원본)</span><span>' + esc(d.op_flag) + '</span></div>' : '') + '</div>' +
-      '<h4 style="margin:14px 0 6px;font-size:13px">세부 내용</h4><div class="wraptext" style="font-size:13.5px;line-height:1.65;background:var(--paper-0);border-radius:10px;padding:12px 14px">' + (d.content ? esc(d.content) : '<span class="hint">-</span>') + '</div>' + hist + (tab === "worktypes" ? linkedHtml(nm(d), recType("att.worktypes", d), x.id) : "") +
+      '<h4 style="margin:14px 0 6px;font-size:13px">세부 내용</h4><div class="wraptext" style="font-size:13.5px;line-height:1.65;background:var(--paper-0);border-radius:10px;padding:12px 14px">' + (d.content ? esc(d.content) : '<span class="hint">-</span>') + '</div>' + hist + (tab === "worktypes" && wtHas(d, SHORT_T) ? shortDeadlineCard(d) : "") + (tab === "worktypes" ? linkedHtml(nm(d), recType("att.worktypes", d), x.id) : "") +
       '<div class="modal-actions" style="margin-top:14px"><span class="hint" style="font-size:11.5px;margin-right:auto">' + esc(x.updated_by || x.created_by || "") + ' · ' + esc(String(x.updated_at || x.created_at || "").slice(0, 10)) + '</span>' + (canEd ? '<button class="btn primary" id="dEd">수정</button>' : '') + '</div>', (r && r.total > 1) || (tab === "worktypes" && linkGroupOf(recType("att.worktypes", d))) ? "wide" : "mid");
     $("#dx", m).onclick = closeModal;
     if (tab === "worktypes" && linkGroupOf(recType("att.worktypes", d))){ wireLinked(m, x.id, after); ensureLinked(m, function(){ wtDetail(c, tab, x, after); }); }
