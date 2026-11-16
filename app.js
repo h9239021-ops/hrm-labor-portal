@@ -2005,7 +2005,7 @@
     var kids = childrenOf(name), pi = parentalInfo(d || { target: name }), PL = LEAVE_LIMITS.parental, SW = LEAVE_LIMITS.shortChild, SP = LEAVE_LIMITS.spouse, ML = LEAVE_LIMITS.maternity, cur = d ? childForRow(name, key || "", d, kids) : null;
     function chip(cls, title, big, sub, lines){ return '<details class="cc ' + cls + '"><summary><span class="cc-t">' + title + '</span><b>' + big + '</b>' + (sub ? '<small>' + sub + '</small>' : '') + '</summary><ul>' + lines.map(function(l){ return '<li>' + l + '</li>'; }).join("") + '</ul></details>'; }
     var cards = kids.map(function(c){
-      var chips = [], p = pi.kids.filter(function(z){ return z.child === c; })[0], mt = maternityOf(name, c, kids);
+      var chips = [], p = pi.kids.filter(function(z){ return z.child && z.child.key === c.key; })[0], mt = maternityOf(name, c, kids);
       if (mt) chips.push(chip(mt.over || mt.postShort ? "bad" : "", "출산전후휴가", "총 " + mt.limit + "일", "사용 " + mt.used + "일 · 잔여 " + mt.remain + "일", [
         (mt.multi ? "<b>다태아 " + ML.multi + "일</b>" : mt.pre ? "<b>미숙아 " + ML.preterm + "일</b>" : "<b>단태아 " + ML.single + "일</b>") + " 적용 (단태아 " + ML.single + "일 · 다태아 " + ML.multi + "일 · 미숙아 " + ML.preterm + "일)",
         "출산 후 " + mt.needPost + "일 이상 확보 필요 → " + (mt.post == null ? "실제 출산일 입력 후 계산" : "현재 " + mt.post + "일" + (mt.postShort ? " <b>(부족)</b>" : "")),
@@ -2059,7 +2059,7 @@
     var withKid = g[0] === "모성·육아", kids = withKid ? childrenOf(name) : [], prev = null;
     return '<h4 style="margin:16px 0 6px;font-size:13px">' + esc(name) + ' 님의 ' + esc(g[0]) + ' 연계 이력 (총 ' + rows.length + '건) <span class="hint" style="font-weight:400">· 휴가 · 휴직 · 단축근무 통합, 줄을 누르면 그 기록이 열립니다</span></h4>' +
       '<div class="tbl-box" style="max-height:280px"><table class="rec compact" style="min-width:0"><thead><tr>' + (withKid ? '<th>자녀</th>' : '') + '<th>분류</th><th>구분</th><th>기간</th><th>일수</th><th>상태</th></tr></thead><tbody>' +
-      rows.map(function(r){ var e = r.rec.data, days = r.key === "att.worktypes" ? "" : r.key === "absence.status" ? abDays(e) + "일" : fmtN(lvDays(e)) + "일";
+      rows.map(function(r){ var e = r.rec.data, days = r.key === "att.worktypes" ? "" : r.key === "absence.status" ? abDays(e) + "일" : (r.type === "출산전후휴가" ? (calDays(e.start, e.end) || fmtN(lvDays(e))) : fmtN(lvDays(e))) + "일";
         var c = withKid ? childForRow(name, r.key, e, kids) : null, sep = withKid && c && prev && c !== prev; if (c) prev = c;
         return '<tr class="clk' + (r.rec.id === curId ? " cur" : "") + (sep ? " kid-sep" : "") + '" data-lk="' + r.key + '|' + r.rec.id + '">' + (withKid ? '<td>' + (c ? '<span class="badge info" title="' + esc(c.dateLabel) + '">' + esc(c.tag) + '</span>' : '<span class="hint">-</span>') + '</td>' : '') +
           '<td><span class="badge neutral">' + r.catName + '</span></td><td>' + esc(r.type) + '</td><td>' + esc((e.start || "") + (e.end && e.end !== e.start ? " ~ " + e.end : "")) + '</td><td>' + days + '</td><td><span class="badge ' + stCls(pStatus(e)) + '">' + esc(pStatus(e)) + '</span></td></tr>'; }).join("") + '</tbody></table></div>';
