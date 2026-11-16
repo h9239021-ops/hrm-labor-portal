@@ -35,6 +35,7 @@ function sourceRecs(all, rule) {
   let list = kind === "wt"
     ? all.wt.filter((x) => (x.data.list || "worktype") === "worktype" && types(x.data).includes(t))
     : (kind === "absence" ? all.absence : all.leave).filter((x) => t === "*" || x.data.type === t);
+  list = list.filter((x) => !x.data.prior);   // 입사 전(타사) 사용 기록은 메일 대상에서 제외
   if (tagq) list = list.filter((x) => [x.data.tags, x.data.type, x.data.content].join(" ").includes(tagq));
   return list;
 }
