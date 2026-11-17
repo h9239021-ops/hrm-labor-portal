@@ -2926,10 +2926,10 @@
       '<div class="rec-tools"><select id="sY"><option value="">전체 연도</option>' + years.map(function(y){ return '<option' + (y === f.y ? " selected" : "") + '>' + y + '</option>'; }).join("") + '</select><select id="sM"><option value="">전체 월</option>' + ["01","02","03","04","05","06","07","08","09","10","11","12"].map(function(m){ return '<option value="' + m + '"' + (m === f.m ? " selected" : "") + '>' + (+m) + '월</option>'; }).join("") + '</select>' +
         '<select id="sOrg"><option value="">전체 사업부</option>' + orgs.map(function(o){ return '<option' + (o === f.org ? " selected" : "") + '>' + esc(o) + '</option>'; }).join("") + '</select><input type="search" id="sQ" placeholder="이름·팀 검색" value="' + esc(f.q) + '"><span class="grow"></span><button class="btn sm" id="sXls">⬇ 엑셀 다운로드</button>' + (w ? '<a class="btn sm primary" href="#/c/leave/annual/calc">+ 정산 추가</a>' : '') + '</div>' +
       (Object.keys(byM).length > 1 ? '<div class="hint" style="font-size:12px;margin:0 0 8px">' + Object.keys(byM).sort().reverse().slice(0, 12).map(function(k){ return '<span class="chip" style="margin:0 6px 4px 0;display:inline-block;padding:3px 9px;border:1px solid var(--line);border-radius:100px">' + k + ' · ' + byM[k].n + '명 · ' + byM[k].pay + '일</span>'; }).join("") + '</div>' : '') +
-      '<div class="tbl-box"><table class="rec compact"><thead><tr><th>퇴사일</th><th>이름</th><th>사업부</th><th>팀</th><th>입사일</th><th>입사일 기준</th><th>회계연도 기준</th><th>차이</th><th>퇴직연도 잔여</th><th>보상휴가</th><th>최종 지급</th><th>비고</th></tr></thead><tbody>' +
+      '<div class="tbl-box"><table class="rec compact"><thead><tr><th>퇴사일</th><th>이름</th><th>사업부</th><th>팀</th><th>입사일</th><th>입사일 기준</th><th>회계연도 기준</th><th>차이</th><th>퇴직연도 잔여</th><th>보상휴가</th><th>최종 지급</th><th>정산 메일</th><th>비고</th></tr></thead><tbody>' +
       (list.length ? list.map(function(o){ var d = o.d, R = o.R; return '<tr class="clk" data-sid="' + o.x.id + '" tabindex="0"><td>' + esc(d.retire) + '</td><td><b>' + esc(d.target) + '</b></td><td>' + esc(d.org) + '</td><td>' + esc(d.team) + '</td><td>' + esc(d.join) + '</td><td>' + esc(R.hTotal) + '일</td><td>' + esc(R.fTotal) + '일</td><td>' + (R.diffPay ? '<b style="color:var(--accent-700)">+' + R.diffPay + '</b>' : '0') + '</td><td>' + esc(r2((+R.curF || 0) + (+R.curM || 0) - (+R.used || 0))) + '일</td>' +
-        '<td>' + (d.comp === "" || d.comp == null ? '<span class="badge warn">미입력</span>' : esc(d.comp) + '일 <span class="hint" style="font-size:11px">' + (d.comp_source === "daou" ? "다우오피스" : "수기") + '</span>') + '</td><td><b' + (+R.final < 0 ? ' style="color:var(--danger-700)"' : '') + '>' + esc(R.final) + '일</b></td><td style="max-width:220px">' + esc(d.note) + '</td></tr>'; }).join("")
-        : '<tr><td colspan="12" class="hint" style="padding:18px">정산 기록이 없습니다. 「＋ 정산 추가」에서 계산 후 저장하세요.</td></tr>') + '</tbody></table></div>';
+        '<td>' + (d.comp === "" || d.comp == null ? '<span class="badge warn">미입력</span>' : esc(d.comp) + '일 <span class="hint" style="font-size:11px">' + (d.comp_source === "daou" ? "다우오피스" : "수기") + '</span>') + '</td><td><b' + (+R.final < 0 ? ' style="color:var(--danger-700)"' : '') + '>' + esc(R.final) + '일</b></td><td>' + mailBadge(d) + '</td><td style="max-width:220px">' + esc(d.note) + '</td></tr>'; }).join("")
+        : '<tr><td colspan="13" class="hint" style="padding:18px">정산 기록이 없습니다. 「＋ 정산 추가」에서 계산 후 저장하세요.</td></tr>') + '</tbody></table></div>';
     function re(){ drawSettleList(c, nav); }
     $("#sY").onchange = function(e){ f.y = e.target.value; re(); }; $("#sM").onchange = function(e){ f.m = e.target.value; re(); }; $("#sOrg").onchange = function(e){ f.org = e.target.value; re(); };
     $("#sQ").addEventListener("change", function(e){ f.q = e.target.value; re(); });
@@ -2941,7 +2941,7 @@
       var ev = [["이름", "퇴사일", "기준", "발생일", "구분", "일수", "근거"]]; list.forEach(function(o){ (o.R.events || []).forEach(function(e){ ev.push([o.d.target, o.d.retire, e.b === "h" ? "입사일" : e.b === "f" ? "회계연도" : "공통(월차)", e.date, e.label, e.days, e.note || ""]); }); });
       XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(ev), "연도별 발생 내역"); XLSX.writeFile(wb, "퇴직자연차정산_" + todayStr() + ".xlsx"); };
   }
-  var annEditId = null;
+  var annEditId = null, mailMonth = null;
   function periodRows(list, kind){ return (list && list.length ? list : []).map(function(p, i){ return '<div class="per-row" data-k="' + kind + '"><input type="date" value="' + esc(p.start || "") + '" data-ps> ~ <input type="date" value="' + esc(p.end || "") + '" data-pe><button type="button" class="btn sm ghost" data-prm>삭제</button></div>'; }).join(""); }
   function drawSettleCalc(c, nav){
     var host = $("#cm"), w = can("leave.annual", "write"), x = annEditId ? annRecs("settle").filter(function(y){ return y.id === annEditId; })[0] : null, d = x ? Object.assign({}, x.data) : { fy_month: 1, comp_source: "manual" };
@@ -3001,22 +3001,52 @@
       '<h4 style="margin:14px 0 6px;font-size:13px">연도별 비교</h4><div class="tbl-box"><table class="rec compact" style="min-width:0"><thead><tr><th>연도</th><th>1년 미만 월차(공통)</th><th>입사일 기준</th><th>회계연도 기준</th></tr></thead><tbody>' + ys.map(function(y){ var v = years[y]; return '<tr><td>' + y + '</td><td>' + (v.m || "") + '</td><td>' + (v.h || "") + '</td><td>' + (v.f || "") + '</td></tr>'; }).join("") + '</tbody></table></div>' +
       '<details class="res-sec" style="margin-top:10px"><summary><b>입사일 기준 발생 내역</b></summary>' + evT("h") + '</details><details class="res-sec"><summary><b>회계연도 기준 발생 내역</b></summary>' + evT("f") + '</details><details class="res-sec"><summary><b>1년 미만 월차(구법 월차) 내역</b></summary>' + evT("m") + '</details>';
   }
-  function settleMailBody(ym, rows){
+  // 정산 기록별 메일 상태: 어느 메일에 포함됐는지 · 발송됐는지(자동 메일 스크립트가 data.mail에 기록)
+  function mailBadge(d){ var m = d.mail, ym = String(d.retire || "").slice(0, 7);
+    if (m && m.month === ym){ if (m.status === "발송 완료") return '<span class="badge good" title="' + esc(m.key || "") + '">발송 완료</span><small class="hint" style="display:block;font-size:11px">' + esc(String(m.sent_at || "").slice(0, 10)) + '</small>';
+      if (m.status === "실패") return '<span class="badge danger" title="' + esc(m.error || "") + '">실패</span>'; return '<span class="badge warn">발송 대기</span><small class="hint" style="display:block;font-size:11px">' + esc(m.queued || "") + ' 등록</small>'; }
+    if (!ym) return ""; var sd = settleSendDate(ym); if (todayStr() >= sd.pay) return '<span class="badge neutral" title="급여일이 지나 자동 발송 대상이 아닙니다. 메일 설정에서 수동으로 대기열에 넣을 수 있습니다.">미발송</span>';
+    return '<span class="hint" style="font-size:11.5px">' + md(sd.send) + ' 예정</span>'; }
+  function settleMailBody(ym, rows, extra){
     var sd = settleSendDate(ym);
-    return { subject: "[연차 정산] " + ym.replace("-", "년 ") + "월 퇴직자 연차 정산 내역 (" + rows.length + "명)",
-      text: ym.replace("-", "년 ") + "월 퇴직자 연차 정산 내역을 공유드립니다. (급여일 " + sd.pay + " 기준)\n\n" +
+    return { subject: "[연차 정산]" + (extra ? "[추가] " : " ") + ym.replace("-", "년 ") + "월 퇴직자 연차 정산 내역 (" + rows.length + "명)",
+      text: ym.replace("-", "년 ") + "월 퇴직자 연차 정산 내역" + (extra ? " 추가분을" : "을") + " 공유드립니다. (급여일 " + sd.pay + " 기준)\n\n" +
         (rows.length ? rows.map(function(o, i){ var d = o.data, R = d.result || {}; return (i + 1) + ". " + d.target + " (" + [d.org, d.team].filter(Boolean).join(" ") + ")\n   입사 " + d.join + " / 퇴사 " + d.retire + "\n   입사일 기준 " + R.hTotal + "일 · 회계연도 기준 " + R.fTotal + "일 · 차이 " + R.diffPay + "일\n   퇴직연도 잔여 " + r2((+R.curF || 0) + (+R.curM || 0) - (+R.used || 0)) + "일 · 미사용 보상휴가 " + (d.comp === "" || d.comp == null ? "미입력(확인 필요)" : d.comp + "일") + "\n   ▶ 최종 지급 일수 " + R.final + "일" + (d.note ? "\n   비고: " + d.note : ""); }).join("\n\n") : "이번 달 퇴직자 정산 기록이 없습니다.") +
         "\n\n※ HRM 노무관리파트 업무포털 › 휴가 › 연차유급휴가 관리 › 퇴직자 연차 정산에서 상세 계산 내역을 확인할 수 있습니다." };
   }
   function drawSettleMail(c, nav){
     var host = $("#cm"), cfgX = annRecs("config")[0], cfg = cfgX ? cfgX.data : { list: "config", enabled: false, to: "", cc: "" }, w = can("leave.annual", "write");
     var ym = todayStr().slice(0, 7), sd = settleSendDate(ym), nm2 = ymd(new Date(+ym.slice(0, 4), +ym.slice(5, 7), 1)).slice(0, 7), sd2 = settleSendDate(nm2);
-    var rows = annRecs("settle").filter(function(x){ return String(x.data.retire || "").slice(0, 7) === ym; }), mail = settleMailBody(ym, rows);
+    var canAm = can("att.automail", "read"), amAll = S.recs["att.automail"];
+    if (canAm && !amAll){ loadRecs("att", "automail").then(function(){ if ($("#mcF")) drawSettleMail(c, nav); }).catch(function(){}); }
+    var hist = (amAll || []).filter(function(q){ return q.data.list === "queue" && q.data.kind === "annual-settle"; }).sort(function(a, b){ return String(b.created_at || "").localeCompare(String(a.created_at || "")); });
+    function inMail(x, m){ var ml = x.data.mail; return ml && ml.month === m && ml.status !== "실패"; }
+    var pm = mailMonth || ym, pend = annRecs("settle").filter(function(x){ return String(x.data.retire || "").slice(0, 7) === pm && !inMail(x, pm); }), sentM = hist.some(function(q){ return q.data.month === pm; });
+    var rows = pend, mail = settleMailBody(pm, rows, sentM);
+    var months = ovUniq(annRecs("settle").map(function(x){ return String(x.data.retire || "").slice(0, 7); }).concat([ym])).reverse();
     host.innerHTML = nav + '<div class="hint" style="font-size:12.5px;margin:-4px 0 12px">매월 급여일(25일, 주말·공휴일이면 직전 영업일) 기준 <b>영업일 5일 전</b>에 그달 퇴사자 정산 내역을 아래 주소로 보냅니다. 발송은 평일 오전 자동 실행(GitHub Actions)에서 처리되며, SMTP 정보(GitHub Secrets)를 등록해야 실제로 나갑니다. 미입력 보상휴가는 메일에 「확인 필요」로 표시됩니다.</div>' +
-      '<div class="kpis" style="grid-template-columns:repeat(3,minmax(0,1fr));margin-bottom:12px"><div class="kpi"><div class="k">이번 달 발송 예정일</div><div class="v" style="font-size:22px">' + md(sd.send) + '</div><div class="s">급여일 ' + md(sd.pay) + '</div></div><div class="kpi"><div class="k">다음 달 발송 예정일</div><div class="v" style="font-size:22px">' + md(sd2.send) + '</div><div class="s">급여일 ' + md(sd2.pay) + '</div></div><div class="kpi"><div class="k">마지막 발송</div><div class="v" style="font-size:18px">' + esc(cfg.sent_month || "-") + '</div><div class="s">' + esc(cfg.last_sent || "") + '</div></div></div>' +
+      '<div class="kpis" style="grid-template-columns:repeat(3,minmax(0,1fr));margin-bottom:12px"><div class="kpi"><div class="k">이번 달 발송 예정일</div><div class="v" style="font-size:22px">' + md(sd.send) + '</div><div class="s">급여일 ' + md(sd.pay) + '</div></div><div class="kpi"><div class="k">다음 달 발송 예정일</div><div class="v" style="font-size:22px">' + md(sd2.send) + '</div><div class="s">급여일 ' + md(sd2.pay) + '</div></div><div class="kpi"><div class="k">마지막 대기열 등록</div><div class="v" style="font-size:18px">' + esc(cfg.sent_month || "-") + '</div><div class="s">' + esc(cfg.last_sent || "") + '</div></div></div>' +
       '<form class="f" id="mcF"><label class="full"><span><input type="checkbox" name="enabled"' + (cfg.enabled ? " checked" : "") + '> 매월 자동 발송 사용</span></label><label class="full">받는 사람(쉼표로 여러 명)<input name="to" value="' + esc(cfg.to || "") + '" placeholder="예: payroll@cowave.kr"></label><label class="full">참조<input name="cc" value="' + esc(cfg.cc || "") + '"></label>' +
         (w ? '<div class="form-actions full"><button class="btn primary">설정 저장</button></div>' : '') + '</form>' +
-      '<h4 style="margin:16px 0 6px;font-size:13px">이번 달 메일 미리보기 (' + rows.length + '명)</h4><div class="mail-pv"><div><b>제목</b> ' + esc(mail.subject) + '</div><pre>' + esc(mail.text) + '</pre></div>';
+      '<h4 style="margin:18px 0 6px;font-size:13px">발송 기록</h4>' + (canAm ? (amAll ? (hist.length ? '<div class="tbl-box"><table class="rec compact" style="min-width:0"><thead><tr><th>대상 월</th><th>구분</th><th>등록일</th><th>상태</th><th>발송 시각</th><th>받는 사람</th><th>포함된 퇴직자</th></tr></thead><tbody>' +
+        hist.map(function(q){ var d = q.data, st = d.status; return '<tr><td>' + esc(d.month) + '</td><td>' + esc(d.round || "") + '</td><td>' + esc(String(q.created_at || "").slice(0, 10)) + '</td><td><span class="badge ' + (st === "발송 완료" ? "good" : st === "실패" ? "danger" : "warn") + '"' + (d.error ? ' title="' + esc(d.error) + '"' : '') + '>' + esc(st) + '</span>' + (d.error ? '<small class="hint" style="display:block;font-size:11px;max-width:220px">' + esc(d.error) + '</small>' : '') + '</td><td>' + esc(d.sent_at ? String(d.sent_at).replace("T", " ").slice(0, 16) : "") + '</td><td style="font-size:12px">' + esc(d.email) + (d.cc ? '<br><span class="hint">참조 ' + esc(d.cc) + '</span>' : '') + '</td>' +
+          '<td style="font-size:12.5px">' + ((d.people || []).length ? (d.people || []).map(function(p){ return esc(p.target) + ' <span class="hint">(' + esc(p.retire) + ' · ' + esc(p.final) + '일)</span>'; }).join("<br>") : '<span class="hint">0명</span>') + '</td></tr>'; }).join("") + '</tbody></table></div>' : '<p class="hint" style="font-size:12.5px">아직 정산 메일 발송 기록이 없습니다.</p>') : '<p class="hint">불러오는 중…</p>') : '<p class="hint" style="font-size:12.5px">발송 기록은 근태 › 자동 메일 권한이 있어야 볼 수 있습니다. 퇴직자별 상태는 「퇴직자 연차 정산」 목록의 「정산 메일」 열에서 확인하세요.</p>') +
+      '<h4 style="margin:18px 0 6px;font-size:13px">아직 메일에 포함되지 않은 퇴직자 <select id="mcM" style="margin-left:6px">' + months.map(function(m){ return '<option' + (m === pm ? " selected" : "") + '>' + m + '</option>'; }).join("") + '</select> <span class="hint">' + rows.length + '명' + (sentM ? " · 이 달은 이미 발송 기록이 있어 [추가]로 나갑니다" : "") + '</span></h4>' +
+      (w && canAm && can("att.automail", "write") ? '<div style="margin:0 0 8px"><button class="btn sm" id="mcQ"' + (cfg.to ? "" : " disabled") + '>지금 대기열에 넣기</button> <span class="hint" style="font-size:12px">날짜와 상관없이 위 주소로 보낼 메일을 대기열에 넣습니다. 다음 자동 실행(평일 09:10) 또는 GitHub Actions › auto-mail › Run workflow 때 발송됩니다.</span></div>' : '') +
+      '<div class="mail-pv"><div><b>제목</b> ' + esc(mail.subject) + '</div><pre>' + esc(mail.text) + '</pre></div>';
+    if ($("#mcM")) $("#mcM").onchange = function(e){ mailMonth = e.target.value; drawSettleMail(c, nav); };
+    if ($("#mcQ")) $("#mcQ").onclick = async function(){
+      if (!/@/.test(cfg.to || "")){ alert("받는 사람 주소를 먼저 저장하세요."); return; }
+      if (!confirm(pm + " 정산 메일(" + rows.length + "명)을 " + cfg.to + " 앞으로 대기열에 넣을까요?\n실제 발송은 다음 자동 실행 때 이뤄집니다.")) return;
+      var key = "annual-settle|" + pm + "|" + (hist.filter(function(q){ return q.data.month === pm; }).length + 1) + "|manual";
+      var qd = { list: "queue", kind: "annual-settle", month: pm, round: (sentM ? "추가" : "정기") + "(수동)", key: key, rule_name: "퇴직자 연차 정산(월별)", target: "퇴직자 " + rows.length + "명", org: "", email: cfg.to, cc: cfg.cc || "",
+        people: rows.map(function(x){ return { id: x.id, target: x.data.target, org: x.data.org || "", retire: x.data.retire, final: (x.data.result || {}).final }; }), subject: mail.subject, body: mail.text, due: todayStr(), status: "발송 대기" };
+      var r = await sb.from("portal_records").insert({ cat: "att", menu: "automail", data: qd, updated_by: me.email }).select("*");
+      if (r.error || !r.data || !r.data.length){ alert("대기열에 넣지 못했습니다: " + errMsg(r)); return; }
+      (S.recs["att.automail"] = S.recs["att.automail"] || []).push(r.data[0]);
+      for (var i = 0; i < rows.length; i++){ var x = rows[i], nd = Object.assign({}, x.data, { mail: { month: pm, key: key, status: "발송 대기", queued: todayStr() } });
+        var u = await sb.from("portal_records").update({ data: nd, updated_by: me.email, updated_at: new Date().toISOString() }).eq("id", x.id).select("*"); if (!u.error && u.data && u.data[0]) Object.assign(x, u.data[0]); }
+      toast("대기열에 넣었습니다."); drawSettleMail(c, nav); };
     $("#mcF").addEventListener("submit", async function(e){ e.preventDefault(); var fd = new FormData(e.target), data = Object.assign({}, cfg, { list: "config", enabled: !!fd.get("enabled"), to: String(fd.get("to") || "").trim(), cc: String(fd.get("cc") || "").trim() });
       if (data.enabled && !/@/.test(data.to)){ alert("받는 사람 주소를 넣으세요."); return; }
       var r = cfgX ? await sb.from("portal_records").update({ data: data, updated_by: me.email, updated_at: new Date().toISOString() }).eq("id", cfgX.id).select("*") : await sb.from("portal_records").insert({ cat: "leave", menu: "annual", data: data, updated_by: me.email }).select("*");

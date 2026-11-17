@@ -108,28 +108,42 @@ const HO_VAR = { 2025: ["01-27", "01-28", "01-29", "01-30", "03-03", "05-05", "0
 const isBiz = (s) => { const w = new Date(s + "T00:00:00Z").getUTCDay(); const md = s.slice(5); return w !== 0 && w !== 6 && !HO_FIXED.includes(md) && !(HO_VAR[+s.slice(0, 4)] || []).includes(md); };
 function settleSendDate(ym) { let pay = ym + "-25"; while (!isBiz(pay)) pay = addDay(pay, -1); let d = pay, n = 0; while (n < 5) { d = addDay(d, -1); if (isBiz(d)) n++; } return { pay, send: d }; }
 const r2 = (x) => Math.round(x * 100) / 100;
+// 대상자별로 「어느 메일에 포함됐는지 · 발송됐는지」를 정산 기록(data.mail)에 남긴다.
+// 첫 메일 뒤에 그달 퇴사자가 더 등록되면 급여일 전까지 [추가] 메일로 그 사람만 보낸다.
+let ann = [];
+const annById = {};
 try {
-  const ann = await recs("leave", "annual");
+  ann = await recs("leave", "annual"); ann.forEach((x) => { annById[x.id] = x; });
   const acfg = ann.find((x) => x.data.list === "config");
-  const ym = today.slice(0, 7), sd = settleSendDate(ym), akey = "annual-settle|" + ym;
-  if (acfg && acfg.data.enabled && /@/.test(acfg.data.to || "") && today >= sd.send && today < sd.pay && acfg.data.sent_month !== ym && !keys.has(akey)) {
-    const rows = ann.filter((x) => x.data.list === "settle" && String(x.data.retire || "").slice(0, 7) === ym).sort((a, b) => String(a.data.retire).localeCompare(String(b.data.retire)));
-    const ymL = ym.replace("-", "년 ") + "월";
-    const text = ymL + " 퇴직자 연차 정산 내역을 공유드립니다. (급여일 " + sd.pay + " 기준)\n\n" +
-      (rows.length ? rows.map((o, i) => { const d = o.data, R = d.result || {}; return (i + 1) + ". " + d.target + " (" + [d.org, d.team].filter(Boolean).join(" ") + ")\n   입사 " + d.join + " / 퇴사 " + d.retire +
-        "\n   입사일 기준 " + R.hTotal + "일 · 회계연도 기준 " + R.fTotal + "일 · 차이 " + R.diffPay + "일\n   퇴직연도 잔여 " + r2((+R.curF || 0) + (+R.curM || 0) - (+R.used || 0)) + "일 · 미사용 보상휴가 " + (d.comp === "" || d.comp == null ? "미입력(확인 필요)" : d.comp + "일") +
-        "\n   ▶ 최종 지급 일수 " + R.final + "일" + (d.note ? "\n   비고: " + d.note : ""); }).join("\n\n") : "이번 달 퇴직자 정산 기록이 없습니다.") +
-      "\n\n※ HRM 노무관리파트 업무포털 › 휴가 › 연차유급휴가 관리 › 퇴직자 연차 정산에서 상세 계산 내역을 확인할 수 있습니다.";
-    const row = { list: "queue", key: akey, rule_name: "퇴직자 연차 정산(월별)", target: "퇴직자 " + rows.length + "명", org: "", email: acfg.data.to, cc: acfg.data.cc || "",
-      subject: "[연차 정산] " + ymL + " 퇴직자 연차 정산 내역 (" + rows.length + "명)", body: text, due: sd.send, status: "발송 대기" };
-    if (DRY) console.log("[dry] would queue annual settle mail:", ymL, rows.length + "명", "send", sd.send, "pay", sd.pay);
+  const ym = today.slice(0, 7), sd = settleSendDate(ym);
+  const monthMails = queue.filter((q) => q.data.kind === "annual-settle" && q.data.month === ym);
+  const inMail = (x) => x.data.mail && x.data.mail.month === ym && x.data.mail.status !== "실패";
+  const pending = ann.filter((x) => x.data.list === "settle" && String(x.data.retire || "").slice(0, 7) === ym && !inMail(x)).sort((a, b) => String(a.data.retire).localeCompare(String(b.data.retire)));
+  const first = !monthMails.length;
+  if (acfg && acfg.data.enabled && /@/.test(acfg.data.to || "") && today >= sd.send && today < sd.pay && (first || pending.length)) {
+    const ymL = ym.replace("-", "년 ") + "월", akey = "annual-settle|" + ym + "|" + (monthMails.length + 1), rows = pending;
+    const NL = "\n";
+    const text = ymL + " 퇴직자 연차 정산 내역" + (first ? "을" : " 추가분을") + " 공유드립니다. (급여일 " + sd.pay + " 기준)" + NL + NL +
+      (rows.length ? rows.map((o, i) => { const d = o.data, R = d.result || {}; return (i + 1) + ". " + d.target + " (" + [d.org, d.team].filter(Boolean).join(" ") + ")" + NL + "   입사 " + d.join + " / 퇴사 " + d.retire +
+        NL + "   입사일 기준 " + R.hTotal + "일 · 회계연도 기준 " + R.fTotal + "일 · 차이 " + R.diffPay + "일" + NL + "   퇴직연도 잔여 " + r2((+R.curF || 0) + (+R.curM || 0) - (+R.used || 0)) + "일 · 미사용 보상휴가 " + (d.comp === "" || d.comp == null ? "미입력(확인 필요)" : d.comp + "일") +
+        NL + "   ▶ 최종 지급 일수 " + R.final + "일" + (d.note ? NL + "   비고: " + d.note : ""); }).join(NL + NL) : "이번 달 퇴직자 정산 기록이 없습니다.") +
+      NL + NL + "※ HRM 노무관리파트 업무포털 › 휴가 › 연차유급휴가 관리 › 퇴직자 연차 정산에서 상세 계산 내역을 확인할 수 있습니다.";
+    const row = { list: "queue", kind: "annual-settle", month: ym, round: first ? "정기" : "추가", key: akey, rule_name: "퇴직자 연차 정산(월별)" + (first ? "" : " 추가분"), target: "퇴직자 " + rows.length + "명", org: "", email: acfg.data.to, cc: acfg.data.cc || "",
+      people: rows.map((o) => ({ id: o.id, target: o.data.target, org: o.data.org || "", retire: o.data.retire, final: (o.data.result || {}).final })),
+      subject: "[연차 정산]" + (first ? " " : "[추가] ") + ymL + " 퇴직자 연차 정산 내역 (" + rows.length + "명)", body: text, due: sd.send, status: "발송 대기" };
+    if (DRY) console.log("[dry] would queue annual settle mail:", row.round, ymL, rows.map((o) => o.data.target).join(", ") || "(0명)", "send", sd.send, "pay", sd.pay);
     else {
       queue.push(await insert(row)); keys.add(akey); made++;
-      const u = await sb.from("portal_records").update({ data: { ...acfg.data, sent_month: ym, last_sent: today }, updated_by: "auto-mail", updated_at: new Date().toISOString() }).eq("id", acfg.id);
-      if (u.error) throw u.error;
+      for (const o of rows) await patch(o, { mail: { month: ym, key: akey, status: "발송 대기", queued: today } });
+      await patch(acfg, { sent_month: ym, last_sent: today });
     }
-  } else if (DRY) console.log("[dry] annual settle mail: not due (send", sd.send, "pay", sd.pay + ")");
+  } else if (DRY) console.log("[dry] annual settle mail: not due or nothing new (send", sd.send, "pay", sd.pay + ", 미포함 " + pending.length + "명)");
 } catch (e) { console.log("연차 정산 메일 처리 중 오류:", e.message || e); }
+// 정산 메일 발송 결과를 대상자 기록에 반영
+async function markPeople(x, status, extra) {
+  if (x.data.kind !== "annual-settle") return;
+  for (const p of x.data.people || []) { const o = annById[p.id]; if (o) { try { await patch(o, { mail: { ...(o.data.mail || {}), month: x.data.month, key: x.data.key, status, ...extra } }); } catch (e) { console.log("대상자 상태 기록 실패:", p.target, e.message || e); } } }
+}
 
 const ready = queue.filter((q) => q.data.status === "발송 대기");
 if (ready.length && !DRY) {
@@ -139,8 +153,9 @@ if (ready.length && !DRY) {
     for (const x of ready) {
       try {
         await tr.sendMail({ from: `"${SENDER}" <${SMTP_USER}>`, to: x.data.email, cc: x.data.cc || undefined, subject: x.data.subject, text: x.data.body });
-        await patch(x, { status: "발송 완료", sent_at: new Date().toISOString(), error: "" }); sent++;
-      } catch (e) { await patch(x, { status: "실패", error: String(e.message || e).slice(0, 300) }); failed++; }
+        const at = new Date().toISOString();
+        await patch(x, { status: "발송 완료", sent_at: at, error: "" }); sent++; await markPeople(x, "발송 완료", { sent_at: at });
+      } catch (e) { const er = String(e.message || e).slice(0, 300); await patch(x, { status: "실패", error: er }); failed++; await markPeople(x, "실패", { error: er }); }
     }
   }
 }
