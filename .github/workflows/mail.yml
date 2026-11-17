@@ -30,12 +30,12 @@ jobs:
         id: chk
         run: |
           if [ -z "$SUPABASE_SERVICE_KEY" ]; then echo "SUPABASE_SERVICE_KEY 가 없어 아무 것도 하지 않습니다."; echo "ok=no" >> "$GITHUB_OUTPUT"; else echo "ok=yes" >> "$GITHUB_OUTPUT"; fi
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         if: steps.chk.outputs.ok == 'yes'
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         if: steps.chk.outputs.ok == 'yes'
         with:
-          node-version: 20
+          node-version: 22
       - name: Install
         if: steps.chk.outputs.ok == 'yes'
         run: npm install --no-save --no-audit --no-fund nodemailer@6 @supabase/supabase-js@2

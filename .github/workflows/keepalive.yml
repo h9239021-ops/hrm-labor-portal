@@ -22,7 +22,7 @@ jobs:
           echo "auth: $auth"
           test "$code" = "200"
       # 저장소에 60일 동안 변경이 없으면 GitHub가 예약 실행을 끄기 때문에 매월 1일 표시 파일을 갱신합니다.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         if: github.event_name == 'schedule'
       - name: Monthly heartbeat commit
         if: github.event_name == 'schedule'
