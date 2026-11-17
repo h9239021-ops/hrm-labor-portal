@@ -98,6 +98,39 @@ for (const x of queue.filter((q) => q.data.status === "주소 필요")) {
   const email = rule.to || (rec ? emailOf(people, rec.data) : "");
   if (email && !DRY) await patch(x, { email, status: rule.mode === "auto" ? "발송 대기" : "승인 대기" }); else noaddr++;
 }
+// ── 월별 퇴직자 연차 정산 메일 (휴가 › 연차유급휴가 관리) ──
+// 급여일(25일, 주말·공휴일이면 직전 영업일) 기준 영업일 5일 전부터 급여일 전까지, 그달 퇴사자 정산 내역을 한 번 보낸다.
+const HO_FIXED = ["01-01", "03-01", "05-05", "06-06", "08-15", "10-03", "10-09", "12-25"];
+const HO_VAR = { 2025: ["01-27", "01-28", "01-29", "01-30", "03-03", "05-05", "05-06", "06-03", "10-05", "10-06", "10-07", "10-08"],
+  2026: ["02-16", "02-17", "02-18", "03-02", "05-24", "05-25", "06-03", "08-17", "09-24", "09-25", "09-26", "09-28", "10-05"],
+  2027: ["02-06", "02-07", "02-08", "02-09", "05-13", "08-16", "10-04", "10-11", "10-14", "10-15", "10-16", "10-18", "12-27"],
+  2028: ["01-26", "01-27", "01-28", "05-02", "10-02", "10-03", "10-04"] };
+const isBiz = (s) => { const w = new Date(s + "T00:00:00Z").getUTCDay(); const md = s.slice(5); return w !== 0 && w !== 6 && !HO_FIXED.includes(md) && !(HO_VAR[+s.slice(0, 4)] || []).includes(md); };
+function settleSendDate(ym) { let pay = ym + "-25"; while (!isBiz(pay)) pay = addDay(pay, -1); let d = pay, n = 0; while (n < 5) { d = addDay(d, -1); if (isBiz(d)) n++; } return { pay, send: d }; }
+const r2 = (x) => Math.round(x * 100) / 100;
+try {
+  const ann = await recs("leave", "annual");
+  const acfg = ann.find((x) => x.data.list === "config");
+  const ym = today.slice(0, 7), sd = settleSendDate(ym), akey = "annual-settle|" + ym;
+  if (acfg && acfg.data.enabled && /@/.test(acfg.data.to || "") && today >= sd.send && today < sd.pay && acfg.data.sent_month !== ym && !keys.has(akey)) {
+    const rows = ann.filter((x) => x.data.list === "settle" && String(x.data.retire || "").slice(0, 7) === ym).sort((a, b) => String(a.data.retire).localeCompare(String(b.data.retire)));
+    const ymL = ym.replace("-", "년 ") + "월";
+    const text = ymL + " 퇴직자 연차 정산 내역을 공유드립니다. (급여일 " + sd.pay + " 기준)\n\n" +
+      (rows.length ? rows.map((o, i) => { const d = o.data, R = d.result || {}; return (i + 1) + ". " + d.target + " (" + [d.org, d.team].filter(Boolean).join(" ") + ")\n   입사 " + d.join + " / 퇴사 " + d.retire +
+        "\n   입사일 기준 " + R.hTotal + "일 · 회계연도 기준 " + R.fTotal + "일 · 차이 " + R.diffPay + "일\n   퇴직연도 잔여 " + r2((+R.curF || 0) + (+R.curM || 0) - (+R.used || 0)) + "일 · 미사용 보상휴가 " + (d.comp === "" || d.comp == null ? "미입력(확인 필요)" : d.comp + "일") +
+        "\n   ▶ 최종 지급 일수 " + R.final + "일" + (d.note ? "\n   비고: " + d.note : ""); }).join("\n\n") : "이번 달 퇴직자 정산 기록이 없습니다.") +
+      "\n\n※ HRM 노무관리파트 업무포털 › 휴가 › 연차유급휴가 관리 › 퇴직자 연차 정산에서 상세 계산 내역을 확인할 수 있습니다.";
+    const row = { list: "queue", key: akey, rule_name: "퇴직자 연차 정산(월별)", target: "퇴직자 " + rows.length + "명", org: "", email: acfg.data.to, cc: acfg.data.cc || "",
+      subject: "[연차 정산] " + ymL + " 퇴직자 연차 정산 내역 (" + rows.length + "명)", body: text, due: sd.send, status: "발송 대기" };
+    if (DRY) console.log("[dry] would queue annual settle mail:", ymL, rows.length + "명", "send", sd.send, "pay", sd.pay);
+    else {
+      queue.push(await insert(row)); keys.add(akey); made++;
+      const u = await sb.from("portal_records").update({ data: { ...acfg.data, sent_month: ym, last_sent: today }, updated_by: "auto-mail", updated_at: new Date().toISOString() }).eq("id", acfg.id);
+      if (u.error) throw u.error;
+    }
+  } else if (DRY) console.log("[dry] annual settle mail: not due (send", sd.send, "pay", sd.pay + ")");
+} catch (e) { console.log("연차 정산 메일 처리 중 오류:", e.message || e); }
+
 const ready = queue.filter((q) => q.data.status === "발송 대기");
 if (ready.length && !DRY) {
   if (!SMTP_USER || !SMTP_PASS) console.log("SMTP_USER / SMTP_PASS 가 없어 " + ready.length + "건을 보내지 못했습니다.");

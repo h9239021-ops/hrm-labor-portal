@@ -16,7 +16,7 @@
       items: ["근태 운영", "(분기)근태 미준수 관리", "시간외근로"],
       menus: [["manual", "근태관리 매뉴얼"], ["violations", "근태 위반자 관리"], ["worktypes", "근무형태 현황"], ["automail", "자동 메일"]] },
     { id: "leave", name: "휴가", ic: "🌴", desc: "연차·연차 촉진, 리프레쉬·보상·경조휴가, 휴가 사용 현황",
-      items: ["연차/휴가", "연차 촉진", "휴가 현황"], menus: [["manual", "휴가 매뉴얼"], ["status", "휴가 현황"]] },
+      items: ["연차/휴가", "연차 촉진", "휴가 현황"], menus: [["manual", "휴가 매뉴얼"], ["status", "휴가 현황"], ["annual", "연차유급휴가 관리"]] },
     { id: "absence", name: "휴직", ic: "🍼", desc: "모성보호, 육아·질병 휴직, 복직 관리, 휴직·복직 현황",
       items: ["모성보호", "휴직/복직", "휴직 현황"], menus: [["manual", "휴직 매뉴얼"], ["status", "휴직·복직 현황"]] },
     { id: "welfare", name: "복리후생", ic: "🎁", desc: "경조사, 건강검진, 생일·출산·명절 선물, 복지몰",
@@ -1293,6 +1293,7 @@
     if (menu === "manual"){ app.innerHTML = shell(head + '<div class="cat-wrap" id="cw"></div>', c.name); renderManual(c, key, sub); }
     else if (c.id === "att" && menu === "worktypes"){ app.innerHTML = shell(head + '<div class="cat-wrap"><div class="cat-main" id="cm"></div></div>', c.name); if (sub === "exceptions" || sub === "list") renderWorktypes(c, sub === "list" ? "worktypes" : "exceptions"); else renderWtStats(c); }
     else if (c.id === "att" && menu === "automail"){ app.innerHTML = shell(head + '<div class="cat-wrap"><div class="cat-main" id="cm"></div></div>', c.name); renderAutoMail(c, sub); }
+    else if (c.id === "leave" && menu === "annual"){ app.innerHTML = shell(head + '<div class="cat-wrap"><div class="cat-main" id="cm"></div></div>', c.name); renderAnnual(c, sub); }
     else if (c.id === "rules" && menu === "docs"){ app.innerHTML = shell(head + '<div class="cat-wrap"><div class="cat-main" id="cm"></div></div>', c.name); renderRules(c, sub); }
     else if (GEN_MENU[key]){ app.innerHTML = shell(head + '<div class="cat-wrap"><div class="cat-main" id="cm"></div></div>', c.name); if (key === "case.cases" && can("case.discipline", "read")) loadRecs("case", "discipline").catch(function(){}).then(function(){ renderGen(c, GEN_MENU[key], sub); }); else renderGen(c, GEN_MENU[key], sub); }
     else if (c.id === "att" && menu === "violations"){ app.innerHTML = shell(head + '<div class="cat-wrap"><div class="cat-main" id="cm"></div></div>', c.name); renderViol(c, sub); }
@@ -2792,6 +2793,234 @@
       XLSX.utils.book_append_sheet(wb, ws, "현황 종합"); XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(cond), "조건");
       XLSX.writeFile(wb, "현황종합_" + (f.from || f.to ? (f.from || "") + "~" + (f.to || "") + "_" : "") + today + ".xlsx"); logp("home", "export", "xlsx 현황 종합");
     };
+  }
+
+  /* =====================================================================
+     휴가 › 연차유급휴가 관리: 연차 선부여 · 퇴직자 연차 정산(회계연도 vs 입사일) · 월별 정산 메일
+     ===================================================================== */
+  // 공휴일(대체·임시 포함). 자동 메일 스크립트(scripts/send-mail.mjs)에도 같은 표가 있습니다.
+  var HO_FIXED = ["01-01", "03-01", "05-05", "06-06", "08-15", "10-03", "10-09", "12-25"];
+  var HO_LUNAR = { 2000: ["01-04","01-05","01-06","05-11","09-11","09-12","09-13"], 2001: ["01-24","01-25","01-26","05-01","10-01","10-02","10-03"], 2002: ["02-11","02-12","02-13","05-19","09-20","09-21","09-22"], 2003: ["02-01","02-02","02-03","05-08","09-10","09-11","09-12"], 2004: ["01-21","01-22","01-23","05-26","09-27","09-28","09-29"], 2005: ["02-08","02-09","02-10","05-15","09-17","09-18","09-19"], 2006: ["01-28","01-29","01-30","05-05","10-05","10-06","10-07"], 2007: ["02-17","02-18","02-19","05-24","09-24","09-25","09-26"], 2008: ["02-06","02-07","02-08","05-12","09-13","09-14","09-15"], 2009: ["01-25","01-26","01-27","05-02","10-02","10-03","10-04"], 2010: ["02-13","02-14","02-15","05-21","09-21","09-22","09-23"], 2011: ["02-02","02-03","02-04","05-10","09-11","09-12","09-13"], 2012: ["01-22","01-23","01-24","05-28","09-29","09-30","10-01"], 2013: ["02-09","02-10","02-11","05-17","09-18","09-19","09-20"], 2014: ["01-30","01-31","02-01","05-06","09-07","09-08","09-09"], 2015: ["02-18","02-19","02-20","05-25","09-26","09-27","09-28"], 2016: ["02-07","02-08","02-09","05-14","09-14","09-15","09-16"], 2017: ["01-27","01-28","01-29","05-03","10-03","10-04","10-05"], 2018: ["02-15","02-16","02-17","05-22","09-23","09-24","09-25"], 2019: ["02-04","02-05","02-06","05-12","09-12","09-13","09-14"], 2020: ["01-24","01-25","01-26","04-30","09-30","10-01","10-02"], 2021: ["02-11","02-12","02-13","05-19","09-20","09-21","09-22"], 2022: ["01-31","02-01","02-02","05-08","09-09","09-10","09-11"], 2023: ["01-21","01-22","01-23","05-27","09-28","09-29","09-30"], 2024: ["02-09","02-10","02-11","05-15","09-16","09-17","09-18"], 2025: ["01-28","01-29","01-30","05-05","10-05","10-06","10-07"], 2026: ["02-16","02-17","02-18","05-24","09-24","09-25","09-26"], 2027: ["02-06","02-07","02-08","05-13","10-14","10-15","10-16"], 2028: ["01-26","01-27","01-28","05-02","10-02","10-03","10-04"], 2029: ["02-12","02-13","02-14","05-20","09-21","09-22","09-23"], 2030: ["02-02","02-03","02-04","05-09","09-11","09-12","09-13"] };
+  var HO_SUBST = { 2014: ["09-10"], 2016: ["02-10","03-02"], 2017: ["01-30","10-06"], 2018: ["05-07","09-26"], 2019: ["02-07","05-06"], 2020: ["01-27"], 2021: ["02-15","08-16","10-04","10-11"], 2022: ["03-02","10-10"], 2023: ["01-24","05-29"], 2024: ["02-12","05-06","09-18"], 2025: ["03-03","05-06","10-08"], 2026: ["03-02","05-25","08-17","09-28","10-05"], 2027: ["02-09","08-16","10-04","10-11","10-18","12-27"] };
+  var HO_TEMP = { 2017: ["05-09","10-02"], 2018: ["06-13"], 2020: ["04-15","08-17"], 2022: ["03-09","06-01"], 2023: ["10-02"], 2024: ["04-10","10-01"], 2025: ["01-27","06-03"], 2026: ["06-03"] };
+  var _hoC = {};
+  function hoSet(y){ if (!_hoC[y]){ var s = {}; HO_FIXED.concat(HO_LUNAR[y] || [], HO_SUBST[y] || [], HO_TEMP[y] || []).forEach(function(d){ s[y + "-" + d] = 1; }); _hoC[y] = s; } return _hoC[y]; }
+  function isHoliday(s){ return !!hoSet(+String(s).slice(0, 4))[String(s).slice(0, 10)]; }
+  function isBizDay(s){ var w = parseD(s).getDay(); return w !== 0 && w !== 6 && !isHoliday(s); }
+  // 급여일(25일, 주말·공휴일이면 직전 영업일) 기준 영업일 5일 전이 발송일
+  function settleSendDate(ym){ var pay = ym + "-25"; while (!isBizDay(pay)) pay = addDay(pay, -1); var d = pay, n = 0; while (n < 5){ d = addDay(d, -1); if (isBizDay(d)) n++; } return { pay: pay, send: d }; }
+
+  /* ---------- 정산 엔진(순수 함수) ---------- */
+  var LAW_OLD_END = "2005-07-01";   // 2003.9 개정법 적용 전(구법: 월차·연차 10/8일) — 사업장 규모별 시행일 중 기본값
+  var LAW_2018 = "2018-05-29";      // 1년차 15일에서 1년 미만 사용분 공제 규정 삭제(입사 1년이 이날 이후 도래하는 사람부터)
+  function r2(x){ return Math.round(x * 100) / 100; }
+  function addMon(s, m){ var d = parseD(s), y = d.getFullYear(), mo = d.getMonth() + m, day = d.getDate(); var last = new Date(y, mo + 1, 0).getDate(); return ymd(new Date(y, mo, Math.min(day, last))); }
+  function addYr(s, n){ return addMon(s, 12 * n); }
+  function dDiff(a, b){ return Math.round((parseD(b) - parseD(a)) / 864e5); }
+  function inPeriods(s, ps){ return (ps || []).some(function(p){ return p.start && p.end && s >= p.start && s <= p.end; }); }
+  function attOf(a, b, unpaid, absent){ var so = 0, un = 0, ab = 0, d = a;
+    while (d <= b){ if (isBizDay(d)){ so++; if (inPeriods(d, unpaid)) un++; else if (inPeriods(d, absent)) ab++; } d = addDay(d, 1); }
+    var real = so - un, att = Math.max(0, real - ab); return { so: so, un: un, ab: ab, real: real, att: att, r1: so ? att / so : 1, r2: real ? att / real : 1 }; }
+  function fullMonths(a, b, unpaid, absent){ var n = 0, s = a; while (s <= b){ var e = addDay(addMon(s, 1), -1); if (e > b) break; var t = attOf(s, e, unpaid, absent); if (!t.ab && t.real > 0) n++; s = addMon(s, 1); } return n; }
+  // 출근율 판단: 80% 이상 전액 → 실질 출근율 80% 이상 비례 → 그 외 개근 월수 × 1일
+  function attGrant(base, a, b, P, label){ var hasX = (P.unpaid || []).length || (P.absent || []).length; if (!hasX) return { days: base, note: "" };
+    var t = attOf(a, b, P.unpaid, P.absent); if (!t.un && !t.ab) return { days: base, note: "" };
+    var pc = function(x){ return (x * 100).toFixed(1) + "%"; }, info = label + " 소정근로일 " + t.so + "일 · 무급 " + t.un + "일 · 결근 " + t.ab + "일";
+    if (t.r1 >= 0.8) return { days: base, note: info + " → 출근율 " + pc(t.r1) + "(80% 이상) 전액" };
+    if (t.r2 >= 0.8){ var v = r2(base * t.real / t.so); return { days: v, note: info + " → 출근율 " + pc(t.r1) + ", 실질 출근율 " + pc(t.r2) + " → 비례 " + base + "×" + t.real + "/" + t.so + " = " + v + "일" }; }
+    var m = fullMonths(a, b, P.unpaid, P.absent); return { days: m, note: info + " → 실질 출근율 " + pc(t.r2) + "(80% 미만) → 개근 " + m + "개월 × 1일" }; }
+  function baseNew(yr){ return yr <= 1 ? 15 : Math.min(15 + Math.floor((yr - 1) / 2), 25); }
+  function annualCalc(P){
+    var J = P.join, L = P.retire, ev = [], fm = +(P.fyMonth || 1), notes = [];
+    if (!J || !L || L < J) return null;
+    var a1 = addYr(J, 1), era = a1 >= LAW_2018 ? "2018" : J >= "2004-07-01" || a1 >= LAW_OLD_END ? "2003" : "old";
+    // ① 월 단위 발생(1년 미만 월차 / 구법 월차) — 두 기준 공통
+    var mCnt = 0, k = 1;
+    while (k <= 600){ var md2 = addMon(J, k), old = md2 < LAW_OLD_END; if (!old && k > 11) break; if (md2 > L) break;
+      var ps = addMon(J, k - 1), pe = addDay(md2, -1), t = attOf(ps, pe, P.unpaid, P.absent), ok = !t.ab && t.real > 0;
+      ev.push({ b: "m", date: md2, days: ok ? 1 : 0, label: (old ? "구법 월차 " : "1년 미만 ") + k + "개월째", note: ok ? "" : (t.ab ? "결근 " + t.ab + "일로 미발생" : "근로제공 없음") }); if (ok && !old) mCnt++; k++; }
+    var mDed = era === "2003" ? Math.min(15, P.firstYearUsed != null && P.firstYearUsed !== "" ? +P.firstYearUsed : mCnt) : 0;
+    if (era === "2003") notes.push("입사 1년이 2018.5.29 전에 도래 → 1년차 15일에서 1년 미만 기간 사용분 " + mDed + "일 공제(개정 전 제60조제3항)");
+    if (era === "old") notes.push("2003 개정 전 구법 구간(기본 2005.7.1 전): 월차 매월 1일, 연차 개근 10일·9할 이상 8일 + 근속 가산");
+    if (era === "2018") notes.push("2018.5.29 이후 규정: 1년 미만 월 1일(최대 11일)과 1년차 15일을 따로 발생");
+    function oldAnnual(base0, a, b, yr){ var t = attOf(a, b, P.unpaid, P.absent), r = t.real ? t.att / t.real : 1; var d0 = r >= 1 ? 10 : r >= 0.9 ? 8 : 0; return { days: d0 ? d0 + Math.max(0, yr - 1) : 0, note: "구법 출근율 " + (r * 100).toFixed(1) + "% → " + (d0 ? d0 + "일 + 가산 " + Math.max(0, yr - 1) + "일" : "미발생") }; }
+    // ② 입사일 기준: 매 1년(퇴직일이 기념일 이후 = 1년 + 1일 근로)
+    for (var y = 1; y <= 60; y++){ var ad = addYr(J, y); if (ad > L) break; var pa = addYr(J, y - 1), pb = addDay(ad, -1), g;
+      if (ad < LAW_OLD_END) g = oldAnnual(0, pa, pb, y);
+      else { var base = baseNew(y); g = attGrant(base, pa, pb, P, y + "년차"); if (y === 1 && mDed){ g.note = (g.note ? g.note + " · " : "") + "1년 미만 사용분 " + mDed + "일 공제"; g.days = Math.max(0, r2(g.days - mDed)); } g.note = (g.note || (base + "일" + (y >= 3 ? "(가산 " + (base - 15) + "일 포함)" : ""))); }
+      ev.push({ b: "h", date: ad, days: g.days, label: y + "년차(" + pa + "~" + pb + ")", note: g.note }); }
+    // ③ 회계연도 기준: 회계연도 시작일마다(입사연도 다음 시작일은 재직일수 비례)
+    var g1 = (function(){ var d = parseD(J), s = ymd(new Date(d.getFullYear(), fm - 1, 1)); return s > J ? s : addYr(s, 1); })(), kk = 1, gFirstFull = null;
+    for (var gd = g1; gd <= L && kk <= 60; gd = addYr(gd, 1), kk++){ var pa2 = kk === 1 ? J : addYr(gd, -1), pb2 = addDay(gd, -1), gg, lab;
+      if (gd < LAW_OLD_END){ gg = oldAnnual(0, pa2, pb2, kk); lab = "구법"; }
+      else if (kk === 1){ var days = dDiff(J, gd), bs = days >= 365 ? 15 : r2(15 * days / 365); gg = attGrant(bs, pa2, pb2, P, "첫 회계연도"); gg.note = "15 × 재직 " + days + "일/365 = " + bs + "일" + (gg.note ? " · " + gg.note : ""); lab = "비례"; }
+      else { var b2 = baseNew(kk); gg = attGrant(b2, pa2, pb2, P, kk + "번째 회계연도"); gg.note = gg.note || (b2 + "일" + (kk >= 3 ? "(가산 " + (b2 - 15) + "일 포함)" : "")); lab = kk + "년차"; }
+      if (mDed && !gFirstFull && gd >= a1){ gFirstFull = gd; gg.days = Math.max(0, r2(gg.days - mDed)); gg.note += " · 1년 미만 사용분 " + mDed + "일 공제"; }
+      ev.push({ b: "f", date: gd, days: r2(gg.days), label: gd.slice(0, 4) + " 회계연도(" + lab + ")", note: gg.note }); }
+    var sum = function(f){ return r2(ev.filter(f).reduce(function(s, e){ return s + e.days; }, 0)); };
+    var mon = sum(function(e){ return e.b === "m"; }), hTot = r2(mon + sum(function(e){ return e.b === "h"; })), fTot = r2(mon + sum(function(e){ return e.b === "f"; }));
+    // 퇴직 시점에 쓸 수 있는 회계연도 연차: 퇴직일이 속한 회계연도 발생분 + 아직 소멸 안 된 1년 미만 월차(1년 전 퇴사)
+    var fyS = (function(){ var d = parseD(L), s = ymd(new Date(d.getFullYear(), fm - 1, 1)); return s > L ? addYr(s, -1) : s; })();
+    var curF = sum(function(e){ return e.b === "f" && e.date >= fyS; }), curM = L < a1 ? mon : 0;
+    var used = +P.used || 0, carry = +P.carry || 0, comp = +P.comp || 0, diff = r2(hTot - fTot), diffPay = Math.max(0, diff);
+    var final = r2(diffPay + curF + curM - used + carry + comp);
+    return { era: era, events: ev, mon: mon, hTotal: hTot, fTotal: fTot, diff: diff, diffPay: diffPay, fyStart: fyS, curF: r2(curF), curM: curM, used: used, carry: carry, comp: comp, final: final, notes: notes };
+  }
+  // 다우오피스 연동 지점(준비): 미사용 보상휴가를 그룹웨어에서 불러온다. 연동 전에는 수기 입력값을 쓴다.
+  async function fetchCompLeave(name, empId){ void name; void empId; return null; }
+
+  /* ---------- 화면 ---------- */
+  REC_DEF.advance = { menu: "annual", list: "advance", title: "연차 선부여", noun: "선부여",
+    fields: [["org", "사업부", "text"], ["team", "팀", "text"], ["target", "이름", "text"], ["tenure", "1년 미만/이상", "select", ["미만", "이상"]], ["start", "사용 기한 시작", "date"], ["end", "사용 기한 종료", "date"],
+      ["basis", "문서번호", "text"], ["days", "선부여 개수(일)", "number"], ["used", "사용 여부", "text", "O / X / 사용 일수"], ["adjusted", "조정 여부", "select", ["O", "X"]], ["next_year", "다음 해 연차(선사용 반영)", "number"], ["note", "특이사항", "textarea"]],
+    gen: {} };
+  var annSub = "advance", advF = { y: "", org: "", ten: "", adj: "", q: "" }, setF = { y: "", m: "", org: "", q: "" };
+  function annRecs(list){ return (S.recs["leave.annual"] || []).filter(function(x){ return x.data.list === list; }); }
+  async function renderAnnual(c, sub){
+    var host = $("#cm"); annSub = ["advance", "settle", "calc", "mail"].indexOf(sub) >= 0 ? sub : "advance";
+    try { await loadRecs("leave", "annual"); } catch(e){ host.innerHTML = '<div class="banner danger">불러오지 못했습니다: ' + esc(e.message) + '</div>'; return; }
+    if (!$("#cm")) return;
+    var nav = '<nav class="subtabs">' + [["advance", "연차 선부여"], ["settle", "퇴직자 연차 정산"], ["calc", "＋ 정산 추가(계산)"], ["mail", "정산 메일 설정"]].map(function(t){ return '<a href="#/c/leave/annual/' + t[0] + '" class="' + (annSub === t[0] ? "on" : "") + '">' + t[1] + (t[0] === "advance" ? ' <span class="hint">' + annRecs("advance").length + '</span>' : t[0] === "settle" ? ' <span class="hint">' + annRecs("settle").length + '</span>' : '') + '</a>'; }).join("") + '</nav>';
+    if (annSub === "advance") drawAdvance(c, nav); else if (annSub === "settle") drawSettleList(c, nav); else if (annSub === "calc") drawSettleCalc(c, nav, null); else drawSettleMail(c, nav);
+  }
+  function advUsed(d){ var u = String(d.used == null ? "" : d.used).trim(); if (/^o$/i.test(u)) return +d.days || 0; if (/^x$/i.test(u) || !u) return 0; var n = parseFloat(u); return isNaN(n) ? 0 : n; }
+  function drawAdvance(c, nav){
+    var host = $("#cm"), all = annRecs("advance"), f = advF, w = can("leave.annual", "write");
+    var years = ovUniq(all.map(function(x){ return String(x.data.start || "").slice(0, 4); })), orgs = ovUniq(all.map(function(x){ return x.data.org || ""; }));
+    var list = all.filter(function(x){ var d = x.data; return (!f.y || String(d.start || "").slice(0, 4) === f.y) && (!f.org || d.org === f.org) && (!f.ten || d.tenure === f.ten) && (!f.adj || (f.adj === "O" ? d.adjusted === "O" : d.adjusted !== "O")) && (!f.q || [d.target, d.team, d.org, d.basis, d.note].join(" ").indexOf(f.q) >= 0); })
+      .sort(function(a, b){ return String(a.data.target).localeCompare(String(b.data.target)) || String(a.data.start || "").localeCompare(String(b.data.start || "")); });
+    var byName = {}; list.forEach(function(x){ var k = x.data.target + "|" + String(x.data.start || "").slice(0, 4); (byName[k] = byName[k] || []).push(x); });
+    var tot = r2(list.reduce(function(s, x){ return s + (+x.data.days || 0); }, 0)), people = Object.keys(byName).length, notAdj = list.filter(function(x){ return x.data.adjusted !== "O"; }).length;
+    var over = Object.keys(byName).filter(function(k){ var l = byName[k], t = l.reduce(function(s, x){ return s + (+x.data.days || 0); }, 0), ten = l[l.length - 1].data.tenure; return ten === "이상" ? t > 5 : t > 11; });
+    function opt(l, cur, first){ return '<option value="">' + first + '</option>' + l.map(function(v){ var k = Array.isArray(v) ? v[0] : v, lb = Array.isArray(v) ? v[1] : v; return '<option value="' + esc(k) + '"' + (k === cur ? " selected" : "") + '>' + esc(lb) + '</option>'; }).join(""); }
+    host.innerHTML = nav + '<div class="hint" style="font-size:12.5px;margin:-4px 0 12px">다음 해 연차를 미리 당겨 쓴 기록입니다(운영 기준: 1년 이상자 최대 5개, 1년 미만자는 1년 미만 발생분 11개 범위). 같은 사람 · 같은 연도 기록은 이름별 합계로 묶어 보여 주고, 기준을 넘으면 붉게 표시합니다. 행을 누르면 수정할 수 있습니다.</div>' +
+      '<div class="kpis" style="grid-template-columns:repeat(4,minmax(0,1fr));margin-bottom:12px">' + [["선부여 건수", list.length + "<small>건</small>", "필터 결과"], ["인원", people + "<small>명</small>", "이름 · 연도 기준"], ["선부여 합계", tot + "<small>일</small>", ""], ["조정 안 됨", notAdj + "<small>건</small>", over.length ? "기준 초과 " + over.length + "명" : "기준 초과 없음"]].map(function(k){ return '<div class="kpi"><div class="k">' + k[0] + '</div><div class="v">' + k[1] + '</div><div class="s">' + k[2] + '</div></div>'; }).join("") + '</div>' +
+      '<div class="rec-tools"><select id="aY">' + opt(years, f.y, "전체 연도") + '</select><select id="aOrg">' + opt(orgs, f.org, "전체 사업부") + '</select><select id="aTen">' + opt([["미만", "1년 미만"], ["이상", "1년 이상"]], f.ten, "1년 미만/이상") + '</select><select id="aAdj">' + opt([["O", "조정 완료"], ["X", "조정 안 됨"]], f.adj, "조정 여부") + '</select>' +
+        '<input type="search" id="aQ" placeholder="이름·팀·문서번호 검색" value="' + esc(f.q) + '"><span class="grow"></span><button class="btn sm" id="aXls">⬇ 엑셀 다운로드</button>' + (w ? '<button class="btn sm primary" id="aAdd">+ 선부여 추가</button>' : '') + '</div>' +
+      '<div class="tbl-box"><table class="rec compact"><thead><tr><th>사업부</th><th>팀</th><th>이름</th><th>1년 미만/이상</th><th>사용 기한</th><th>문서번호</th><th>선부여</th><th>이름별 합계</th><th>사용</th><th>조정</th><th>다음 해 연차</th><th>특이사항</th></tr></thead><tbody>' +
+      (list.length ? list.map(function(x){ var d = x.data, k = d.target + "|" + String(d.start || "").slice(0, 4), grp = byName[k], first = grp[0] === x, t = r2(grp.reduce(function(s, y){ return s + (+y.data.days || 0); }, 0)), bad = over.indexOf(k) >= 0;
+        return '<tr class="clk" data-aid="' + x.id + '" tabindex="0"><td>' + esc(d.org) + '</td><td>' + esc(d.team) + '</td><td><b>' + esc(d.target) + '</b></td><td>' + esc(d.tenure ? "1년 " + d.tenure : "") + '</td><td>' + esc((d.start || "") + (d.end && d.end !== d.start ? " ~ " + d.end : "")) + '</td><td class="hint" style="font-size:12px">' + esc(d.basis) + '</td><td>' + esc(d.days) + '일</td>' +
+          '<td>' + (first ? '<b' + (bad ? ' style="color:var(--danger-700)"' : '') + '>' + t + '일</b>' + (grp.length > 1 ? ' <span class="hint">(' + grp.length + '건)</span>' : '') + (bad ? ' <span class="badge danger">기준 초과</span>' : '') : '<span class="hint">〃</span>') + '</td>' +
+          '<td>' + esc(d.used) + '</td><td>' + (d.adjusted === "O" ? '<span class="badge good">완료</span>' : '<span class="badge warn">미조정</span>') + '</td><td>' + esc(d.next_year == null ? "" : d.next_year) + '</td><td style="max-width:260px">' + esc(d.note) + '</td></tr>'; }).join("")
+        : '<tr><td colspan="12" class="hint" style="padding:18px">해당하는 기록이 없습니다.</td></tr>') + '</tbody></table></div>';
+    function re(){ drawAdvance(c, nav); }
+    $("#aY").onchange = function(e){ f.y = e.target.value; re(); }; $("#aOrg").onchange = function(e){ f.org = e.target.value; re(); }; $("#aTen").onchange = function(e){ f.ten = e.target.value; re(); }; $("#aAdj").onchange = function(e){ f.adj = e.target.value; re(); };
+    $("#aQ").addEventListener("change", function(e){ f.q = e.target.value; re(); });
+    $all("tr[data-aid]", host).forEach(function(tr){ tr.onclick = function(){ if (!w) return; openRecord(c, "advance", all.filter(function(x){ return x.id === tr.dataset.aid; })[0], re); }; });
+    if ($("#aAdd")) $("#aAdd").onclick = function(){ openRecord(c, "advance", null, re, { tenure: "이상" }); };
+    $("#aXls").onclick = function(){ if (!window.XLSX){ alert("엑셀 도구를 불러오지 못했습니다."); return; }
+      var cols = [["org", "사업부"], ["team", "팀"], ["target", "이름"], ["tenure", "1년 미만/이상"], ["start", "사용 기한 시작"], ["end", "사용 기한 종료"], ["basis", "문서번호"], ["days", "선부여 개수"], ["used", "사용 여부"], ["adjusted", "조정 여부"], ["next_year", "다음 해 연차(선사용 반영)"], ["note", "특이사항"]];
+      var ws = XLSX.utils.aoa_to_sheet([cols.map(function(x){ return x[1]; })].concat(list.map(function(x){ return cols.map(function(k){ var v = x.data[k[0]]; return v == null ? "" : v; }); })));
+      var wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "연차 선부여"); XLSX.writeFile(wb, "연차선부여_" + todayStr() + ".xlsx"); };
+  }
+  function setRow(x){ var d = x.data || {}, R = d.result || {}; return { x: x, d: d, R: R }; }
+  function drawSettleList(c, nav){
+    var host = $("#cm"), all = annRecs("settle").map(setRow), f = setF, w = can("leave.annual", "write");
+    var years = ovUniq(all.map(function(o){ return String(o.d.retire || "").slice(0, 4); })).reverse(), orgs = ovUniq(all.map(function(o){ return o.d.org || ""; }));
+    var list = all.filter(function(o){ var d = o.d; return (!f.y || String(d.retire || "").slice(0, 4) === f.y) && (!f.m || String(d.retire || "").slice(5, 7) === f.m) && (!f.org || d.org === f.org) && (!f.q || [d.target, d.team, d.org, d.note].join(" ").indexOf(f.q) >= 0); })
+      .sort(function(a, b){ return String(b.d.retire || "").localeCompare(String(a.d.retire || "")); });
+    var byM = {}; list.forEach(function(o){ var k = String(o.d.retire || "").slice(0, 7); var v = byM[k] = byM[k] || { n: 0, pay: 0, comp: 0 }; v.n++; v.pay = r2(v.pay + (+o.R.final || 0)); v.comp = r2(v.comp + (+o.d.comp || 0)); });
+    var ym = todayStr().slice(0, 7), sd = settleSendDate(ym), thisM = all.filter(function(o){ return String(o.d.retire || "").slice(0, 7) === ym; });
+    host.innerHTML = nav + '<div class="hint" style="font-size:12.5px;margin:-4px 0 12px">퇴직자별 연차 정산(회계연도 기준 vs 입사일 기준) 누적 기록입니다. 행을 누르면 계산 내역을 보고 다시 계산·수정할 수 있습니다. 이번 달 퇴직자 내역은 <b>' + md(sd.send) + '</b>(급여일 ' + md(sd.pay) + '의 영업일 5일 전)에 「정산 메일 설정」의 주소로 발송됩니다.</div>' +
+      '<div class="kpis" style="grid-template-columns:repeat(4,minmax(0,1fr));margin-bottom:12px">' + [["정산 건수", list.length + "<small>건</small>", "필터 결과"], ["지급 일수 합계", r2(list.reduce(function(s, o){ return s + (+o.R.final || 0); }, 0)) + "<small>일</small>", "보상휴가 포함"], ["이번 달 퇴직", thisM.length + "<small>명</small>", ym], ["보상휴가 미입력", list.filter(function(o){ return o.d.comp === "" || o.d.comp == null; }).length + "<small>건</small>", "수기 입력 필요"]].map(function(k){ return '<div class="kpi"><div class="k">' + k[0] + '</div><div class="v">' + k[1] + '</div><div class="s">' + k[2] + '</div></div>'; }).join("") + '</div>' +
+      '<div class="rec-tools"><select id="sY"><option value="">전체 연도</option>' + years.map(function(y){ return '<option' + (y === f.y ? " selected" : "") + '>' + y + '</option>'; }).join("") + '</select><select id="sM"><option value="">전체 월</option>' + ["01","02","03","04","05","06","07","08","09","10","11","12"].map(function(m){ return '<option value="' + m + '"' + (m === f.m ? " selected" : "") + '>' + (+m) + '월</option>'; }).join("") + '</select>' +
+        '<select id="sOrg"><option value="">전체 사업부</option>' + orgs.map(function(o){ return '<option' + (o === f.org ? " selected" : "") + '>' + esc(o) + '</option>'; }).join("") + '</select><input type="search" id="sQ" placeholder="이름·팀 검색" value="' + esc(f.q) + '"><span class="grow"></span><button class="btn sm" id="sXls">⬇ 엑셀 다운로드</button>' + (w ? '<a class="btn sm primary" href="#/c/leave/annual/calc">+ 정산 추가</a>' : '') + '</div>' +
+      (Object.keys(byM).length > 1 ? '<div class="hint" style="font-size:12px;margin:0 0 8px">' + Object.keys(byM).sort().reverse().slice(0, 12).map(function(k){ return '<span class="chip" style="margin:0 6px 4px 0;display:inline-block;padding:3px 9px;border:1px solid var(--line);border-radius:100px">' + k + ' · ' + byM[k].n + '명 · ' + byM[k].pay + '일</span>'; }).join("") + '</div>' : '') +
+      '<div class="tbl-box"><table class="rec compact"><thead><tr><th>퇴사일</th><th>이름</th><th>사업부</th><th>팀</th><th>입사일</th><th>입사일 기준</th><th>회계연도 기준</th><th>차이</th><th>퇴직연도 잔여</th><th>보상휴가</th><th>최종 지급</th><th>비고</th></tr></thead><tbody>' +
+      (list.length ? list.map(function(o){ var d = o.d, R = o.R; return '<tr class="clk" data-sid="' + o.x.id + '" tabindex="0"><td>' + esc(d.retire) + '</td><td><b>' + esc(d.target) + '</b></td><td>' + esc(d.org) + '</td><td>' + esc(d.team) + '</td><td>' + esc(d.join) + '</td><td>' + esc(R.hTotal) + '일</td><td>' + esc(R.fTotal) + '일</td><td>' + (R.diffPay ? '<b style="color:var(--accent-700)">+' + R.diffPay + '</b>' : '0') + '</td><td>' + esc(r2((+R.curF || 0) + (+R.curM || 0) - (+R.used || 0))) + '일</td>' +
+        '<td>' + (d.comp === "" || d.comp == null ? '<span class="badge warn">미입력</span>' : esc(d.comp) + '일 <span class="hint" style="font-size:11px">' + (d.comp_source === "daou" ? "다우오피스" : "수기") + '</span>') + '</td><td><b' + (+R.final < 0 ? ' style="color:var(--danger-700)"' : '') + '>' + esc(R.final) + '일</b></td><td style="max-width:220px">' + esc(d.note) + '</td></tr>'; }).join("")
+        : '<tr><td colspan="12" class="hint" style="padding:18px">정산 기록이 없습니다. 「＋ 정산 추가」에서 계산 후 저장하세요.</td></tr>') + '</tbody></table></div>';
+    function re(){ drawSettleList(c, nav); }
+    $("#sY").onchange = function(e){ f.y = e.target.value; re(); }; $("#sM").onchange = function(e){ f.m = e.target.value; re(); }; $("#sOrg").onchange = function(e){ f.org = e.target.value; re(); };
+    $("#sQ").addEventListener("change", function(e){ f.q = e.target.value; re(); });
+    $all("tr[data-sid]", host).forEach(function(tr){ tr.onclick = function(){ annEditId = tr.dataset.sid; location.hash = "#/c/leave/annual/calc"; }; });
+    $("#sXls").onclick = function(){ if (!window.XLSX){ alert("엑셀 도구를 불러오지 못했습니다."); return; }
+      var head = ["퇴사일", "이름", "사번", "사업부", "팀", "입사일", "법 적용", "1년 미만 월차", "입사일 기준 누계", "회계연도 기준 누계", "차이(입사−회계)", "지급 대상 차이", "퇴직연도 회계연도 발생", "미소멸 월차", "퇴직연도 사용", "이월·기타", "미사용 보상휴가", "보상휴가 입력 방식", "최종 지급 일수", "비고"];
+      var rows = list.map(function(o){ var d = o.d, R = o.R; return [d.retire, d.target, d.emp_id || "", d.org, d.team, d.join, R.era === "2018" ? "2018.5.29 이후" : R.era === "2003" ? "2003 개정~2018.5.28" : "2003 개정 전", R.mon, R.hTotal, R.fTotal, R.diff, R.diffPay, R.curF, R.curM, R.used, R.carry, d.comp === "" || d.comp == null ? "" : +d.comp, d.comp_source === "daou" ? "다우오피스" : "수기", R.final, d.note || ""]; });
+      var wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([head].concat(rows)), "퇴직자 연차 정산");
+      var ev = [["이름", "퇴사일", "기준", "발생일", "구분", "일수", "근거"]]; list.forEach(function(o){ (o.R.events || []).forEach(function(e){ ev.push([o.d.target, o.d.retire, e.b === "h" ? "입사일" : e.b === "f" ? "회계연도" : "공통(월차)", e.date, e.label, e.days, e.note || ""]); }); });
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(ev), "연도별 발생 내역"); XLSX.writeFile(wb, "퇴직자연차정산_" + todayStr() + ".xlsx"); };
+  }
+  var annEditId = null;
+  function periodRows(list, kind){ return (list && list.length ? list : []).map(function(p, i){ return '<div class="per-row" data-k="' + kind + '"><input type="date" value="' + esc(p.start || "") + '" data-ps> ~ <input type="date" value="' + esc(p.end || "") + '" data-pe><button type="button" class="btn sm ghost" data-prm>삭제</button></div>'; }).join(""); }
+  function drawSettleCalc(c, nav){
+    var host = $("#cm"), w = can("leave.annual", "write"), x = annEditId ? annRecs("settle").filter(function(y){ return y.id === annEditId; })[0] : null, d = x ? Object.assign({}, x.data) : { fy_month: 1, comp_source: "manual" };
+    annEditId = null;
+    function fld(k, label, type, extra){ return '<label>' + label + '<input name="' + k + '" type="' + type + '"' + (type === "number" ? ' step="0.25"' : '') + ' value="' + esc(d[k] == null ? "" : d[k]) + '"' + (extra || "") + '></label>'; }
+    host.innerHTML = nav + '<div class="hint" style="font-size:12.5px;margin:-4px 0 12px">입사일과 퇴사일(마지막 근무일)을 넣으면 <b>입사일 기준</b>과 <b>회계연도 기준</b> 발생 연차를 연도별로 비교하고, 두 기준의 차이와 퇴직연도 잔여 · 미사용 보상휴가를 더해 최종 지급 일수를 계산합니다. 2003년 개정 전 구법, 2018.5.29 개정 전·후 규정을 입사 시기에 따라 자동으로 적용합니다.</div>' +
+      (x ? '<div class="banner" style="margin-bottom:10px">' + esc(d.target) + ' 님 정산 기록을 수정합니다. <a href="#/c/leave/annual/settle">목록으로</a></div>' : '') +
+      '<div class="settle-grid"><form class="f" id="stF"><div class="full ep-h2">대상자</div>' + fld("target", "이름 *", "text") + fld("emp_id", "사번(선택)", "text") + fld("org", "사업부", "text") + fld("team", "팀", "text") +
+        '<div class="full ep-h2">기간</div>' + fld("join", "입사일 *", "date") + fld("retire", "퇴사일(마지막 근무일) *", "date") +
+        '<label>회계연도 시작 월<select name="fy_month">' + [1,2,3,4,5,6,7,8,9,10,11,12].map(function(m){ return '<option value="' + m + '"' + (+d.fy_month === m ? " selected" : "") + '>' + m + '월 1일</option>'; }).join("") + '</select></label>' +
+        '<div class="full ep-h2">사용 · 보상휴가</div>' + fld("used", "퇴직 시점 사용 연차(일)", "number", ' title="퇴직일이 속한 회계연도 발생분과 아직 소멸 안 된 1년 미만 월차 중 사용한 일수"') + fld("carry", "이월·기타 미사용 연차(일)", "number") +
+        '<label>미사용 보상휴가(일)<input name="comp" type="number" step="0.25" value="' + esc(d.comp == null ? "" : d.comp) + '" placeholder="수기 입력"><small class="hint">입력 방식: ' + (d.comp_source === "daou" ? "다우오피스" : "수기") + ' · 다우오피스 연동 예정</small></label>' +
+        fld("first_year_used", "1년 미만 기간 사용(2018.5.28 전 1년 도래자만)", "number", ' placeholder="비우면 발생 월차 전부 사용으로 봄"') +
+        '<div class="full ep-h2">무급휴직 등 출근율 제외 기간 <small class="hint">(개인 사유 무급휴직·질병휴직 등. 육아휴직·출산휴가·산재는 출근으로 보므로 넣지 않습니다)</small></div><div class="full" id="perU">' + periodRows(d.unpaid, "u") + '</div><div class="full"><button type="button" class="btn sm" data-padd="u">+ 기간 추가</button></div>' +
+        '<div class="full ep-h2">결근 기간</div><div class="full" id="perA">' + periodRows(d.absent, "a") + '</div><div class="full"><button type="button" class="btn sm" data-padd="a">+ 기간 추가</button></div>' +
+        '<label class="full">비고<textarea name="note" rows="2">' + esc(d.note || "") + '</textarea></label>' +
+        '<div class="form-actions full">' + (x && can("leave.annual", "edit") ? '<button type="button" class="btn danger" id="stDel" style="margin-right:auto">삭제</button>' : '') + '<button type="button" class="btn" id="stRun">계산하기</button>' + (w ? '<button type="submit" class="btn primary">' + (x ? "수정 저장" : "정산 저장") + '</button>' : '') + '</div></form>' +
+      '<div id="stOut" class="settle-out"><p class="hint">입사일과 퇴사일을 넣고 「계산하기」를 누르세요.</p></div></div>';
+    var F = $("#stF");
+    function per(kind){ return $all('.per-row[data-k="' + kind + '"]', F).map(function(r){ return { start: $("[data-ps]", r).value, end: $("[data-pe]", r).value }; }).filter(function(p){ return p.start && p.end && p.start <= p.end; }); }
+    function read(){ var fd = new FormData(F), o = {}; ["target", "emp_id", "org", "team", "join", "retire", "note"].forEach(function(k){ var v = String(fd.get(k) || "").trim(); if (v) o[k] = v; });
+      ["used", "carry", "comp", "first_year_used"].forEach(function(k){ var v = String(fd.get(k) || "").trim(); o[k] = v === "" ? "" : +v; }); o.fy_month = +fd.get("fy_month") || 1; o.unpaid = per("u"); o.absent = per("a"); return o; }
+    function wireP(){ $all("[data-prm]", F).forEach(function(b){ b.onclick = function(){ b.parentNode.remove(); }; }); }
+    $all("[data-padd]", F).forEach(function(b){ b.onclick = function(){ var k = b.dataset.padd, box = $(k === "u" ? "#perU" : "#perA", F); box.insertAdjacentHTML("beforeend", periodRows([{}], k)); wireP(); }; }); wireP();
+    var last = null;
+    function run(){ var o = read(); if (!o.join || !o.retire){ alert("입사일과 퇴사일을 넣으세요."); return null; } if (o.retire < o.join){ alert("퇴사일이 입사일보다 빠릅니다."); return null; }
+      var R = annualCalc({ join: o.join, retire: o.retire, fyMonth: o.fy_month, used: o.used, carry: o.carry, comp: o.comp, firstYearUsed: o.first_year_used, unpaid: o.unpaid, absent: o.absent });
+      last = { o: o, R: R }; $("#stOut").innerHTML = settleHtml(o, R); return last; }
+    $("#stRun").onclick = run;
+    if (x && d.join && d.retire) run();
+    if ($("#stDel")) $("#stDel").onclick = async function(){ if (!confirm(d.target + " 님 정산 기록을 삭제할까요?")) return; var r = await sb.from("portal_records").delete().eq("id", x.id).select("id"); if (r.error || !r.data || !r.data.length){ alert("삭제하지 못했습니다: " + errMsg(r)); return; } S.recs["leave.annual"] = S.recs["leave.annual"].filter(function(y){ return y.id !== x.id; }); location.hash = "#/c/leave/annual/settle"; };
+    F.addEventListener("submit", async function(e){ e.preventDefault(); var L = run(); if (!L) return; if (!L.o.target){ alert("이름을 넣으세요."); return; }
+      var R = L.R, data = Object.assign({}, x ? x.data : {}, L.o, { list: "settle", comp_source: (x && x.data.comp_source) || "manual",
+        result: { era: R.era, mon: R.mon, hTotal: R.hTotal, fTotal: R.fTotal, diff: R.diff, diffPay: R.diffPay, curF: R.curF, curM: R.curM, used: R.used, carry: R.carry, comp: R.comp, final: R.final, fyStart: R.fyStart, events: R.events, notes: R.notes, at: todayStr() } });
+      var r = x ? await sb.from("portal_records").update({ data: data, updated_by: me.email, updated_at: new Date().toISOString() }).eq("id", x.id).select("*")
+                : await sb.from("portal_records").insert({ cat: "leave", menu: "annual", data: data, updated_by: me.email }).select("*");
+      if (r.error || !r.data || !r.data.length){ alert("저장하지 못했습니다: " + errMsg(r)); return; }
+      if (x) Object.assign(x, r.data[0]); else S.recs["leave.annual"].push(r.data[0]); logp("leave.annual", x ? "edit" : "add", "정산 " + data.target); toast("저장했습니다."); location.hash = "#/c/leave/annual/settle"; });
+  }
+  function settleHtml(o, R){
+    if (!R) return '<p class="hint">계산할 수 없습니다.</p>';
+    var era = R.era === "2018" ? "2018.5.29 이후 규정" : R.era === "2003" ? "2003 개정 ~ 2018.5.28 규정" : "2003 개정 전 구법 포함";
+    var years = {}; R.events.forEach(function(e){ var y = e.date.slice(0, 4), v = years[y] = years[y] || { h: 0, f: 0, m: 0 }; if (e.b === "m") v.m = r2(v.m + e.days); else if (e.b === "h") v.h = r2(v.h + e.days); else v.f = r2(v.f + e.days); });
+    var ys = Object.keys(years).sort();
+    function evT(b){ var l = R.events.filter(function(e){ return e.b === b; }); return l.length ? '<table class="rec compact" style="min-width:0"><thead><tr><th>발생일</th><th>구분</th><th>일수</th><th>근거</th></tr></thead><tbody>' + l.map(function(e){ return '<tr><td>' + e.date + '</td><td>' + esc(e.label) + '</td><td><b>' + e.days + '</b></td><td class="hint" style="font-size:11.5px">' + esc(e.note || "") + '</td></tr>'; }).join("") + '</tbody></table>' : '<p class="hint">해당 없음</p>'; }
+    return '<div class="kpis" style="grid-template-columns:repeat(3,minmax(0,1fr))"><div class="kpi"><div class="k">입사일 기준 누계</div><div class="v">' + R.hTotal + '<small>일</small></div><div class="s">1년 미만 월차 ' + R.mon + '일 포함</div></div><div class="kpi"><div class="k">회계연도 기준 누계</div><div class="v">' + R.fTotal + '<small>일</small></div><div class="s">' + (R.diff > 0 ? "입사일 기준이 " + R.diff + "일 많음" : R.diff < 0 ? "회계연도 기준이 " + (-R.diff) + "일 많음(회수 안 함)" : "같음") + '</div></div>' +
+      '<div class="kpi" style="border-color:var(--accent-500)"><div class="k">최종 지급 일수</div><div class="v" style="color:' + (R.final < 0 ? "var(--danger-700)" : "var(--accent-700)") + '">' + R.final + '<small>일</small></div><div class="s">' + (R.final < 0 ? "초과 사용(임금 공제 검토)" : "미사용 연차수당 대상") + '</div></div></div>' +
+      '<div class="tbl-box" style="margin-top:10px"><table class="rec compact" style="min-width:0"><tbody>' +
+        '<tr><td>① 차이(입사일 − 회계연도, 0 미만은 0)</td><td style="text-align:right"><b>' + R.diffPay + '</b>일</td></tr>' +
+        '<tr><td>② 퇴직 회계연도(' + R.fyStart + '~) 발생</td><td style="text-align:right">' + R.curF + '일</td></tr>' +
+        (R.curM ? '<tr><td>③ 아직 소멸 안 된 1년 미만 월차</td><td style="text-align:right">' + R.curM + '일</td></tr>' : '') +
+        '<tr><td>④ 퇴직 시점 사용</td><td style="text-align:right">− ' + R.used + '일</td></tr>' +
+        (R.carry ? '<tr><td>⑤ 이월·기타 미사용</td><td style="text-align:right">+ ' + R.carry + '일</td></tr>' : '') +
+        '<tr><td>⑥ 미사용 보상휴가' + (o.comp === "" ? ' <span class="badge warn">미입력</span>' : '') + '</td><td style="text-align:right">+ ' + R.comp + '일</td></tr>' +
+        '<tr><td><b>최종 = ① + ② + ③ − ④ + ⑤ + ⑥</b></td><td style="text-align:right"><b>' + R.final + '일</b></td></tr></tbody></table></div>' +
+      '<div class="note info" style="margin-top:10px"><span class="nt">적용 규정</span>' + esc(era) + '<br>' + R.notes.map(esc).join("<br>") + '<br>입사일 기준 연차는 기념일 당일까지 근로(1년 + 1일)해야 발생합니다(대법원 2021다227100). 회계연도 첫 해는 15일 × 재직일수/365로 비례 부여합니다.<br>퇴직 회계연도 이전에 발생한 연차와 이미 소멸한 1년 미만 월차는 사용·정산이 끝난 것으로 봅니다. 남은 것이 있으면 「이월·기타 미사용 연차」에 넣으세요.</div>' +
+      '<h4 style="margin:14px 0 6px;font-size:13px">연도별 비교</h4><div class="tbl-box"><table class="rec compact" style="min-width:0"><thead><tr><th>연도</th><th>1년 미만 월차(공통)</th><th>입사일 기준</th><th>회계연도 기준</th></tr></thead><tbody>' + ys.map(function(y){ var v = years[y]; return '<tr><td>' + y + '</td><td>' + (v.m || "") + '</td><td>' + (v.h || "") + '</td><td>' + (v.f || "") + '</td></tr>'; }).join("") + '</tbody></table></div>' +
+      '<details class="res-sec" style="margin-top:10px"><summary><b>입사일 기준 발생 내역</b></summary>' + evT("h") + '</details><details class="res-sec"><summary><b>회계연도 기준 발생 내역</b></summary>' + evT("f") + '</details><details class="res-sec"><summary><b>1년 미만 월차(구법 월차) 내역</b></summary>' + evT("m") + '</details>';
+  }
+  function settleMailBody(ym, rows){
+    var sd = settleSendDate(ym);
+    return { subject: "[연차 정산] " + ym.replace("-", "년 ") + "월 퇴직자 연차 정산 내역 (" + rows.length + "명)",
+      text: ym.replace("-", "년 ") + "월 퇴직자 연차 정산 내역을 공유드립니다. (급여일 " + sd.pay + " 기준)\n\n" +
+        (rows.length ? rows.map(function(o, i){ var d = o.data, R = d.result || {}; return (i + 1) + ". " + d.target + " (" + [d.org, d.team].filter(Boolean).join(" ") + ")\n   입사 " + d.join + " / 퇴사 " + d.retire + "\n   입사일 기준 " + R.hTotal + "일 · 회계연도 기준 " + R.fTotal + "일 · 차이 " + R.diffPay + "일\n   퇴직연도 잔여 " + r2((+R.curF || 0) + (+R.curM || 0) - (+R.used || 0)) + "일 · 미사용 보상휴가 " + (d.comp === "" || d.comp == null ? "미입력(확인 필요)" : d.comp + "일") + "\n   ▶ 최종 지급 일수 " + R.final + "일" + (d.note ? "\n   비고: " + d.note : ""); }).join("\n\n") : "이번 달 퇴직자 정산 기록이 없습니다.") +
+        "\n\n※ HRM 노무관리파트 업무포털 › 휴가 › 연차유급휴가 관리 › 퇴직자 연차 정산에서 상세 계산 내역을 확인할 수 있습니다." };
+  }
+  function drawSettleMail(c, nav){
+    var host = $("#cm"), cfgX = annRecs("config")[0], cfg = cfgX ? cfgX.data : { list: "config", enabled: false, to: "", cc: "" }, w = can("leave.annual", "write");
+    var ym = todayStr().slice(0, 7), sd = settleSendDate(ym), nm2 = ymd(new Date(+ym.slice(0, 4), +ym.slice(5, 7), 1)).slice(0, 7), sd2 = settleSendDate(nm2);
+    var rows = annRecs("settle").filter(function(x){ return String(x.data.retire || "").slice(0, 7) === ym; }), mail = settleMailBody(ym, rows);
+    host.innerHTML = nav + '<div class="hint" style="font-size:12.5px;margin:-4px 0 12px">매월 급여일(25일, 주말·공휴일이면 직전 영업일) 기준 <b>영업일 5일 전</b>에 그달 퇴사자 정산 내역을 아래 주소로 보냅니다. 발송은 평일 오전 자동 실행(GitHub Actions)에서 처리되며, SMTP 정보(GitHub Secrets)를 등록해야 실제로 나갑니다. 미입력 보상휴가는 메일에 「확인 필요」로 표시됩니다.</div>' +
+      '<div class="kpis" style="grid-template-columns:repeat(3,minmax(0,1fr));margin-bottom:12px"><div class="kpi"><div class="k">이번 달 발송 예정일</div><div class="v" style="font-size:22px">' + md(sd.send) + '</div><div class="s">급여일 ' + md(sd.pay) + '</div></div><div class="kpi"><div class="k">다음 달 발송 예정일</div><div class="v" style="font-size:22px">' + md(sd2.send) + '</div><div class="s">급여일 ' + md(sd2.pay) + '</div></div><div class="kpi"><div class="k">마지막 발송</div><div class="v" style="font-size:18px">' + esc(cfg.sent_month || "-") + '</div><div class="s">' + esc(cfg.last_sent || "") + '</div></div></div>' +
+      '<form class="f" id="mcF"><label class="full"><span><input type="checkbox" name="enabled"' + (cfg.enabled ? " checked" : "") + '> 매월 자동 발송 사용</span></label><label class="full">받는 사람(쉼표로 여러 명)<input name="to" value="' + esc(cfg.to || "") + '" placeholder="예: payroll@cowave.kr"></label><label class="full">참조<input name="cc" value="' + esc(cfg.cc || "") + '"></label>' +
+        (w ? '<div class="form-actions full"><button class="btn primary">설정 저장</button></div>' : '') + '</form>' +
+      '<h4 style="margin:16px 0 6px;font-size:13px">이번 달 메일 미리보기 (' + rows.length + '명)</h4><div class="mail-pv"><div><b>제목</b> ' + esc(mail.subject) + '</div><pre>' + esc(mail.text) + '</pre></div>';
+    $("#mcF").addEventListener("submit", async function(e){ e.preventDefault(); var fd = new FormData(e.target), data = Object.assign({}, cfg, { list: "config", enabled: !!fd.get("enabled"), to: String(fd.get("to") || "").trim(), cc: String(fd.get("cc") || "").trim() });
+      if (data.enabled && !/@/.test(data.to)){ alert("받는 사람 주소를 넣으세요."); return; }
+      var r = cfgX ? await sb.from("portal_records").update({ data: data, updated_by: me.email, updated_at: new Date().toISOString() }).eq("id", cfgX.id).select("*") : await sb.from("portal_records").insert({ cat: "leave", menu: "annual", data: data, updated_by: me.email }).select("*");
+      if (r.error || !r.data || !r.data.length){ alert("저장하지 못했습니다: " + errMsg(r)); return; } if (cfgX) Object.assign(cfgX, r.data[0]); else S.recs["leave.annual"].push(r.data[0]); toast("저장했습니다."); drawSettleMail(c, nav); });
   }
 
   /* ---------- 법령정보 (홈 영역 + 전체 화면) ---------- */
