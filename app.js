@@ -2360,7 +2360,7 @@
   }
   function issueBadges(list){ return list.map(function(i){ return '<span class="badge ' + (i.lv === "위반" ? "danger" : "warn") + '" style="margin:1px 2px 1px 0">' + esc(i.t) + '</span>'; }).join(""); }
   var ISS_CATS = ["기간·일수 초과", "사용 기한 경과", "분할 횟수 초과", "사용 기준 위반"];
-  function issueCat(t){ return /분할/.test(t) ? ISS_CATS[2] : /기한|이후 시작/.test(t) ? ISS_CATS[1] : /초과/.test(t) ? ISS_CATS[0] : ISS_CATS[3]; }
+  function issueCat(t){ return /분할/.test(t) ? ISS_CATS[2] : /기한|이후 시작/.test(t) ? ISS_CATS[1] : /초과|1년 이상/.test(t) ? ISS_CATS[0] : ISS_CATS[3]; }
   function issueCount(key, recs){ var n = 0, by = {}; recs.forEach(function(x){ var l = recIssues(key, x); if (l.length){ n++; var seen = {}; l.forEach(function(i){ var k = issueCat(i.t); if (!seen[k]){ seen[k] = 1; by[k] = (by[k] || 0) + 1; } }); } }); return { n: n, by: by }; }
   function issueBtn(cnt, on){ return '<button class="ms ms-btn iss' + (on ? " on" : "") + '" data-fiss="1" title="법정 기간·일수 초과, 사용 기한 경과 등 법 기준과 다르게 사용된 기록만 보기">⚠ 이상자 관리<b>' + cnt.n + '</b><small class="hint" style="display:block;font-size:10.5px;font-weight:500">법 기준과 다르게 사용</small></button>'; }
   function issueLvSel(f, cnt){ return '<select id="fIssLv" title="이상 사유"><option value="">전체 사유' + (cnt ? " (" + cnt.n + ")" : "") + '</option>' + ISS_CATS.filter(function(k){ return !cnt || cnt.by[k] || f.issLv === k; }).map(function(k){ return '<option value="' + k + '"' + (f.issLv === k ? " selected" : "") + '>' + k + (cnt ? " (" + (cnt.by[k] || 0) + ")" : "") + '</option>'; }).join("") + '</select>'; }
