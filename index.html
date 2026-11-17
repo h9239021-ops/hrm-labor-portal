@@ -184,6 +184,22 @@
   .doc details.acc>summary{list-style:none;cursor:pointer;padding:12px 16px;font-weight:700;display:flex;justify-content:space-between;align-items:center;gap:10px;}
   .doc details.acc>summary::-webkit-details-marker{display:none;}
   .doc details.acc .acc-b{padding:0 16px 14px;}
+  /* v21: 워드 수준 서식 · 현황 종합 · 오늘 표시 */
+  .ed-pop .sw-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:2px;}
+  .ed-pop .sw-grid button,.ed-pop>button[data-pk]{display:flex;align-items:center;gap:7px;padding:6px 8px;font-size:12.5px;color:var(--ink-900);}
+  .ed-pop .sw2{flex:none;width:16px;height:16px;border-radius:4px;border:1px solid var(--line);display:inline-block;}
+  .ed-pop .sw2.va-top{background:linear-gradient(var(--ink-500) 0 3px,transparent 3px);} .ed-pop .sw2.va-middle{background:linear-gradient(transparent 6px,var(--ink-500) 6px 9px,transparent 9px);} .ed-pop .sw2.va-bottom{background:linear-gradient(transparent 12px,var(--ink-500) 12px);}
+  .ed-pop .tb-pick{display:flex;flex-wrap:wrap;gap:8px 12px;padding:4px 6px 8px;font-size:12.5px;} .ed-pop .tb-pick input[type=number]{width:56px;padding:4px 6px;border:1px solid var(--line);border-radius:6px;font-family:var(--font-body);}
+  .ed-pop .tb-pick label.ck{flex-basis:100%;display:flex;gap:6px;align-items:center;} .ed-pop .tb-ok{justify-content:center;background:var(--accent-050)!important;}
+  #edBody td.ed-csel,#edBody th.ed-csel{box-shadow:inset 0 0 0 2px var(--accent-500);background-image:linear-gradient(rgba(37,99,235,.13),rgba(37,99,235,.13));}
+  #edBody table{border-collapse:collapse;}
+  .doc hr{border:0;border-top:1px solid var(--line);margin:18px 0;}
+  .todo.chg li.today{background:#fdecf2;border-color:#f6c6d6;}
+  .todo.chg li.today .dt{color:#be185d;font-weight:700;}
+  .chg .ck.today{background:#fbcfe0;color:#9d174d;}
+  @media (prefers-color-scheme: dark){ .todo.chg li.today{background:rgba(236,72,153,.16);border-color:rgba(236,72,153,.35);} .todo.chg li.today .dt{color:#f9a8d4;} }
+  .ov-tools{flex-wrap:wrap;row-gap:8px;} .ov-per{display:inline-flex;gap:4px;align-items:center;} .ov-per input[type=date]{padding:4px 6px;border:1px solid var(--line);border-radius:7px;font-family:var(--font-body);font-size:12.5px;background:var(--surface);color:var(--ink-900);}
+  .ov-box{max-height:calc(100vh - 290px);} .ov-box th.srt{cursor:pointer;white-space:nowrap;} .ov-box th.srt.on{color:var(--accent-700);}
   #edBody details.acc>summary{cursor:text;border-bottom:1px dashed var(--line);}
   #edBody details.acc>summary::after{content:"접기 ▾";flex:none;font-size:11.5px;font-weight:500;color:var(--ink-300);cursor:pointer;padding:2px 6px;border-radius:6px;background:var(--paper-0);}
   #edBody details.acc:not([open])>summary::after{content:"펼치기 ▸";}
@@ -873,6 +889,6 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="config.js?v=202611131730"></script>
 <script src="logo.js?v=202611131730"></script>
-<script src="app.js?v=202611171530"></script>
+<script src="app.js?v=202611172000"></script>
 </body>
 </html>

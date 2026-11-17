@@ -101,14 +101,18 @@
     });
     return t.innerHTML.trim();
   }
-  var ED_BTNS = [["bold","<b>굵게</b>"],["red",'<span style="color:var(--danger-700)">빨강</span>'],["blue",'<span style="color:var(--accent-700)">파랑</span>'],["plain","색 빼기"],["|"],
-    ["under","<u>밑줄</u>"],["sel","fs","글자 크기",[["","글자 크기"],["fs-s","작게"],["normal","보통"],["fs-l","크게"],["fs-xl","아주 크게"]]],["|"],
-    ["h2","제목"],["h3","소제목"],["p","본문"],["|"],["ul","• 목록"],["ol","1. 목록"],["|"],["alL","⇤ 왼쪽"],["alC","↔ 가운데"],["alR","⇥ 오른쪽"],["|"],["link","링크"],["unlink","링크 빼기"],["|"],["undo","↶"],["redo","↷"],["grow"],["html","HTML로 보기"],["br"],
-    ["lbl","박스"],["note","안내 박스 ▾"],["acc","▸ 접기 블록"],["|"],["lbl","표"],["table","표 넣기"],["rowAdd","행 추가"],["rowDel","행 삭제"],["colAdd","열 추가"],["colDel","열 삭제"],["colAll","정렬: 칸만"],["sel","tw","표 너비",[["","표 너비"],["60","좁게 60%"],["80","보통 80%"],["100","전체 100%"]]],["lbl2","열 경계선을 끌면 열 너비가 바뀝니다"]];
+  var ED_BTNS = [["lbl","글자"],["bold","<b>B</b>","굵게 (Ctrl+B)"],["italic","<i>I</i>","기울임 (Ctrl+I)"],["under","<u>U</u>","밑줄 (Ctrl+U)"],["strike","<s>S</s>","취소선"],["color",'<span style="color:var(--danger-700);font-weight:700">가</span> 색 ▾',"글자 색"],["hl",'<span style="background:#fff3a3;padding:0 2px">형광</span> ▾',"형광펜"],
+    ["sel","fs","글자 크기",[["","글자 크기"],["fs-s","작게"],["normal","보통"],["fs-l","크게"],["fs-xl","아주 크게"]]],["clear","서식 지우기","선택한 글자의 굵게·색·밑줄 등을 모두 지웁니다"],["|"],
+    ["h2","제목"],["h3","소제목"],["p","본문"],["|"],["ul","• 목록"],["ol","1. 목록"],["outdent","⇤ 내어쓰기","내어쓰기 (Shift+Tab)"],["indent","⇥ 들여쓰기","들여쓰기 (목록에서는 Tab)"],["|"],
+    ["alL","왼쪽","왼쪽 맞춤"],["alC","가운데","가운데 맞춤"],["alR","오른쪽","오른쪽 맞춤"],["alJ","양쪽","양쪽 맞춤"],["sel","lh","줄 간격",[["","줄 간격"],["normal","기본"],["1.3","1.3"],["1.6","1.6"],["2","2.0"]]],["grow"],["undo","↶","되돌리기"],["redo","↷","다시 하기"],["html","HTML로 보기"],["br"],
+    ["lbl","넣기"],["link","링크"],["unlink","링크 빼기"],["hr","― 구분선"],["note","안내 박스 ▾"],["acc","▸ 접기 블록"],["table","표 넣기 ▾"],["br"],
+    ["lbl","표"],["rowAbove","↑ 행","위에 행 넣기"],["rowAdd","↓ 행","아래에 행 넣기"],["colLeft","← 열","왼쪽에 열 넣기"],["colAdd","→ 열","오른쪽에 열 넣기"],["rowDel","행 삭제"],["colDel","열 삭제"],["|"],
+    ["merge","셀 병합","끌어서 선택한 칸들을 하나로 합칩니다"],["split","셀 분할","합친 칸은 원래대로, 한 칸은 좌우 · 위아래로 나눕니다"],["shade","음영 ▾","칸 배경색"],["valign","세로 정렬 ▾","칸 안 위·가운데·아래"],["hdr","머리글 행","첫 행을 머리글로 바꾸거나 되돌립니다"],["colAll","정렬: 칸만"],["sel","tw","표 너비",[["","표 너비"],["60","좁게 60%"],["80","보통 80%"],["100","전체 100%"]]],["tblDel","표 삭제"],
+    ["lbl2","칸을 끌거나 Shift+클릭하면 여러 칸 선택 · 열 경계선을 끌면 너비 조절 · Tab으로 다음 칸"]];
   function editorBar(){ return '<div class="ed-bar" id="edBar">' + ED_BTNS.map(function(b){ if (b[0] === "|") return '<span class="sep"></span>'; if (b[0] === "grow") return '<span class="grow"></span>';
       if (b[0] === "br") return '<span class="brk"></span>'; if (b[0] === "lbl") return '<span class="lbl">' + b[1] + '</span>'; if (b[0] === "lbl2") return '<span class="lbl2">' + b[1] + '</span>';
       if (b[0] === "sel") return '<select data-edsel="' + b[1] + '" title="' + b[2] + '">' + b[3].map(function(o){ return '<option value="' + o[0] + '">' + o[1] + '</option>'; }).join("") + '</select>';
-      return '<button type="button" data-ed="' + b[0] + '">' + b[1] + '</button>'; }).join("") + '</div>'; }
+      return '<button type="button" data-ed="' + b[0] + '"' + (b[2] ? ' title="' + b[2] + '"' : '') + '>' + b[1] + '</button>'; }).join("") + '</div>'; }
   // host contains #edBar, #edBody (contenteditable) and #edHtml (textarea). returns { getHtml, dirty }
   function wireEditor(host, onDirty){
     var body = $("#edBody", host), box = $("#edHtml", host), htmlMode = false, st = { dirty: false };
@@ -134,7 +138,7 @@
     function restore(){ if (!lastR) return; body.focus(); var s = window.getSelection(); s.removeAllRanges(); s.addRange(lastR); }
     function curEl(){ var r = rng(); if (!r) return null; var n = r.startContainer; n = n.nodeType === 3 ? n.parentNode : n; return inBody(n) ? n : null; }
     function cell(){ var n = curEl(); var c = n && n.closest("td,th"); return c && inBody(c) ? c : null; }
-    function selCells(){ var r = rng(), c = cell(); if (!c) return []; var tb = c.closest("table");
+    function selCells(){ var picked = $all(".ed-csel", body); if (picked.length) return picked; var r = rng(), c = cell(); if (!c) return []; var tb = c.closest("table");
       if (colAll){ var ix = c.cellIndex; return $all("tr", tb).map(function(tr){ return tr.cells[ix]; }).filter(Boolean); }
       var l = $all("td,th", tb).filter(function(x){ return r.intersectsNode(x); }); return l.length ? l : [c]; }
     function align(v){ var cs = selCells();
@@ -144,7 +148,7 @@
     function closePop(){ if (pop){ pop.remove(); pop = null; } }
     var NOTE_T = [["info", "파랑 · 안내", "참고로 알아 둘 내용", "안내"], ["tip", "초록 · 팁", "권장하는 방법, 요령", "팁"], ["warn", "노랑 · 주의", "틀리기 쉬운 것, 조심할 것", "주의"], ["danger", "빨강 · 중요", "반드시 지켜야 하는 것", "중요"]];
     function noteMenu(btn){ if (pop){ closePop(); return; } var n = curEl(), cur = n && n.closest(".note"); if (cur && !inBody(cur)) cur = null;
-      pop = document.createElement("div"); pop.className = "ed-pop";
+      pop = document.createElement("div"); pop.className = "ed-pop"; pop._btn = btn;
       pop.innerHTML = '<div class="ep-h">' + (cur ? "이 박스의 종류 바꾸기" : "넣을 박스 고르기") + '</div>' +
         NOTE_T.map(function(t){ return '<button type="button" data-nt="' + t[0] + '"><i class="sw ' + t[0] + '"></i><b>' + t[1] + '</b><small>' + t[2] + '</small></button>'; }).join("") +
         (cur ? '<div class="ep-h" style="margin-top:6px">박스 없애기</div><button type="button" data-nt="unbox"><b>박스만 없애기</b><small>글은 본문으로 남깁니다</small></button><button type="button" data-nt="del"><b>박스 통째로 삭제</b><small>안의 글도 함께 지웁니다</small></button>' : '');
@@ -158,7 +162,7 @@
         if (cur){ cur.className = "note " + k; var lb = cur.querySelector(".nt"); if (lb && def.indexOf(lb.textContent.trim()) >= 0) lb.textContent = t[3]; dirty(); }
         else { insertBlockHTML('<div class="note ' + k + '"><span class="nt">' + t[3] + '</span>내용을 입력하세요.</div><p><br></p>'); } });
     }
-    document.addEventListener("mousedown", function(e){ if (pop && !pop.contains(e.target) && !(e.target.closest && e.target.closest('[data-ed="note"]'))) closePop(); });
+    document.addEventListener("mousedown", function(e){ if (pop && !pop.contains(e.target) && !(pop._btn && pop._btn.contains(e.target))) closePop(); });
     /* 열 경계선 끌어서 너비 조절 */
     var drag = null;
     function edge(e){ var c = e.target.closest && e.target.closest("td,th"); if (!c || !inBody(c)) return null; var b = c.getBoundingClientRect(); var tr = c.parentNode;
@@ -269,6 +273,145 @@
       if (prev && emptyP(prev)){ caretIn(prev, false); return; }
       snap(); var p = document.createElement("p"); p.innerHTML = "<br>"; hostB.insertBefore(p, ref); caretIn(p, false); dirty();
     });
+    /* ---- 워드 수준 서식: 글자 색 · 형광펜 · 기울임 · 취소선 · 서식 지우기 · 들여쓰기 · 줄 간격 · 구분선
+            표: 여러 칸 선택(끌기 · Shift+클릭) · 셀 병합 · 셀 분할 · 음영 · 세로 정렬 · 행/열 삽입·삭제 · 머리글 행 · 표 삭제 ---- */
+    function edBtn(k){ return $('[data-ed="' + k + '"]', host); }
+    function openPop(btn, html, onPick){ if (pop && pop._btn === btn){ closePop(); return; } closePop();
+      pop = document.createElement("div"); pop.className = "ed-pop"; pop._btn = btn; pop.innerHTML = html;
+      btn.parentNode.appendChild(pop); pop.style.left = Math.max(0, Math.min(btn.offsetLeft, btn.parentNode.clientWidth - 280)) + "px"; pop.style.top = (btn.offsetTop + btn.offsetHeight + 4) + "px";
+      pop.addEventListener("mousedown", function(e){ if (!(e.target.closest && e.target.closest("input,select,label"))) e.preventDefault(); });
+      pop.addEventListener("click", function(e){ var b = e.target.closest("[data-pk]"); if (!b) return; var el = pop, v = b.getAttribute("data-pk"); closePop(); restore(); onPick(v, el); });
+    }
+    var COLORS = [["", "기본"], ["red", "빨강", "var(--danger-700)"], ["blue", "파랑", "var(--accent-700)"], ["#15803d", "초록"], ["#c2410c", "주황"], ["#7e22ce", "보라"], ["#6b7280", "회색"]];
+    var HLS = [["", "없음"], ["#fff3a3", "노랑"], ["#d9f99d", "연두"], ["#cffafe", "하늘"], ["#fce7f3", "분홍"], ["#e5e7eb", "회색"]];
+    var SHADES = [["", "없음"], ["#f3f4f6", "연한 회색"], ["#e5e7eb", "회색"], ["#eff6ff", "연한 파랑"], ["#dbeafe", "파랑"], ["#ecfdf5", "연한 초록"], ["#fef9c3", "연한 노랑"], ["#fee2e2", "연한 빨강"], ["#fce7f3", "연한 분홍"]];
+    function swatches(list, title){ return '<div class="ep-h">' + title + '</div><div class="sw-grid">' + list.map(function(c){ var col = c[2] || c[0];
+      return '<button type="button" data-pk="' + c[0] + '" title="' + c[1] + '"><i class="sw2" style="' + (c[0] ? "background:" + col : "background:transparent;border-style:dashed") + '"></i><span>' + c[1] + '</span></button>'; }).join("") + '</div>'; }
+    // 선택한 글자에 색 · 형광펜을 입힌다(v가 비어 있으면 뺀다)
+    function paint(prop, v){ var r = rng(); if (!r || r.collapsed || !inBody(r.commonAncestorContainer)){ alert("먼저 바꿀 글자를 선택하세요."); return; }
+      var isC = prop === "color", frag = r.extractContents();
+      $all("span", frag).forEach(function(s){ s.style[prop] = ""; if (isC) s.classList.remove("red", "blue"); if (!s.getAttribute("style")) s.removeAttribute("style"); if (!s.getAttribute("class")) s.removeAttribute("class");
+        if (!s.attributes.length){ while (s.firstChild) s.parentNode.insertBefore(s.firstChild, s); s.remove(); } });
+      if (v){ var sp = document.createElement("span"); if (isC && (v === "red" || v === "blue")) sp.className = v; else sp.style[prop] = v; sp.appendChild(frag); r.insertNode(sp); }
+      else { var anc = r.startContainer; anc = anc.nodeType === 3 ? anc.parentNode : anc; var a = anc.closest && anc.closest(isC ? "span.red,span.blue,span[style*='color']" : "span[style*='background']");
+        r.insertNode(frag); if (a && inBody(a) && !a.textContent.replace(frag.textContent || "", "").trim()){ if (isC){ a.classList.remove("red", "blue"); a.style.color = ""; } else a.style.backgroundColor = ""; } }
+      dirty(); }
+    function blocksInSel(sel){ var r = rng(), n = curEl(); if (!n) return []; var list = r && !r.collapsed ? $all(sel, body).filter(function(b){ return r.intersectsNode(b) && !b.querySelector(sel.split(",").join(",")); }) : [];
+      if (!list.length){ var b = n.closest(sel); if (b && inBody(b)) list = [b]; } return list; }
+    function indentBy(d){ var n = curEl(); if (!n) return; var li = n.closest("li");
+      if (li && inBody(li)){ document.execCommand(d > 0 ? "indent" : "outdent"); dirty(); return; }
+      var cs = $all(".ed-csel", body), list = cs.length ? cs : blocksInSel("p,h2,h3,h4,td,th,.note"); if (!list.length) return; snap();
+      list.forEach(function(b){ var prop = /^T[DH]$/.test(b.tagName) ? "paddingLeft" : "marginLeft", cur = parseFloat(b.style[prop]) || 0, nv = Math.max(0, Math.min(10, cur + d * 2));
+        b.style[prop] = nv ? nv + "em" : ""; if (!b.getAttribute("style")) b.removeAttribute("style"); }); dirty(); }
+    // 표 구조(병합 칸 포함)를 격자로 읽는다
+    function grid(tb){ var rows = [].slice.call(tb.rows), g = [], pos = new Map();
+      rows.forEach(function(tr, r){ g[r] = g[r] || []; var c = 0; [].forEach.call(tr.cells, function(cl){ while (g[r][c]) c++; var rs = cl.rowSpan || 1, cs = cl.colSpan || 1; pos.set(cl, { r: r, c: c, rs: rs, cs: cs });
+        for (var i = 0; i < rs; i++) for (var j = 0; j < cs; j++) (g[r + i] = g[r + i] || [])[c + j] = cl; c += cs; }); });
+      var W = 0; g.forEach(function(row){ if (row && row.length > W) W = row.length; }); return { rows: rows, g: g, pos: pos, W: W }; }
+    function setSpan(x, k, v){ x[k] = v; if (v <= 1) x.removeAttribute(k === "colSpan" ? "colspan" : "rowspan"); }
+    function normTable(tb){ var again = true; while (again){ again = false; var G = grid(tb);
+      G.rows.some(function(tr, ri){ if (tr.cells.length) return false; G.pos.forEach(function(q, x){ if (q.r < ri && q.r + q.rs - 1 >= ri) setSpan(x, "rowSpan", q.rs - 1); }); tr.remove(); again = true; return true; }); } }
+    function clearCsel(){ $all(".ed-csel", body).forEach(function(c){ c.classList.remove("ed-csel"); if (!c.getAttribute("class")) c.removeAttribute("class"); }); }
+    function markRect(a, b){ var tb = a.closest("table"); if (!tb || tb !== b.closest("table")) return; var G = grid(tb), pa = G.pos.get(a), pb = G.pos.get(b);
+      var r1 = Math.min(pa.r, pb.r), r2 = Math.max(pa.r + pa.rs, pb.r + pb.rs) - 1, c1 = Math.min(pa.c, pb.c), c2 = Math.max(pa.c + pa.cs, pb.c + pb.cs) - 1, ch = true, r, c, x, p;
+      while (ch){ ch = false; for (r = r1; r <= r2; r++) for (c = c1; c <= c2; c++){ x = G.g[r] && G.g[r][c]; if (!x) continue; p = G.pos.get(x);
+        if (p.r < r1){ r1 = p.r; ch = true; } if (p.c < c1){ c1 = p.c; ch = true; } if (p.r + p.rs - 1 > r2){ r2 = p.r + p.rs - 1; ch = true; } if (p.c + p.cs - 1 > c2){ c2 = p.c + p.cs - 1; ch = true; } } }
+      clearCsel(); for (r = r1; r <= r2; r++) for (c = c1; c <= c2; c++){ x = G.g[r] && G.g[r][c]; if (x) x.classList.add("ed-csel"); } }
+    var csStart = null;
+    body.addEventListener("mousedown", function(e){ if (e.button !== 0 || htmlMode) return; var c = e.target.closest && e.target.closest("td,th"); if (c && !inBody(c)) c = null;
+      if (c && e.shiftKey){ var c0 = cell(); if (c0 && c0 !== c && c0.closest("table") === c.closest("table")){ e.preventDefault(); markRect(c0, c); return; } }
+      clearCsel(); csStart = c && !edge(e) ? c : null; });
+    body.addEventListener("mouseover", function(e){ if (!csStart || !(e.buttons & 1)) return; var c = e.target.closest && e.target.closest("td,th"); if (!c || !inBody(c) || c === csStart) return;
+      markRect(csStart, c); var s = window.getSelection(); if (s) s.removeAllRanges(); });
+    document.addEventListener("mouseup", function(){ csStart = null; });
+    function needCell(msg){ var cs = $all(".ed-csel", body), c = cs[0] || cell(); if (!c) alert(msg || "표 안의 칸을 먼저 클릭하세요."); return c; }
+    function retag(x, tag){ var n = document.createElement(tag); [].forEach.call(x.attributes, function(a){ n.setAttribute(a.name, a.value); }); n.innerHTML = x.innerHTML; x.parentNode.replaceChild(n, x); return n; }
+    function addRow(below){ var c = needCell(); if (!c) return; var tb = c.closest("table"), G = grid(tb), p = G.pos.get(c); snap(); clearCsel();
+      var ri = below ? p.r + p.rs - 1 : p.r, ref = G.rows[ri], tr = document.createElement("tr"), seen = [], sec = ref.parentNode, toBody = below && sec.tagName === "THEAD" && !ref.nextElementSibling;
+      var tag = (sec.tagName === "THEAD" && !toBody) ? "th" : "td";
+      for (var cc = 0; cc < G.W; cc++){ var x = G.g[ri] && G.g[ri][cc], q = x && G.pos.get(x);
+        if (q && !toBody && (below ? q.r + q.rs - 1 > ri : q.r < ri)){ if (seen.indexOf(x) < 0){ seen.push(x); setSpan(x, "rowSpan", q.rs + 1); } continue; }
+        var n = document.createElement(tag); n.innerHTML = "<br>"; tr.appendChild(n); }
+      if (toBody){ var tbd = tb.tBodies[0] || tb.appendChild(document.createElement("tbody")); tbd.insertBefore(tr, tbd.firstChild); }
+      else sec.insertBefore(tr, below ? ref.nextSibling : ref);
+      if (tr.cells[0]) caretIn(tr.cells[0], false); dirty(); }
+    function addCol(right){ var c = needCell(); if (!c) return; var tb = c.closest("table"), G = grid(tb), p = G.pos.get(c); snap(); clearCsel(); dropCols(tb);
+      var ci = right ? p.c + p.cs - 1 : p.c, seen = [];
+      G.rows.forEach(function(tr, r){ var x = G.g[r] && G.g[r][ci]; if (!x){ var n0 = document.createElement("td"); n0.innerHTML = "<br>"; tr.appendChild(n0); return; }
+        if (seen.indexOf(x) >= 0) return; seen.push(x); var q = G.pos.get(x);
+        if (right ? q.c + q.cs - 1 > ci : q.c < ci){ setSpan(x, "colSpan", q.cs + 1); return; }
+        var n = document.createElement(x.tagName); n.innerHTML = x.tagName === "TH" ? "새 열" : "<br>"; if (q.rs > 1) n.rowSpan = q.rs; x.parentNode.insertBefore(n, right ? x.nextSibling : x); });
+      dirty(); }
+    A.bold = function(){ document.execCommand("bold"); dirty(); };
+    A.italic = function(){ document.execCommand("italic"); dirty(); };
+    A.strike = function(){ document.execCommand("strikeThrough"); dirty(); };
+    A.color = function(){ openPop(edBtn("color"), swatches(COLORS, "글자 색"), function(v){ paint("color", v); }); };
+    A.hl = function(){ openPop(edBtn("hl"), swatches(HLS, "형광펜(글자 배경)"), function(v){ paint("backgroundColor", v); }); };
+    A.clear = function(){ var r = rng(); if (!r || r.collapsed){ alert("서식을 지울 글자를 선택하세요."); return; } document.execCommand("removeFormat");
+      var r2 = rng(); if (r2){ $all("span,u,s,strike,i,em,b,strong", body).filter(function(s){ return r2.intersectsNode(s) && !/^(nt|sub)$/.test(s.className); }).forEach(function(s){ while (s.firstChild) s.parentNode.insertBefore(s.firstChild, s); s.remove(); }); }
+      dirty(); };
+    A.indent = function(){ indentBy(1); }; A.outdent = function(){ indentBy(-1); };
+    A.alJ = function(){ var cs = selCells(); if (cs.length){ cs.forEach(function(x){ x.style.textAlign = "justify"; }); dirty(); return; } document.execCommand("justifyFull"); dirty(); };
+    A.lh = function(v){ restore(); var list = blocksInSel("p,li,h2,h3,h4,td,th"); if (!list.length){ alert("줄 간격을 바꿀 문단을 먼저 클릭하세요."); return; } snap();
+      list.forEach(function(b){ b.style.lineHeight = v === "normal" ? "" : v; if (!b.getAttribute("style")) b.removeAttribute("style"); }); dirty(); };
+    A.hr = function(){ insertBlockHTML("<hr><p><br></p>"); };
+    A.table = function(){ openPop(edBtn("table"), '<div class="ep-h">표 넣기</div><div class="tb-pick"><label>행 <input type="number" name="r" value="3" min="1" max="40"></label><label>열 <input type="number" name="c" value="3" min="1" max="12"></label><label class="ck"><input type="checkbox" name="h" checked> 첫 행을 머리글로</label></div><button type="button" data-pk="ins" class="tb-ok"><b>표 넣기</b></button>', function(v, el){
+      var R = Math.max(1, Math.min(40, +el.querySelector("[name=r]").value || 3)), C = Math.max(1, Math.min(12, +el.querySelector("[name=c]").value || 3)), H = el.querySelector("[name=h]").checked, i, j, h = "";
+      if (H){ h += "<thead><tr>"; for (j = 0; j < C; j++) h += "<th>항목 " + (j + 1) + "</th>"; h += "</tr></thead>"; R = Math.max(1, R - 1); }
+      h += "<tbody>"; for (i = 0; i < R; i++){ h += "<tr>"; for (j = 0; j < C; j++) h += "<td><br></td>"; h += "</tr>"; } h += "</tbody>";
+      insertBlockHTML('<div class="tbl-w"><table class="t">' + h + '</table></div><p><br></p>'); }); };
+    A.rowAbove = function(){ addRow(false); }; A.rowAdd = function(){ addRow(true); };
+    A.colLeft = function(){ addCol(false); }; A.colAdd = function(){ addCol(true); };
+    A.rowDel = function(){ var c = needCell("지울 행의 칸을 먼저 클릭하세요."); if (!c) return; var tb = c.closest("table"), G = grid(tb), p = G.pos.get(c), ri = p.r, tr = G.rows[ri];
+      if (!confirm("이 행을 삭제할까요?")) return; snap(); clearCsel(); var seen = [];
+      for (var cc = 0; cc < G.W; cc++){ var x = G.g[ri] && G.g[ri][cc]; if (!x || seen.indexOf(x) >= 0) continue; seen.push(x); var q = G.pos.get(x);
+        if (q.rs > 1){ if (q.r < ri) setSpan(x, "rowSpan", q.rs - 1); else { var nr = G.rows[ri + 1], ref = null;
+          [].some.call(nr.cells, function(y){ var qq = G.pos.get(y); if (qq && qq.c > q.c){ ref = y; return true; } return false; }); setSpan(x, "rowSpan", q.rs - 1); nr.insertBefore(x, ref); } } }
+      var sec = tr.parentNode; tr.remove(); if (!sec.rows.length && sec.tagName === "THEAD") sec.remove(); if (!tb.rows.length) (tb.closest(".tbl-w") || tb).remove(); dirty(); };
+    A.colDel = function(){ var c = needCell("지울 열의 칸을 먼저 클릭하세요."); if (!c) return; var tb = c.closest("table"), G = grid(tb), p = G.pos.get(c), ci = p.c;
+      if (G.W <= 1){ alert("마지막 열은 지울 수 없습니다. 표 전체를 지우려면 「표 삭제」를 누르세요."); return; } if (!confirm("이 열을 삭제할까요?")) return; snap(); clearCsel(); dropCols(tb); var seen = [];
+      G.rows.forEach(function(tr, r){ var x = G.g[r] && G.g[r][ci]; if (!x || seen.indexOf(x) >= 0) return; seen.push(x); var q = G.pos.get(x); if (q.cs > 1) setSpan(x, "colSpan", q.cs - 1); else x.remove(); });
+      normTable(tb); dirty(); };
+    A.merge = function(){ var cs = $all(".ed-csel", body); if (cs.length < 2){ alert("합칠 칸들을 마우스로 끌어서(또는 Shift+클릭으로) 선택한 뒤 누르세요."); return; }
+      var tb = cs[0].closest("table"), G = grid(tb), r1 = 1e9, c1 = 1e9, r2 = -1, c2 = -1; snap();
+      cs.forEach(function(x){ var p = G.pos.get(x); r1 = Math.min(r1, p.r); c1 = Math.min(c1, p.c); r2 = Math.max(r2, p.r + p.rs - 1); c2 = Math.max(c2, p.c + p.cs - 1); });
+      var tl = G.g[r1][c1], parts = [];
+      cs.forEach(function(x){ if (x === tl) return; if (x.textContent.trim() || x.querySelector("img,a")) parts.push(x.innerHTML); x.remove(); });
+      if (parts.length) tl.innerHTML = (tl.textContent.trim() ? tl.innerHTML + "<br>" : "") + parts.join("<br>");
+      setSpan(tl, "colSpan", c2 - c1 + 1); setSpan(tl, "rowSpan", r2 - r1 + 1); clearCsel(); normTable(tb); caretIn(tl, true); dirty(); };
+    A.split = function(){ var c = needCell("나눌 칸을 먼저 클릭하세요."); if (!c) return; var tb = c.closest("table"), G = grid(tb), p = G.pos.get(c), r, cc;
+      if (p.rs > 1 || p.cs > 1){ snap(); clearCsel(); c.removeAttribute("colspan"); c.removeAttribute("rowspan");
+        for (r = p.r; r < p.r + p.rs; r++){ var tr = G.rows[r]; if (!tr) continue; for (cc = p.c; cc < p.c + p.cs; cc++){ if (r === p.r && cc === p.c) continue;
+          var n = document.createElement(c.tagName), ref = null; n.innerHTML = "<br>";
+          [].some.call(tr.cells, function(x){ var q = G.pos.get(x); if (q && q.r === r && q.c > cc){ ref = x; return true; } return false; }); tr.insertBefore(n, ref); } }
+        dirty(); return; }
+      var ans = prompt("이 칸을 몇 칸으로 나눌까요?\n· 좌우로 나누기: 숫자만 (예: 2)\n· 위아래로 나누기: 숫자 뒤에 「줄」 (예: 2줄)", "2"); if (ans == null) return;
+      var k = Math.min(parseInt(ans, 10) || 0, 8), down = /줄|행|아래/.test(ans), i; if (k < 2) return; snap(); clearCsel();
+      if (down){ var tr0 = G.rows[p.r], seen2 = [c], prevTr = tr0;
+        for (cc = 0; cc < G.W; cc++){ var y = G.g[p.r][cc]; if (!y || seen2.indexOf(y) >= 0) continue; seen2.push(y); setSpan(y, "rowSpan", G.pos.get(y).rs + k - 1); }
+        for (i = 1; i < k; i++){ var ntr = document.createElement("tr"), nc = document.createElement(c.tagName); nc.innerHTML = "<br>"; if (p.cs > 1) nc.colSpan = p.cs; ntr.appendChild(nc); tr0.parentNode.insertBefore(ntr, prevTr.nextSibling); prevTr = ntr; }
+        dirty(); return; }
+      dropCols(tb);
+      for (i = 1; i < k; i++){ var n2 = document.createElement(c.tagName); n2.innerHTML = "<br>"; c.parentNode.insertBefore(n2, c.nextSibling); }
+      var seen = [c];
+      G.rows.forEach(function(tr, ri){ var x = G.g[ri] && G.g[ri][p.c]; if (!x || seen.indexOf(x) >= 0) return; seen.push(x); setSpan(x, "colSpan", (x.colSpan || 1) + k - 1); });
+      dirty(); };
+    A.shade = function(){ openPop(edBtn("shade"), swatches(SHADES, "셀 음영"), function(v){ var cs = selCells(); if (!cs.length){ alert("표 안의 칸을 먼저 클릭하세요."); return; } snap();
+      cs.forEach(function(x){ x.style.backgroundColor = v; if (!x.getAttribute("style")) x.removeAttribute("style"); }); dirty(); }); };
+    A.valign = function(){ openPop(edBtn("valign"), '<div class="ep-h">칸 안 세로 위치</div>' + [["top", "위"], ["middle", "가운데"], ["bottom", "아래"]].map(function(o){ return '<button type="button" data-pk="' + o[0] + '"><i class="sw2 va-' + o[0] + '"></i><span>' + o[1] + '</span></button>'; }).join(""), function(v){
+      var cs = selCells(); if (!cs.length){ alert("표 안의 칸을 먼저 클릭하세요."); return; } snap(); cs.forEach(function(x){ x.style.verticalAlign = v === "top" ? "" : v; if (!x.getAttribute("style")) x.removeAttribute("style"); }); dirty(); }); };
+    A.hdr = function(){ var c = needCell(); if (!c) return; var tb = c.closest("table"); snap(); clearCsel(); var th = tb.tHead;
+      if (th && th.rows.length){ var tbd = tb.tBodies[0] || tb.appendChild(document.createElement("tbody"));
+        [].slice.call(th.rows).reverse().forEach(function(tr){ [].slice.call(tr.cells).forEach(function(x){ retag(x, "td"); }); tbd.insertBefore(tr, tbd.firstChild); }); th.remove(); }
+      else { var first = tb.rows[0]; if (!first) return; [].slice.call(first.cells).forEach(function(x){ retag(x, "th"); }); var nh = tb.createTHead(); nh.appendChild(first); }
+      if (tb.rows[0] && tb.rows[0].cells[0]) caretIn(tb.rows[0].cells[0], true); dirty(); };
+    A.tblDel = function(){ var c = needCell("지울 표 안의 칸을 먼저 클릭하세요."); if (!c) return; if (!confirm("이 표를 통째로 삭제할까요?")) return; snap(); var tb = c.closest("table"); (tb.closest(".tbl-w") || tb).remove(); dirty(); placeH(null); };
+    // Tab: 표에서는 다음 칸(마지막 칸이면 행 추가), 목록에서는 들여쓰기
+    body.addEventListener("keydown", function(e){ if (e.key !== "Tab" || htmlMode) return; var c = cell(), n = curEl();
+      if (c){ e.preventDefault(); var tb = c.closest("table"), all = $all("td,th", tb), i = all.indexOf(c), nx = all[i + (e.shiftKey ? -1 : 1)];
+        if (!nx && !e.shiftKey){ addRow(true); return; } if (nx) caretIn(nx, true); return; }
+      if (n && n.closest("li")){ e.preventDefault(); indentBy(e.shiftKey ? -1 : 1); } });
+    var htmlPrev = A.html; A.html = function(){ clearCsel(); htmlPrev(); };
     var nativeUndo = A.undo, nativeHtml = A.html;
     A.undo = function(){ if (blockOp && snaps.length){ body.innerHTML = snaps.pop(); if (!snaps.length) blockOp = false; dirty(); placeH(null); } else nativeUndo(); };
     A.html = function(){ nativeHtml(); placeH(null); closeBM(); };
@@ -278,7 +421,8 @@
     });
     $all("[data-edsel]", host).forEach(function(sl){ sl.addEventListener("change", function(){ var v = sl.value, k = sl.getAttribute("data-edsel"); sl.value = ""; if (v && A[k]) A[k](v); }); });
     st.getHtml = function(){ var t = document.createElement("template"); t.innerHTML = htmlMode ? box.value : body.innerHTML;
-      $all("details[data-edo]", t.content).forEach(function(d){ d.removeAttribute("open"); d.removeAttribute("data-edo"); }); return cleanHtml(t.innerHTML); };
+      $all("details[data-edo]", t.content).forEach(function(d){ d.removeAttribute("open"); d.removeAttribute("data-edo"); });
+      $all(".ed-csel", t.content).forEach(function(c){ c.classList.remove("ed-csel"); if (!c.getAttribute("class")) c.removeAttribute("class"); }); return cleanHtml(t.innerHTML); };
     return st;
   }
 
@@ -364,6 +508,7 @@
     } else if (p[0] === "admin" && isAdmin()){ renderAdmin(); }
     else if (p[0] === "faq" && can("home.faq", "read")){ renderFaqPage(p[1]); }
     else if (p[0] === "laws" && can("home.laws", "read")){ renderLawPage(); }
+    else if (p[0] === "overview" && canChg()){ renderOverview(p[1]); }
     else renderHome();
     wireShell();
   }
@@ -448,14 +593,19 @@
     var host = $("#chgCard"); if (!host) return;
     var list = monthChg(calY, calM); if (calSel) list = list.filter(function(e){ return e.date === calSel; });
     var h = '<div class="sec-h"><h2>🔔 ' + (calSel ? md(calSel) + " 근무형태 변경" : (calM + 1) + "월 근무형태 변경 알림") + '</h2><div class="tools">' +
-      (calSel ? '<button class="btn sm" id="chAll">이달 전체 보기</button>' : '<span class="hint" style="font-size:12px">' + (CHG ? list.length + "건" : "불러오는 중…") + '</span>') + '</div></div>' +
+      (calSel ? '<button class="btn sm" id="chAll">이달 전체 보기</button>' : '<span class="hint" style="font-size:12px">' + (CHG ? list.length + "건" : "불러오는 중…") + '</span>') +
+      '<a class="btn sm primary" href="#/overview/' + ymd(new Date(calY, calM, 1)).slice(0, 7) + '" title="휴가 · 휴직 · 근무형태 기록을 한 시트에서 보고 엑셀로 내려받기">현황 종합 확인</a></div></div>' +
       '<div class="hint" style="font-size:11.5px;margin:-4px 0 8px">근무형태 현황 · 휴직 · 휴가 기록의 시작·종료일을 모았습니다. 캘린더에 붉은색으로 표시됩니다.</div><ul class="todo chg">';
     if (CHG && !list.length) h += '<li style="border:0;color:var(--ink-300)">' + (calSel ? "이 날의 근무형태 변경이 없습니다." : "이달의 근무형태 변경이 없습니다.") + '</li>';
-    list.forEach(function(e){
-      h += '<li><span class="dt">' + md(e.date) + '</span><span class="tt" data-href="' + esc(e.href) + '"><span class="ck ' + e.cls + '">' + esc(e.kind) + '</span><b>' + esc(e.name) + '</b> ' + esc(e.label) +
+    var tdy = todayStr(), tdyMark = !calSel && CHG && tdy.slice(0, 7) === ymd(new Date(calY, calM, 1)).slice(0, 7) && !list.some(function(e){ return e.date === tdy; });
+    list.forEach(function(e, i){
+      if (tdyMark && e.date > tdy){ h += '<li class="today"><span class="dt">' + md(tdy) + '</span><span class="tt" style="cursor:default"><span class="ck today">오늘</span>오늘은 근무형태 변경이 없습니다.</span></li>'; tdyMark = false; }
+      h += '<li' + (e.date === tdy ? ' class="today"' : '') + '><span class="dt">' + md(e.date) + '</span><span class="tt" data-href="' + esc(e.href) + '"><span class="ck ' + e.cls + '">' + esc(e.kind) + '</span><b>' + esc(e.name) + '</b> ' + esc(e.label) +
         (e.org ? '<small>' + esc(e.org) + '</small>' : '') + '</span></li>';
     });
+    if (tdyMark) h += '<li class="today"><span class="dt">' + md(tdy) + '</span><span class="tt" style="cursor:default"><span class="ck today">오늘</span>오늘은 근무형태 변경이 없습니다.</span></li>';
     host.innerHTML = h + '</ul>';
+    var tEl = $("li.today", host); if (tEl && tEl.parentNode.scrollHeight > tEl.parentNode.clientHeight) tEl.parentNode.scrollTop = Math.max(0, tEl.offsetTop - tEl.parentNode.offsetTop - 40);
     if ($("#chAll")) $("#chAll").onclick = function(){ calSel = null; calRefresh(); };
     $all("[data-href]", host).forEach(function(t){ t.onclick = function(){ location.hash = t.dataset.href; }; });
   }
@@ -2533,6 +2683,99 @@
   function lawCmp(a, b){ var A = a.data, B = b.data, m = String(B.month || "").localeCompare(String(A.month || "")); if (m) return m;
     var t = dT(todayStr()), da = lawDate(A), db = lawDate(B); if (!da || !db) return (da ? 0 : 1) - (db ? 0 : 1) || String(A.target || "").localeCompare(String(B.target || ""));
     return Math.abs(dT(da) - t) - Math.abs(dT(db) - t) || String(A.target || "").localeCompare(String(B.target || "")); }
+
+  /* =====================================================================
+     현황 종합: 휴가 · 휴직 · 근무형태 기록을 한 시트로 (필터 · 정렬 · 엑셀)
+     ===================================================================== */
+  var OV_SRC = [["휴가", "leave", "status", "leave.status"], ["휴직", "absence", "status", "absence.status"], ["근무형태", "att", "worktypes", "att.worktypes"]];
+  var ovF = { src: { "휴가": true, "휴직": true, "근무형태": true }, type: "", org: "", team: "", st: "", gender: "", from: "", to: "", q: "", prior: false, sort: "start", dir: -1 };
+  var OV_COLS = [["src", "분류"], ["type", "구분"], ["name", "이름"], ["gender", "성별"], ["org", "소속"], ["team", "팀"], ["start", "시작일"], ["end", "종료일"], ["days", "일수"], ["ret", "복직일"], ["st", "상태"], ["basis", "문서번호"]];
+  function ovUniq(a){ var o = {}, out = []; a.forEach(function(v){ if (v && !o[v]){ o[v] = 1; out.push(v); } }); return out.sort(); }
+  function ovRows(){ var out = [];
+    OV_SRC.forEach(function(s){ if (!can(s[3], "read")) return; (S.recs[s[3]] || []).forEach(function(x){ var d = x.data || {}, wt = s[0] === "근무형태";
+      if (wt && (d.list || "worktype") !== "worktype") return;
+      var st = wtStatus(d); if (st === "적용 중") st = "진행 중";
+      out.push({ x: x, src: s[0], type: wt ? wtTypes(d).join(", ") : (d.type || ""), name: d.target || "", gender: d.gender || "", org: wt ? wtOrg(d) : (d.org || ""), team: wt ? wtTeam(d) : (d.team || ""),
+        start: d.start || "", end: d.end || "", days: d.days || "", ret: d.return_date || "", st: st, prior: !!d.prior, basis: d.basis || "",
+        hours: d.weekly_hours || "", tags: d.tags || "", content: d.content || "" }); }); });
+    return out; }
+  function ovEnd(r){ return r.end || (r.st === "진행 중" || r.st === "예정" ? "9999-12-31" : r.start); }
+  function ovMatch(r, f, skip){
+    if (skip !== "src" && !f.src[r.src]) return false;
+    if (!f.prior && r.prior) return false;
+    if (skip !== "type" && f.type && r.type.split(", ").indexOf(f.type) < 0) return false;
+    if (f.org && r.org !== f.org) return false; if (f.team && r.team !== f.team) return false; if (f.gender && r.gender !== f.gender) return false;
+    if (f.st && (f.st === "active" ? !(r.st === "진행 중" || r.st === "예정") : r.st !== f.st)) return false;
+    if ((f.from || f.to) && (!r.start || (f.to && r.start > f.to) || (f.from && ovEnd(r) < f.from))) return false;
+    if (f.q){ var q = f.q.trim(); if (q && [r.name, r.org, r.team, r.type, r.basis, r.tags, r.content].join(" ").indexOf(q) < 0) return false; }
+    return true; }
+  async function renderOverview(arg){
+    app.innerHTML = shell('<div class="cat-head"><div class="crumb"><a href="#/">홈</a> › 현황 종합</div><h1><span>📋</span>휴가 · 휴직 · 근무형태 현황 종합</h1><p class="hint" style="margin:4px 0 14px;font-size:13px">휴가 현황 · 휴직·복직 현황 · 근무형태 현황에 등록된 기록을 한 시트로 모았습니다. 필터를 건 결과 그대로 엑셀로 내려받을 수 있고, 행을 누르면 세부 내용이 열립니다.</p></div><div class="cat-wrap"><div class="cat-main" id="cm"><p class="hint">불러오는 중…</p></div></div>', "현황 종합");
+    wireShell();
+    if (/^\d{4}-\d{2}$/.test(arg || "")){ var d0 = parseD(arg + "-01"); ovF.from = arg + "-01"; ovF.to = ymd(new Date(d0.getFullYear(), d0.getMonth() + 1, 0)); }
+    await Promise.all(OV_SRC.filter(function(s){ return can(s[3], "read"); }).map(function(s){ return loadRecs(s[1], s[2]).catch(function(){ return []; }); }));
+    drawOverview(); }
+  function drawOverview(){
+    var host = $("#cm"); if (!host) return; var f = ovF, all = ovRows(), today = todayStr();
+    var srcs = OV_SRC.filter(function(s){ return can(s[3], "read"); }).map(function(s){ return s[0]; });
+    var base = all.filter(function(r){ return ovMatch(r, f, "src"); });
+    var types = ovUniq([].concat.apply([], all.filter(function(r){ return f.src[r.src]; }).map(function(r){ return r.type.split(", "); })));
+    var orgs = ovUniq(all.map(function(r){ return r.org; })), teams = ovUniq(all.filter(function(r){ return !f.org || r.org === f.org; }).map(function(r){ return r.team; }));
+    function opt(list, cur, first){ return '<option value="">' + first + '</option>' + list.map(function(v){ var k = Array.isArray(v) ? v[0] : v, l = Array.isArray(v) ? v[1] : v; return '<option value="' + esc(k) + '"' + (k === cur ? " selected" : "") + '>' + esc(l) + '</option>'; }).join(""); }
+    var y = today.slice(0, 4), m = today.slice(0, 7), mEnd = ymd(new Date(+y, +today.slice(5, 7), 0));
+    host.innerHTML = '<div class="mini-stats">' + srcs.map(function(s){ var l = base.filter(function(r){ return r.src === s; }), on = l.filter(function(r){ return r.st === "진행 중"; }).length, pl = l.filter(function(r){ return r.st === "예정"; }).length;
+        return '<button class="ms ms-btn' + (f.src[s] ? " on" : "") + '" data-osrc="' + s + '" title="누르면 이 분류를 넣고 뺍니다">' + (f.src[s] ? "☑ " : "☐ ") + s + '<b>' + l.length + '<small style="font-size:11px;font-weight:600;margin-left:2px">건</small></b><small class="hint" style="display:block;font-size:10.5px;font-weight:500">진행 ' + on + ' · 예정 ' + pl + '</small></button>'; }).join("") + '</div>' +
+      '<div class="rec-tools ov-tools">' +
+        '<select id="oType">' + opt(types, f.type, "전체 구분") + '</select><select id="oOrg">' + opt(orgs, f.org, "전체 소속") + '</select><select id="oTeam">' + opt(teams, f.team, "전체 팀") + '</select>' +
+        '<select id="oSt">' + opt([["active", "진행 중 + 예정"], ["진행 중", "진행 중"], ["예정", "예정"], ["종료", "종료"], ["입사 전", "입사 전(타사)"]], f.st, "전체 상태") + '</select>' +
+        '<select id="oGen">' + opt([["여", "여"], ["남", "남"]], f.gender, "전체 성별") + '</select>' +
+        '<span class="ov-per"><span class="hint">기간</span><input type="date" id="oFrom" value="' + esc(f.from) + '"><span>~</span><input type="date" id="oTo" value="' + esc(f.to) + '">' +
+        '<button class="btn sm" data-oper="m">이번 달</button><button class="btn sm" data-oper="y">올해</button><button class="btn sm" data-oper="">전체 기간</button></span>' +
+        '<input type="search" id="oQ" placeholder="이름·소속·문서번호·내용 검색" value="' + esc(f.q) + '">' +
+        '<label class="hint" style="font-size:12.5px;display:inline-flex;gap:4px;align-items:center"><input type="checkbox" id="oPrior"' + (f.prior ? " checked" : "") + '>입사 전(타사) 기록 포함</label>' +
+        '<span class="grow"></span><span class="hint" id="oCnt" style="font-size:12px"></span><button class="btn sm" id="oReset">필터 초기화</button><button class="btn sm primary" id="oXls">⬇ 엑셀 다운로드</button></div>' +
+      '<div class="hint" style="font-size:11.5px;margin:-4px 0 8px">기간은 그 기간에 하루라도 걸치는 기록을 보여 줍니다(종료일이 없는 진행 중 기록 포함). 열 제목을 누르면 정렬됩니다.</div><div id="oTbl"></div>';
+    var list = [];
+    function sortVal(r, k){ return k === "days" ? (parseFloat(r.days) || 0) : String(r[k] || ""); }
+    function table(){
+      list = all.filter(function(r){ return ovMatch(r, f); }).sort(function(a, b){ var A = sortVal(a, f.sort), B = sortVal(b, f.sort); return (A < B ? -1 : A > B ? 1 : 0) * f.dir || String(b.start).localeCompare(String(a.start)) || a.name.localeCompare(b.name); });
+      $("#oCnt").textContent = list.length + "건 · " + ovUniq(list.map(function(r){ return r.name; })).length + "명";
+      $("#oTbl").innerHTML = '<div class="tbl-box ov-box"><table class="rec compact"><thead><tr>' + OV_COLS.map(function(c){ return '<th data-osort="' + c[0] + '" class="srt' + (f.sort === c[0] ? " on" : "") + '">' + c[1] + (f.sort === c[0] ? (f.dir > 0 ? " ▲" : " ▼") : "") + '</th>'; }).join("") + '</tr></thead><tbody>' +
+        (list.length ? list.map(function(r, i){ return '<tr class="clk' + (r.st === "종료" || r.st === "입사 전" ? " ended" : "") + '" data-oi="' + i + '" tabindex="0">' +
+          '<td><span class="badge ' + (r.src === "휴가" ? "info" : r.src === "휴직" ? "warn" : "neutral") + '">' + r.src + '</span></td><td>' + esc(r.type) + '</td><td><b>' + esc(r.name) + '</b></td><td>' + esc(r.gender) + '</td><td>' + esc(r.org) + '</td><td>' + esc(r.team) + '</td>' +
+          '<td>' + esc(r.start) + '</td><td>' + esc(r.end) + '</td><td>' + (r.days ? esc(r.days) + "일" : r.hours ? '<span class="hint">주 ' + esc(r.hours) + '시간</span>' : "") + '</td><td>' + esc(r.ret) + '</td>' +
+          '<td><span class="badge ' + (r.st === "진행 중" ? "good" : r.st === "예정" ? "warn" : "neutral") + '">' + esc(r.st) + '</span></td><td>' + esc(r.basis) + '</td></tr>'; }).join("")
+          : '<tr><td colspan="' + OV_COLS.length + '" class="hint" style="padding:18px">조건에 맞는 기록이 없습니다.</td></tr>') + '</tbody></table></div>';
+      $all("#oTbl th[data-osort]").forEach(function(th){ th.onclick = function(){ var k = th.dataset.osort; if (f.sort === k) f.dir = -f.dir; else { f.sort = k; f.dir = k === "start" || k === "end" || k === "ret" || k === "days" ? -1 : 1; } table(); }; });
+      $all("#oTbl tr[data-oi]").forEach(function(tr){ function o(){ var r = list[+tr.dataset.oi]; if (r.src === "근무형태") wtDetail(catById("att"), "worktypes", r.x, drawOverview); else genDetail(catById(r.src === "휴가" ? "leave" : "absence"), r.src === "휴가" ? "leave" : "absence", r.x, drawOverview); }
+        tr.onclick = o; tr.onkeydown = function(e){ if (e.key === "Enter") o(); }; });
+    }
+    table();
+    $all("[data-osrc]", host).forEach(function(b){ b.onclick = function(){ f.src[b.dataset.osrc] = !f.src[b.dataset.osrc]; f.type = ""; drawOverview(); }; });
+    $("#oType").onchange = function(e){ f.type = e.target.value; drawOverview(); };
+    $("#oOrg").onchange = function(e){ f.org = e.target.value; f.team = ""; drawOverview(); };
+    $("#oTeam").onchange = function(e){ f.team = e.target.value; drawOverview(); };
+    $("#oSt").onchange = function(e){ f.st = e.target.value; drawOverview(); };
+    $("#oGen").onchange = function(e){ f.gender = e.target.value; drawOverview(); };
+    $("#oFrom").onchange = function(e){ f.from = e.target.value; drawOverview(); };
+    $("#oTo").onchange = function(e){ f.to = e.target.value; drawOverview(); };
+    $all("[data-oper]", host).forEach(function(b){ b.onclick = function(){ var k = b.dataset.oper; f.from = k === "m" ? m + "-01" : k === "y" ? y + "-01-01" : ""; f.to = k === "m" ? mEnd : k === "y" ? y + "-12-31" : ""; drawOverview(); }; });
+    $("#oPrior").onchange = function(e){ f.prior = e.target.checked; drawOverview(); };
+    $("#oQ").addEventListener("input", function(e){ f.q = e.target.value; table(); });
+    $("#oReset").onclick = function(){ ovF = { src: { "휴가": true, "휴직": true, "근무형태": true }, type: "", org: "", team: "", st: "", gender: "", from: "", to: "", q: "", prior: false, sort: "start", dir: -1 }; drawOverview(); };
+    $("#oXls").onclick = function(){
+      if (!window.XLSX){ alert("엑셀 도구를 불러오지 못했습니다. 새로고침 후 다시 시도하세요."); return; }
+      var cols = OV_COLS.concat([["hours", "1주 소정근로시간"], ["tags", "태그"], ["content", "세부 내용"]]);
+      var aoa = [cols.map(function(c){ return c[1]; })].concat(list.map(function(r){ return cols.map(function(c){ var v = r[c[0]]; return c[0] === "days" && v !== "" ? (parseFloat(v) || v) : (v == null ? "" : v); }); }));
+      var cond = [["현황 종합 내려받기 조건"], [], ["분류", srcs.filter(function(s){ return f.src[s]; }).join(", ")], ["구분", f.type || "전체"], ["소속", f.org || "전체"], ["팀", f.team || "전체"],
+        ["상태", f.st === "active" ? "진행 중 + 예정" : (f.st || "전체")], ["성별", f.gender || "전체"], ["기간", (f.from || "처음") + " ~ " + (f.to || "끝")], ["검색어", f.q || "-"], ["입사 전(타사) 기록", f.prior ? "포함" : "제외"], [], ["건수", list.length], ["기준일", today], ["작성", me.name]];
+      var wb = XLSX.utils.book_new(), ws = XLSX.utils.aoa_to_sheet(aoa);
+      ws["!cols"] = cols.map(function(c){ return { wch: c[0] === "content" ? 60 : c[0] === "type" ? 18 : c[0] === "org" || c[0] === "team" || c[0] === "basis" ? 16 : 11 }; });
+      ws["!autofilter"] = { ref: XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: Math.max(list.length, 1), c: cols.length - 1 } }) };
+      XLSX.utils.book_append_sheet(wb, ws, "현황 종합"); XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(cond), "조건");
+      XLSX.writeFile(wb, "현황종합_" + (f.from || f.to ? (f.from || "") + "~" + (f.to || "") + "_" : "") + today + ".xlsx"); logp("home", "export", "xlsx 현황 종합");
+    };
+  }
 
   /* ---------- 법령정보 (홈 영역 + 전체 화면) ---------- */
   async function renderLawHome(){
