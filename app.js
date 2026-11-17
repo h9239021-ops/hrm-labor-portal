@@ -213,7 +213,7 @@
     wrapEl.appendChild(hdl);
     var bline = document.createElement("div"); bline.className = "blk-line"; bline.style.display = "none"; wrapEl.appendChild(bline);
     var curB = null, dragEl = null, bmenu = null, snaps = [], blockOp = false, dropAt = null;
-    function isBlk(n){ return n && n.nodeType === 1 && n.parentNode && (n.parentNode === body || (n.parentNode.classList && n.parentNode.classList.contains("acc-b") && body.contains(n.parentNode))); }
+    function isBlk(n){ return n && n.nodeType === 1 && n.parentNode && (n.parentNode === body || (n.parentNode.classList && (n.parentNode.classList.contains("acc-b") || n.parentNode.classList.contains("kv-cards")) && body.contains(n.parentNode))); }
     function blockOf(n){ while (n && n !== body && n !== document){ if (isBlk(n)) return n; n = n.parentNode; } return null; }
     function relR(el){ var a = el.getBoundingClientRect(), b = wrapEl.getBoundingClientRect(); return { top: a.top - b.top, left: a.left - b.left, w: a.width, h: a.height, bottom: a.bottom - b.top }; }
     function placeH(el){ curB = el; if (!el || htmlMode){ hdl.style.display = "none"; return; } var r = relR(el); hdl.style.display = ""; hdl.style.top = (r.top + 1) + "px"; hdl.style.left = Math.max(r.left - 46, 2 - wrapEl.getBoundingClientRect().left) + "px"; }
@@ -412,6 +412,23 @@
         if (!nx && !e.shiftKey){ addRow(true); return; } if (nx) caretIn(nx, true); return; }
       if (n && n.closest("li")){ e.preventDefault(); indentBy(e.shiftKey ? -1 : 1); } });
     var htmlPrev = A.html; A.html = function(){ clearCsel(); htmlPrev(); };
+    /* 카드형 표(.kv-card: 항목 이름 | 내용)에서도 행 · 열 버튼이 동작하게: 행 = 항목 줄, 열 = 카드 */
+    function kvRow(){ var n = curEl(), d = n && n.closest && n.closest(".kv-card dl > div"); return d && inBody(d) ? d : null; }
+    function kvOnly(){ return !$all(".ed-csel", body).length && !cell() && kvRow(); }
+    (function(){ var o = {}; ["rowAbove", "rowAdd", "rowDel", "colLeft", "colAdd", "colDel", "shade", "merge", "split", "valign", "hdr"].forEach(function(k){ o[k] = A[k]; });
+      function addKv(below){ var d = kvRow(); snap(); var n = document.createElement("div"); n.innerHTML = "<dt>항목</dt><dd><br></dd>"; d.parentNode.insertBefore(n, below ? d.nextSibling : d); caretIn(n.querySelector("dt"), false); dirty(); }
+      function addCard(right){ var card = kvRow().closest(".kv-card"); snap(); var cl = card.cloneNode(true);
+        $all("dd", cl).forEach(function(x){ x.innerHTML = "<br>"; }); var h = cl.querySelector("h4"); if (h) h.textContent = "새 항목";
+        card.parentNode.insertBefore(cl, right ? card.nextSibling : card); caretIn(h || cl.querySelector("dd"), false); dirty(); }
+      A.rowAbove = function(){ if (kvOnly()) addKv(false); else o.rowAbove(); };
+      A.rowAdd = function(){ if (kvOnly()) addKv(true); else o.rowAdd(); };
+      A.rowDel = function(){ if (!kvOnly()) return o.rowDel(); var d = kvRow(); if (!confirm("이 줄(항목)을 삭제할까요?")) return; snap(); var dl = d.parentNode; d.remove(); if (!dl.children.length){ var n = document.createElement("div"); n.innerHTML = "<dt>항목</dt><dd><br></dd>"; dl.appendChild(n); } dirty(); };
+      A.colLeft = function(){ if (kvOnly()) addCard(false); else o.colLeft(); };
+      A.colAdd = function(){ if (kvOnly()) addCard(true); else o.colAdd(); };
+      A.colDel = function(){ if (!kvOnly()) return o.colDel(); var card = kvRow().closest(".kv-card"); if (!confirm("이 카드를 통째로 삭제할까요?")) return; snap(); var wrap = card.parentNode; card.remove(); if (!wrap.children.length) wrap.remove(); dirty(); placeH(null); };
+      A.shade = function(){ if (!kvOnly()) return o.shade(); var d = kvRow(); openPop(edBtn("shade"), swatches(SHADES, "줄 음영"), function(v){ snap(); d.style.backgroundColor = v; if (!d.getAttribute("style")) d.removeAttribute("style"); dirty(); }); };
+      ["merge", "split", "valign", "hdr"].forEach(function(k){ A[k] = function(){ if (kvOnly()){ alert("이 부분은 카드형 표(항목 이름 | 내용)라 셀 병합·분할·세로 정렬·머리글 행은 쓸 수 없습니다.\n· 줄 추가·삭제: ↑ 행 / ↓ 행 / 행 삭제\n· 카드 추가·삭제: ← 열 / → 열 / 열 삭제\n· 카드 옮기기: 카드 왼쪽의 ⋮⋮ 핸들"); return; } o[k](); }; });
+    })();
     var nativeUndo = A.undo, nativeHtml = A.html;
     A.undo = function(){ if (blockOp && snaps.length){ body.innerHTML = snaps.pop(); if (!snaps.length) blockOp = false; dirty(); placeH(null); } else nativeUndo(); };
     A.html = function(){ nativeHtml(); placeH(null); closeBM(); };
