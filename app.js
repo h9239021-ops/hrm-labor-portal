@@ -104,7 +104,7 @@
   var ED_BTNS = [["bold","<b>굵게</b>"],["red",'<span style="color:var(--danger-700)">빨강</span>'],["blue",'<span style="color:var(--accent-700)">파랑</span>'],["plain","색 빼기"],["|"],
     ["under","<u>밑줄</u>"],["sel","fs","글자 크기",[["","글자 크기"],["fs-s","작게"],["normal","보통"],["fs-l","크게"],["fs-xl","아주 크게"]]],["|"],
     ["h2","제목"],["h3","소제목"],["p","본문"],["|"],["ul","• 목록"],["ol","1. 목록"],["|"],["alL","⇤ 왼쪽"],["alC","↔ 가운데"],["alR","⇥ 오른쪽"],["|"],["link","링크"],["unlink","링크 빼기"],["|"],["undo","↶"],["redo","↷"],["grow"],["html","HTML로 보기"],["br"],
-    ["lbl","박스"],["note","안내 박스 ▾"],["|"],["lbl","표"],["table","표 넣기"],["rowAdd","행 추가"],["rowDel","행 삭제"],["colAdd","열 추가"],["colDel","열 삭제"],["colAll","정렬: 칸만"],["sel","tw","표 너비",[["","표 너비"],["60","좁게 60%"],["80","보통 80%"],["100","전체 100%"]]],["lbl2","열 경계선을 끌면 열 너비가 바뀝니다"]];
+    ["lbl","박스"],["note","안내 박스 ▾"],["acc","▸ 접기 블록"],["|"],["lbl","표"],["table","표 넣기"],["rowAdd","행 추가"],["rowDel","행 삭제"],["colAdd","열 추가"],["colDel","열 삭제"],["colAll","정렬: 칸만"],["sel","tw","표 너비",[["","표 너비"],["60","좁게 60%"],["80","보통 80%"],["100","전체 100%"]]],["lbl2","열 경계선을 끌면 열 너비가 바뀝니다"]];
   function editorBar(){ return '<div class="ed-bar" id="edBar">' + ED_BTNS.map(function(b){ if (b[0] === "|") return '<span class="sep"></span>'; if (b[0] === "grow") return '<span class="grow"></span>';
       if (b[0] === "br") return '<span class="brk"></span>'; if (b[0] === "lbl") return '<span class="lbl">' + b[1] + '</span>'; if (b[0] === "lbl2") return '<span class="lbl2">' + b[1] + '</span>';
       if (b[0] === "sel") return '<select data-edsel="' + b[1] + '" title="' + b[2] + '">' + b[3].map(function(o){ return '<option value="' + o[0] + '">' + o[1] + '</option>'; }).join("") + '</select>';
@@ -115,7 +115,15 @@
     function dirty(){ st.dirty = true; if (onDirty) onDirty(); }
     try { document.execCommand("styleWithCSS", false, false); document.execCommand("defaultParagraphSeparator", false, "p"); } catch(e){}
     body.addEventListener("input", dirty); box.addEventListener("input", dirty);
-    body.addEventListener("click", function(e){ var a = e.target.closest && e.target.closest("a"); if (a) e.preventDefault(); var s = e.target.closest && e.target.closest("summary"); if (s) e.preventDefault(); });
+    // 접기 블록(details)은 편집하는 동안 모두 펼쳐 두고, 저장할 때 원래 접힌 상태로 되돌린다
+    function openAcc(root){ $all("details", root).forEach(function(d){ if (!d.open){ d.open = true; d.setAttribute("data-edo", "1"); } var b = d.querySelector(":scope>.acc-b"); if (!b){ b = document.createElement("div"); b.className = "acc-b"; while (d.lastChild && d.lastChild.tagName !== "SUMMARY") b.insertBefore(d.lastChild, b.firstChild); d.appendChild(b); } if (!b.children.length && !b.textContent.trim()) b.innerHTML = "<p><br></p>"; }); }
+    openAcc(body);
+    body.addEventListener("click", function(e){ var a = e.target.closest && e.target.closest("a"); if (a) e.preventDefault(); var s = e.target.closest && e.target.closest("summary");
+      if (s && inBody(s)){ e.preventDefault(); var r0 = s.getBoundingClientRect(); if (e.clientX > r0.right - 64){ var dt = s.parentNode; dt.open = !dt.open; } } });
+    body.addEventListener("keydown", function(e){ var n = curEl(), s = n && n.closest && n.closest("summary"); if (!s || !inBody(s)) return;
+      if (e.key === "Enter"){ e.preventDefault(); var dt = s.parentNode; dt.open = true; var b = dt.querySelector(":scope>.acc-b"); if (!b){ b = document.createElement("div"); b.className = "acc-b"; dt.appendChild(b); }
+        var p = document.createElement("p"); p.innerHTML = "<br>"; b.insertBefore(p, b.firstChild); var r = document.createRange(); r.setStart(p, 0); r.collapse(true); var sl = window.getSelection(); sl.removeAllRanges(); sl.addRange(r); dirty(); }
+      else if (e.key === " " && !e.isComposing){ e.preventDefault(); document.execCommand("insertText", false, " "); } });
     function rng(){ var s = window.getSelection(); return s && s.rangeCount ? s.getRangeAt(0) : null; }
     function inBody(n){ return n && (n === body || body.contains(n)); }
     function wrap(cls){ var r = rng(); if (!r || r.collapsed || !inBody(r.commonAncestorContainer)){ alert("먼저 바꿀 글자를 선택하세요."); return; } var sp = document.createElement("span"); sp.className = cls; sp.appendChild(r.extractContents()); r.insertNode(sp); dirty(); }
@@ -183,13 +191,14 @@
         linkPicker(function(u){ body.focus(); var s = window.getSelection(); s.removeAllRanges(); s.addRange(saved); document.execCommand("createLink", false, u.trim()); dirty(); }); },
       unlink: function(){ document.execCommand("unlink"); },
       note: function(){ noteMenu($('[data-ed="note"]', host)); },
+      acc: function(){ insertBlockHTML('<details class="acc" open data-edo="1"><summary>제목을 입력하세요</summary><div class="acc-b"><p>내용을 입력하세요.</p></div></details><p><br></p>'); },
       table: function(){ insertBlockHTML('<div class="tbl-w"><table class="t"><thead><tr><th>항목</th><th>내용</th></tr></thead><tbody><tr><td><br></td><td><br></td></tr></tbody></table></div><p><br></p>'); },
       rowAdd: function(){ var tr = row(); if (!tr){ alert("표 안의 칸을 먼저 클릭하세요."); return; } var n = tr.cloneNode(true); $all("td,th", n).forEach(function(c){ c.innerHTML = "<br>"; }); if (tr.parentNode.tagName === "THEAD"){ var tb = tr.closest("table").querySelector("tbody"); n = document.createElement("tr"); $all("th", tr).forEach(function(){ var td = document.createElement("td"); td.innerHTML = "<br>"; n.appendChild(td); }); tb.insertBefore(n, tb.firstChild); } else tr.parentNode.insertBefore(n, tr.nextSibling); dirty(); },
       rowDel: function(){ var tr = row(); if (!tr){ alert("지울 행의 칸을 먼저 클릭하세요."); return; } if (tr.parentNode.tagName === "THEAD"){ alert("머리글 행은 지울 수 없습니다."); return; } if (confirm("이 행을 삭제할까요?")){ tr.remove(); dirty(); } },
       undo: function(){ document.execCommand("undo"); }, redo: function(){ document.execCommand("redo"); },
       html: function(){ htmlMode = !htmlMode;
         if (htmlMode){ box.value = cleanHtml(body.innerHTML); body.style.display = "none"; box.style.display = "block"; }
-        else { body.innerHTML = cleanHtml(box.value); box.style.display = "none"; body.style.display = ""; }
+        else { body.innerHTML = cleanHtml(box.value); openAcc(body); box.style.display = "none"; body.style.display = ""; }
         $all("[data-ed],[data-edsel]", host).forEach(function(b){ if (b.getAttribute("data-ed") !== "html") b.disabled = htmlMode; });
         $('[data-ed="html"]', host).textContent = htmlMode ? "화면으로 보기" : "HTML로 보기"; }
     };
@@ -268,7 +277,8 @@
       b.addEventListener("click", function(){ var k = b.getAttribute("data-ed"); if (k !== "html"){ if (lastR && inBody(lastR.startContainer)) restore(); else body.focus(); } if (A[k]) A[k](); });
     });
     $all("[data-edsel]", host).forEach(function(sl){ sl.addEventListener("change", function(){ var v = sl.value, k = sl.getAttribute("data-edsel"); sl.value = ""; if (v && A[k]) A[k](v); }); });
-    st.getHtml = function(){ return cleanHtml(htmlMode ? box.value : body.innerHTML); };
+    st.getHtml = function(){ var t = document.createElement("template"); t.innerHTML = htmlMode ? box.value : body.innerHTML;
+      $all("details[data-edo]", t.content).forEach(function(d){ d.removeAttribute("open"); d.removeAttribute("data-edo"); }); return cleanHtml(t.innerHTML); };
     return st;
   }
 
@@ -1781,17 +1791,20 @@
     var types = g.typeF ? (def.fields.filter(function(x){ return x[0] === g.typeF; })[0][3] || []) : [];
     var byType = tally(all, function(x){ return String(x.data[g.typeF] || "").split(",").map(function(s){ return s.trim(); }).filter(Boolean); });
     var shownTypes = types.filter(function(t){ return byType[t]; }); Object.keys(byType).forEach(function(t){ if (shownTypes.indexOf(t) < 0) shownTypes.push(t); });
+    var prog = {}; if (g.status === "period") all.forEach(function(x){ var t = x.data[g.typeF] || "(미기재)", o = prog[t] = prog[t] || { n: 0, on: 0, pl: 0, prior: 0 }; if (x.data.prior){ o.prior++; return; } o.n++; var s = pStatus(x.data); if (s === "진행 중") o.on++; else if (s === "예정") o.pl++; });
     var hasOrg = def.fields.some(function(x){ return x[0] === "org"; }), hasTeam = def.fields.some(function(x){ return x[0] === "team"; });
     var orgs = [], teams = [], sts = [];
     all.forEach(function(x){ var d = x.data; if (d.org && orgs.indexOf(d.org) < 0) orgs.push(d.org); if (d.team && (!f.org || d.org === f.org) && teams.indexOf(d.team) < 0) teams.push(d.team); var s = genStatus(def, d); if (s && sts.indexOf(s) < 0) sts.push(s); });
     orgs.sort(); teams.sort(); if (f.team && teams.indexOf(f.team) < 0) f.team = "";
     host.innerHTML = genNav(c, def.menu, def, "list") +
       (g.hint ? '<div class="hint" style="font-size:12.5px;margin:-4px 0 12px">' + g.hint + ' 행을 누르면 세부 내용이 열립니다.</div>' : '') +
-      (shownTypes.length ? '<div class="mini-stats">' + shownTypes.map(function(t){ return '<button class="ms ms-btn' + (f.type === t ? " on" : "") + '" data-ft="' + esc(t) + '">' + esc(t) + '<b>' + (byType[t] || 0) + '</b></button>'; }).join("") + (issOn && linkReady() ? issueBtn(issueCount(key, all), f.iss) : '') + '</div>' : '') +
+      (shownTypes.length ? '<div class="mini-stats">' + shownTypes.map(function(t){ var pc2 = g.status === "period" ? prog[t] || { on: 0, pl: 0, n: 0 } : null;
+        return '<button class="ms ms-btn' + (f.type === t ? " on" : "") + '" data-ft="' + esc(t) + '">' + esc(t) + '<b>' + (pc2 ? pc2.n : byType[t] || 0) + (pc2 ? '<small style="font-size:11px;font-weight:600;margin-left:2px">건</small>' : '') + '</b>' +
+          (pc2 ? '<small class="hint" style="display:block;font-size:10.5px;font-weight:500">진행 ' + pc2.on + ' · 예정 ' + pc2.pl + (pc2.prior ? ' · 입사 전 ' + pc2.prior : '') + '</small>' : '') + '</button>'; }).join("") + (issOn && linkReady() ? issueBtn(issueCount(key, all), f.iss) : '') + '</div>' : '') +
       '<div class="rec-tools">' + (def.fields.some(function(z){ return z[0] === "prior"; }) ? '<label class="hint" style="font-size:12.5px;display:inline-flex;gap:4px;align-items:center"><input type="checkbox" id="gHidePrior"' + (f.hidePrior ? " checked" : "") + '>입사 전 이력 숨기기</label>' : '') + (g.groups ? '<select id="gGrp"><option value="">전체 제도</option>' + g.groups.map(function(z){ return '<option' + (z[0] === f.grp ? " selected" : "") + '>' + esc(z[0]) + '</option>'; }).join("") + '</select>' : '') + (hasOrg ? '<select id="gOrg"><option value="">전체 소속</option>' + orgs.map(function(o){ return '<option' + (o === f.org ? " selected" : "") + '>' + esc(o) + '</option>'; }).join("") + '</select>' : '') +
       (hasTeam ? '<select id="gTeam"><option value="">전체 팀</option>' + teams.map(function(t){ return '<option' + (t === f.team ? " selected" : "") + '>' + esc(t) + '</option>'; }).join("") + '</select>' : '') +
       (g.status ? '<select id="gSt"><option value="">전체 상태</option>' + sts.map(function(s){ return '<option' + (s === f.st ? " selected" : "") + '>' + esc(s) + '</option>'; }).join("") + '</select>' : '') +
-      (issOn && f.iss ? issueLvSel(f) : '') + '<input type="search" id="gQ" placeholder="검색" value="' + esc(f.q) + '"><span class="grow"></span><span class="hint" id="gCnt" style="font-size:12px"></span>' +
+      (issOn && f.iss ? issueLvSel(f, issueCount(key, all)) : '') + '<input type="search" id="gQ" placeholder="검색" value="' + esc(f.q) + '"><span class="grow"></span><span class="hint" id="gCnt" style="font-size:12px"></span>' +
       '<button class="btn sm" id="gCsv">CSV 내려받기</button>' + (w ? '<button class="btn sm primary" id="gAdd">+ ' + esc(def.noun) + ' 추가</button>' : '') + '</div><div id="gTbl"></div>';
     var list = [];
     function rer(){ renderGen(c, defKey, sub, hostSel); }
@@ -1800,7 +1813,7 @@
       var grpT = f.grp && g.groups ? (g.groups.filter(function(z){ return z[0] === f.grp; })[0] || [0, null])[1] : null;
       list = all.filter(function(x){ var d = x.data; return (!issOn || issueMatch(key, x, f)) && (!f.hidePrior || !d.prior) && (!grpT || grpT.indexOf(d[g.typeF]) >= 0) && (!f.type || String(d[g.typeF] || "").split(",").map(function(s){ return s.trim(); }).indexOf(f.type) >= 0) && (!f.org || d.org === f.org) && (!f.team || d.team === f.team) && (!f.st || genStatus(def, d) === f.st) &&
         (!q || def.fields.map(function(z){ return d[z[0]]; }).join(" ").indexOf(q) >= 0); })
-        .sort(function(a, b){ var k = g.sort || "start"; return String(b.data[k] || "").localeCompare(String(a.data[k] || "")) || String(a.data[g.nameF] || "").localeCompare(String(b.data[g.nameF] || "")); });
+        .sort(defKey === "laws" ? lawCmp : function(a, b){ var k = g.sort || "start"; return String(b.data[k] || "").localeCompare(String(a.data[k] || "")) || String(a.data[g.nameF] || "").localeCompare(String(b.data[g.nameF] || "")); });
       $("#gCnt").textContent = list.length + "건";
       var cols2 = g.cols.concat(issOn && f.iss ? ["_issue"] : []);
       function cell(k, x){ if (k === "_issue") return issueBadges(recIssues(key, x)); var h2 = genCell(def, k, x.data); return issOn && k === g.nameF ? h2 + orgChangedBadge(nm(x.data)) : h2; }
@@ -1820,7 +1833,7 @@
     if ($("#gTeam")) $("#gTeam").onchange = function(e){ f.team = e.target.value; draw(); };
     if ($("#gSt")) $("#gSt").onchange = function(e){ f.st = e.target.value; draw(); };
     $("#gQ").addEventListener("input", function(e){ f.q = e.target.value; draw(); });
-    $("#gCsv").onclick = function(){ downloadCsv(def.title, def.fields.map(function(z){ return [z[1], function(x){ return x.data[z[0]]; }]; }).concat(g.status ? [["상태", function(x){ return genStatus(def, x.data); }]] : []).concat(issOn ? [["이상 사유", function(x){ return recIssues(key, x).map(function(i){ return i.lv + ": " + i.t; }).join(" / "); }]] : []), list); };
+    $("#gCsv").onclick = function(){ downloadCsv(def.title, def.fields.map(function(z){ return [z[1], function(x){ return x.data[z[0]]; }]; }).concat(g.status ? [["상태", function(x){ return genStatus(def, x.data); }]] : []).concat(issOn ? [["이상 사유", function(x){ return recIssues(key, x).map(function(i){ return issueCat(i.t) + ": " + i.t; }).join(" / "); }]] : []), list); };
     if ($("#gAdd")) $("#gAdd").onclick = function(){ openRecord(c, defKey, null, rer); };
   }
   function fileSafeExt(name){ return ((String(name).split(".").pop() || "bin").toLowerCase().replace(/[^a-z0-9]/g, "")) || "bin"; }
@@ -2319,7 +2332,7 @@
         if (k === "spouse"){ var s = spouseInfo(d); if (s){ if (s.over) V("법정 일수 초과(" + fmtN(s.used) + "/" + s.limit + "일)"); if (s.late) V("사용 기한(" + s.due + ") 뒤 사용"); if (s.n - 1 > s.split) V("분할 " + (s.n - 1) + "회(최대 " + s.split + "회)"); if (!s.birth) C("출산일 없음(첫 사용일로 추정)"); } }
         if (k === "maternity"){ var mt = maternityInfo(d); if (mt){ if (mt.over) V("법정 일수 초과(" + mt.used + "/" + mt.limit + "일)"); if (mt.postShort) V("출산 후 " + mt.post + "일(" + mt.needPost + "일 이상 필요)"); if (mt.child.est && d.end && d.end < todayStr()) C("실제 출산일 없음"); } }
         if (k === "parental"){ var p = parentalInfo(d).cur; if (p){
-          if (p.over) V("1년 6개월 초과(" + fmtM(p.used) + ")"); else if (p.overBase) C("1년 초과(6개월 연장 대상 확인, " + fmtM(p.used) + ")");
+          if (p.over) V("1년 6개월 초과(" + fmtM(p.used) + ")"); else if (p.overBase) V("1년 초과(6개월 연장 대상 표시 없음, " + fmtM(p.used) + ")");
           if (p.late) V("자녀 기한(" + p.deadline + ") 뒤 사용"); if (p.splitOver) V("분할 " + p.splitUsed + "회(최대 " + LEAVE_LIMITS.parental.splits + "회)");
           p.shorts.filter(function(z){ return sameRec(z.rec.data, d); }).forEach(function(z){ z.issues.forEach(function(i){ V("단기 육아휴직: " + i); }); });
           if (p.unknown) C("자녀 미지정"); } }
@@ -2341,14 +2354,17 @@
           var rec = null; LINK_SRC.some(function(s){ rec = (S.recs[s[0]] || []).filter(function(z){ return z.id === p.id; })[0]; return !!rec; });
           var e = rec ? rec.data : null; return e && e.start <= e3 && d.start <= (e.end || e.start); });
         if (clash) C("같은 기간에 다른 사업부 기록이 있음(동명이인 여부 확인)"); }
-      return out;
+      // 이상자 관리는 법 기준과 다르게 사용된 기록(위반)만 다룬다. 빈 칸·중복 입력 같은 자료 정리 항목은 제외
+      return out.filter(function(i){ return i.lv === "위반" && !/겹침/.test(i.t); });
     });
   }
   function issueBadges(list){ return list.map(function(i){ return '<span class="badge ' + (i.lv === "위반" ? "danger" : "warn") + '" style="margin:1px 2px 1px 0">' + esc(i.t) + '</span>'; }).join(""); }
-  function issueCount(key, recs){ var v = 0, c = 0, n = 0; recs.forEach(function(x){ var l = recIssues(key, x); if (l.length){ n++; if (l.some(function(i){ return i.lv === "위반"; })) v++; else c++; } }); return { n: n, v: v, c: c }; }
-  function issueBtn(cnt, on){ return '<button class="ms ms-btn iss' + (on ? " on" : "") + '" data-fiss="1" title="기간·한도 초과 등 이상이 있는 기록만 보기">⚠ 이상자 관리<b>' + cnt.n + '</b><small class="hint" style="display:block;font-size:10.5px;font-weight:500">위반 ' + cnt.v + ' · 확인 필요 ' + cnt.c + '</small></button>'; }
-  function issueLvSel(f){ return '<select id="fIssLv" title="이상 수준"><option value="">위반 + 확인 필요</option><option value="위반"' + (f.issLv === "위반" ? " selected" : "") + '>위반만</option><option value="확인"' + (f.issLv === "확인" ? " selected" : "") + '>확인 필요만</option></select>'; }
-  function issueMatch(key, x, f){ if (!f.iss) return true; var l = recIssues(key, x); if (!l.length) return false; return !f.issLv || l.some(function(i){ return i.lv === f.issLv; }); }
+  var ISS_CATS = ["기간·일수 초과", "사용 기한 경과", "분할 횟수 초과", "사용 기준 위반"];
+  function issueCat(t){ return /분할/.test(t) ? ISS_CATS[2] : /기한|이후 시작/.test(t) ? ISS_CATS[1] : /초과/.test(t) ? ISS_CATS[0] : ISS_CATS[3]; }
+  function issueCount(key, recs){ var n = 0, by = {}; recs.forEach(function(x){ var l = recIssues(key, x); if (l.length){ n++; var seen = {}; l.forEach(function(i){ var k = issueCat(i.t); if (!seen[k]){ seen[k] = 1; by[k] = (by[k] || 0) + 1; } }); } }); return { n: n, by: by }; }
+  function issueBtn(cnt, on){ return '<button class="ms ms-btn iss' + (on ? " on" : "") + '" data-fiss="1" title="법정 기간·일수 초과, 사용 기한 경과 등 법 기준과 다르게 사용된 기록만 보기">⚠ 이상자 관리<b>' + cnt.n + '</b><small class="hint" style="display:block;font-size:10.5px;font-weight:500">법 기준과 다르게 사용</small></button>'; }
+  function issueLvSel(f, cnt){ return '<select id="fIssLv" title="이상 사유"><option value="">전체 사유' + (cnt ? " (" + cnt.n + ")" : "") + '</option>' + ISS_CATS.filter(function(k){ return !cnt || cnt.by[k] || f.issLv === k; }).map(function(k){ return '<option value="' + k + '"' + (f.issLv === k ? " selected" : "") + '>' + k + (cnt ? " (" + (cnt.by[k] || 0) + ")" : "") + '</option>'; }).join("") + '</select>'; }
+  function issueMatch(key, x, f){ if (!f.iss) return true; var l = recIssues(key, x); if (!l.length) return false; return !f.issLv || l.some(function(i){ return issueCat(i.t) === f.issLv; }); }
 
   function genDetail(c, defKey, x, after){
     var def = REC_DEF[defKey], g = def.gen, d = x.data, key = c.id + "." + def.menu;
@@ -2512,6 +2528,11 @@
     gen: { typeF: "stage", nameF: "target", status: "stage", sort: "month", files: false, cols: ["stage", "target", "law", "announce", "start", "due", "checked", "url"],
       hint: "인사·노무 관련 법령 개정사항입니다. 매월 초 입법예고 · 시행예정 · 시행으로 나누어 업데이트합니다. 내용은 반드시 출처 원문으로 다시 확인하세요." } };
   var LAW_CAT = { id: "home", name: "법령정보", ic: "⚖️", menus: [["laws", "법령정보"]] };
+  // 기준월(업데이트) 최신순 → 같은 달 안에서는 기준일(오늘)과 가까운 날짜부터. 시행예정은 곧 시행되는 것, 시행·입법예고는 최근 것이 위로
+  function lawDate(d){ return d.stage === "입법예고" ? (d.announce || d.due || "") : (d.start || d.announce || ""); }
+  function lawCmp(a, b){ var A = a.data, B = b.data, m = String(B.month || "").localeCompare(String(A.month || "")); if (m) return m;
+    var t = dT(todayStr()), da = lawDate(A), db = lawDate(B); if (!da || !db) return (da ? 0 : 1) - (db ? 0 : 1) || String(A.target || "").localeCompare(String(B.target || ""));
+    return Math.abs(dT(da) - t) - Math.abs(dT(db) - t) || String(A.target || "").localeCompare(String(B.target || "")); }
 
   /* ---------- 법령정보 (홈 영역 + 전체 화면) ---------- */
   async function renderLawHome(){
@@ -2521,7 +2542,7 @@
     var all = S.recs["home.laws"] || [], months = all.map(function(x){ return x.data.month || ""; }).sort(), last = months[months.length - 1] || "";
     $("#lawSec").innerHTML = '<div class="sec-h"><h2><a href="#/laws" class="h-link">⚖️ 법령정보 ›</a></h2><div class="tools"><span class="hint" style="font-size:12px">인사·노무 관련 법령 개정사항 · 매월 초 업데이트' + (last ? " · 최근 기준월 " + esc(last) : "") + '</span></div></div><div class="law-cols">' +
       LAW_STAGES.map(function(st){
-        var l = all.filter(function(x){ return x.data.stage === st; }).sort(function(a, b){ return String(b.data.month || "").localeCompare(String(a.data.month || "")) || String(b.data.start || b.data.announce || "").localeCompare(String(a.data.start || a.data.announce || "")); });
+        var l = all.filter(function(x){ return x.data.stage === st; }).sort(lawCmp);
         return '<section class="card2 lawc"><div class="sec-h"><h2><span class="badge ' + stCls(st) + '">' + st + '</span></h2><div class="tools"><span class="hint" style="font-size:12px">' + l.length + '건</span></div></div><ul class="law-list">' +
           (l.length ? l.slice(0, 5).map(function(x){ var d = x.data; return '<li><button data-law="' + x.id + '"><span class="tx">' + esc(d.target || "") + '</span><small>' + esc(d.law || "") + (st === "입법예고" ? (d.due ? " · 의견 마감 " + esc(d.due) : "") : (d.start ? " · 시행 " + esc(d.start) : "")) + '</small></button></li>'; }).join("") : '<li class="hint" style="font-size:12.5px;padding:8px">등록된 항목이 없습니다.</li>') + '</ul></section>';
       }).join("") + '</div>';
@@ -2754,9 +2775,9 @@
       '<div class="mini-stats">' + def.fields[0][3].map(function(t){ return '<button class="ms ms-btn' + (f.type === t ? " on" : "") + '" data-ft="' + esc(t) + '">' + esc(t) + '<b>' + (byType[t] || 0) + '</b><small class="hint" style="display:block;font-size:10.5px;font-weight:500">적용 중 · 전체 ' + (byTypeAll[t] || 0) + '</small></button>'; }).join("") + (issOn && linkReady() ? issueBtn(issueCount(key, all), f.iss) : '') + '</div>' +
       '<div class="rec-tools"><select id="fOrg"><option value="">전체 소속</option>' + orgs.map(function(o){ return '<option' + (o === f.org ? " selected" : "") + '>' + esc(o) + '</option>'; }).join("") + '</select>' +
       '<select id="fTeam"><option value="">전체 팀</option>' + teams.map(function(t){ return '<option' + (t === f.team ? " selected" : "") + '>' + esc(t) + '</option>'; }).join("") + '</select>' +
-      '<input type="search" id="fT" placeholder="이름·소속·팀·내용 검색" value="' + esc(f.q) + '"><span class="st-pick">' + [["all", "전체"], ["active", "적용 중+예정"], ["적용 중", "적용 중"], ["예정", "예정"], ["종료", "종료"], ["입사 전", "입사 전"]].filter(function(o){ return o[0] === "all" || o[0] === "active" || stCnt[o[0]]; }).map(function(o){
-        var n = o[0] === "active" ? (stCnt["적용 중"] || 0) + (stCnt["예정"] || 0) : stCnt[o[0]] || 0; return '<button type="button" class="' + (f.st === o[0] ? "on" : "") + '" data-fst="' + esc(o[0]) + '">' + o[1] + ' <small>' + n + '</small></button>'; }).join("") + '</span>' +
-      (issOn && f.iss ? issueLvSel(f) : '') + '<span class="grow"></span>' +
+      '<input type="search" id="fT" placeholder="이름·소속·팀·내용 검색" value="' + esc(f.q) + '"><select id="fSt" title="상태">' + [["all", "전체 상태"], ["active", "적용 중 + 예정"], ["적용 중", "적용 중"], ["예정", "예정"], ["종료", "종료"], ["입사 전", "입사 전(타사)"]].filter(function(o){ return o[0] === "all" || o[0] === "active" || stCnt[o[0]] || f.st === o[0]; }).map(function(o){
+        var n = o[0] === "active" ? (stCnt["적용 중"] || 0) + (stCnt["예정"] || 0) : stCnt[o[0]] || 0; return '<option value="' + esc(o[0]) + '"' + (f.st === o[0] ? " selected" : "") + '>' + o[1] + ' (' + n + ')</option>'; }).join("") + '</select>' +
+      (issOn && f.iss ? issueLvSel(f, issueCount(key, all)) : '') + '<span class="grow"></span>' +
       '<span class="hint" id="wtCnt" style="font-size:12px"></span><button class="btn sm" id="rCsv">CSV 내려받기</button>' + (w ? '<button class="btn sm primary" id="rAdd">+ ' + esc(def.noun) + ' 추가</button>' : '') + '</div>' +
       '<div id="wtTbl"></div>';
     function stBadge(d){ var s = wtStatus(d); return '<span class="badge ' + (s === "종료" ? "neutral" : s === "예정" ? "warn" : "good") + '">' + s + '</span>'; }
@@ -2804,13 +2825,13 @@
     }
     drawTable();
     $all("[data-ft]", host).forEach(function(b){ b.onclick = function(){ f.type = f.type === b.dataset.ft ? "" : b.dataset.ft; rer(); }; });
-    $all("[data-fst]", host).forEach(function(b){ b.onclick = function(){ f.st = b.dataset.fst; rer(); }; });
+    $("#fSt").onchange = function(e){ f.st = e.target.value; drawTable(); };
     $all("[data-fiss]", host).forEach(function(b){ b.onclick = function(){ f.iss = !f.iss; rer(); }; });
     if ($("#fIssLv")) $("#fIssLv").onchange = function(e){ f.issLv = e.target.value; drawTable(); };
     $("#fOrg").onchange = function(e){ f.org = e.target.value; f.team = ""; rer(); };
     $("#fTeam").onchange = function(e){ f.team = e.target.value; drawTable(); };
     $("#fT").addEventListener("input", function(e){ f.q = e.target.value; drawTable(); });
-    $("#rCsv").onclick = function(){ downloadCsv(def.title, def.fields.map(function(f2){ return [f2[1], function(x){ return f2[0] === "org" ? wtOrg(x.data) : f2[0] === "team" ? wtTeam(x.data) : x.data[f2[0]]; }]; }).concat([["사용 회차", function(x){ var r = rounds[x.id]; return r ? r.n + "/" + r.total : ""; }], ["상태", function(x){ return wtStatus(x.data); }]]).concat(issOn ? [["이상 사유", function(x){ return recIssues(key, x).map(function(i){ return i.lv + ": " + i.t; }).join(" / "); }]] : []), list); };
+    $("#rCsv").onclick = function(){ downloadCsv(def.title, def.fields.map(function(f2){ return [f2[1], function(x){ return f2[0] === "org" ? wtOrg(x.data) : f2[0] === "team" ? wtTeam(x.data) : x.data[f2[0]]; }]; }).concat([["사용 회차", function(x){ var r = rounds[x.id]; return r ? r.n + "/" + r.total : ""; }], ["상태", function(x){ return wtStatus(x.data); }]]).concat(issOn ? [["이상 사유", function(x){ return recIssues(key, x).map(function(i){ return issueCat(i.t) + ": " + i.t; }).join(" / "); }]] : []), list); };
     if ($("#rAdd")) $("#rAdd").onclick = function(){ openRecord(c, tab, null, rer); };
   }
   function wtDetail(c, tab, x, after){
