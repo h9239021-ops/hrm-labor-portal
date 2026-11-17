@@ -126,8 +126,7 @@ try {
     const text = ymL + " 퇴직자 연차 정산 내역" + (first ? "을" : " 추가분을") + " 공유드립니다. (급여일 " + sd.pay + " 기준)" + NL + NL +
       (rows.length ? rows.map((o, i) => { const d = o.data, R = d.result || {}; return (i + 1) + ". " + d.target + " (" + [d.org, d.team].filter(Boolean).join(" ") + ")" + NL + "   입사 " + d.join + " / 퇴사 " + d.retire +
         NL + "   입사일 기준 " + R.hTotal + "일 · 회계연도 기준 " + R.fTotal + "일 · 차이 " + R.diffPay + "일" + NL + "   퇴직연도 잔여 " + r2((+R.curF || 0) + (+R.curM || 0) - (+R.used || 0)) + "일 · 미사용 보상휴가 " + (d.comp === "" || d.comp == null ? "미입력(확인 필요)" : d.comp + "일") +
-        NL + "   ▶ 최종 지급 일수 " + R.final + "일" + (d.note ? NL + "   비고: " + d.note : ""); }).join(NL + NL) : "이번 달 퇴직자 정산 기록이 없습니다.") +
-      NL + NL + "※ HRM 노무관리파트 업무포털 › 휴가 › 연차유급휴가 관리 › 퇴직자 연차 정산에서 상세 계산 내역을 확인할 수 있습니다.";
+        NL + "   ▶ 최종 지급 일수 " + R.final + "일" + (d.note ? NL + "   비고: " + d.note : ""); }).join(NL + NL) : "이번 달 퇴직자 정산 기록이 없습니다.");
     const row = { list: "queue", kind: "annual-settle", month: ym, round: first ? "정기" : "추가", key: akey, rule_name: "퇴직자 연차 정산(월별)" + (first ? "" : " 추가분"), target: "퇴직자 " + rows.length + "명", org: "", email: acfg.data.to, cc: acfg.data.cc || "",
       people: rows.map((o) => ({ id: o.id, target: o.data.target, org: o.data.org || "", retire: o.data.retire, final: (o.data.result || {}).final })),
       subject: "[연차 정산]" + (first ? " " : "[추가] ") + ymL + " 퇴직자 연차 정산 내역 (" + rows.length + "명)", body: text, due: sd.send, status: "발송 대기" };

@@ -3011,8 +3011,7 @@
     var sd = settleSendDate(ym);
     return { subject: "[연차 정산]" + (extra ? "[추가] " : " ") + ym.replace("-", "년 ") + "월 퇴직자 연차 정산 내역 (" + rows.length + "명)",
       text: ym.replace("-", "년 ") + "월 퇴직자 연차 정산 내역" + (extra ? " 추가분을" : "을") + " 공유드립니다. (급여일 " + sd.pay + " 기준)\n\n" +
-        (rows.length ? rows.map(function(o, i){ var d = o.data, R = d.result || {}; return (i + 1) + ". " + d.target + " (" + [d.org, d.team].filter(Boolean).join(" ") + ")\n   입사 " + d.join + " / 퇴사 " + d.retire + "\n   입사일 기준 " + R.hTotal + "일 · 회계연도 기준 " + R.fTotal + "일 · 차이 " + R.diffPay + "일\n   퇴직연도 잔여 " + r2((+R.curF || 0) + (+R.curM || 0) - (+R.used || 0)) + "일 · 미사용 보상휴가 " + (d.comp === "" || d.comp == null ? "미입력(확인 필요)" : d.comp + "일") + "\n   ▶ 최종 지급 일수 " + R.final + "일" + (d.note ? "\n   비고: " + d.note : ""); }).join("\n\n") : "이번 달 퇴직자 정산 기록이 없습니다.") +
-        "\n\n※ HRM 노무관리파트 업무포털 › 휴가 › 연차유급휴가 관리 › 퇴직자 연차 정산에서 상세 계산 내역을 확인할 수 있습니다." };
+        (rows.length ? rows.map(function(o, i){ var d = o.data, R = d.result || {}; return (i + 1) + ". " + d.target + " (" + [d.org, d.team].filter(Boolean).join(" ") + ")\n   입사 " + d.join + " / 퇴사 " + d.retire + "\n   입사일 기준 " + R.hTotal + "일 · 회계연도 기준 " + R.fTotal + "일 · 차이 " + R.diffPay + "일\n   퇴직연도 잔여 " + r2((+R.curF || 0) + (+R.curM || 0) - (+R.used || 0)) + "일 · 미사용 보상휴가 " + (d.comp === "" || d.comp == null ? "미입력(확인 필요)" : d.comp + "일") + "\n   ▶ 최종 지급 일수 " + R.final + "일" + (d.note ? "\n   비고: " + d.note : ""); }).join("\n\n") : "이번 달 퇴직자 정산 기록이 없습니다.") };
   }
   function drawSettleMail(c, nav){
     var host = $("#cm"), cfgX = annRecs("config")[0], cfg = cfgX ? cfgX.data : { list: "config", enabled: false, to: "", cc: "" }, w = can("leave.annual", "write");
