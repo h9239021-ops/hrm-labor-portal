@@ -3324,7 +3324,7 @@
       var d = x ? Object.assign({}, x.data) : { list: "rule", source: AM_SRC[2][0], event: "start", when: "rel", offset: -7, mode: "approve", enabled: false, subject: "", body_html: "", rcpt_to: { self: true } };
       if (!d.rcpt_to){ d.rcpt_to = d.to ? { extra: d.to } : { self: true, selfPersonal: true }; } if (!d.rcpt_cc) d.rcpt_cc = { extra: d.cc || "" };
       function sel(name, opts, cur){ return '<select name="' + name + '">' + opts.map(function(o){ return '<option value="' + esc(o[0]) + '"' + (String(o[0]) === String(cur) ? " selected" : "") + '>' + esc(o[1]) + '</option>'; }).join("") + '</select>'; }
-      var forms = mailForms();
+      var forms = [];
       var m = showModal('<h3>발송 규칙 ' + (x ? "수정" : "추가") + '</h3><div class="am-edit"><div class="am-left"><form class="f" id="amf" onsubmit="return false"><label class="full">규칙 이름<input name="target" value="' + esc(d.target || "") + '" required></label>' +
         '<label>대상' + sel("source", AM_SRC, d.source) + '</label><label>기준일' + sel("event", [["start", "시작일"], ["end", "종료일"], ["return", "복직일(종료 다음 날)"]], d.event) + '</label>' +
         '<label>보내는 시점' + sel("when", AM_WHEN, d.when) + '</label><label>D±n일 (전은 음수, 예: -7)<input type="number" name="offset" value="' + esc(d.offset == null ? 0 : d.offset) + '"></label>' +
@@ -3332,7 +3332,7 @@
         '<label>발송 방식' + sel("mode", [["approve", "승인 후 발송"], ["auto", "자동 발송"]], d.mode) + '</label><label>대상 조건 (태그·내용에 포함된 말)<input name="tagq" value="' + esc(d.tagq || "") + '" placeholder="예: 임신기 · 비우면 전체"></label>' +
         '<div class="full ep-h2">받는 사람</div><div class="full">' + rcpHtml("to", d.rcpt_to, people) + '</div><div class="full ep-h2">참조(CC)</div><div class="full">' + rcpHtml("cc", d.rcpt_cc, people) + '</div>' +
         '<label class="full">제목 <span class="hint" style="font-weight:500">{이름} 같은 값을 넣을 수 있습니다</span><input name="subject" value="' + esc(d.subject || "") + '" required></label></form>' +
-        '<div class="full ep-h2" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">본문 <span class="grow"></span><span class="mv-wrap"><button type="button" class="btn sm" id="mvBtn">{ } 값 넣기 ▾</button><div class="ed-pop mv-pop" id="mvPop" hidden></div></span>' + (forms.length ? '<select id="mfSel" style="max-width:240px"><option value="">매뉴얼 양식 불러오기…</option>' + forms.map(function(f, i){ return '<option value="' + i + '">' + esc(f.name + " · " + f.page) + '</option>'; }).join("") + '</select>' : '') + '</div>' +
+        '<div class="full ep-h2" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">본문 <span class="grow"></span><span class="mv-wrap"><button type="button" class="btn sm" id="mvBtn">{ } 값 넣기 ▾</button><div class="ed-pop mv-pop" id="mvPop" hidden></div></span>' + '<select id="mfSel" style="max-width:240px"><option value="">매뉴얼 양식 불러오는 중…</option></select>' + '</div>' +
         editorBar() + '<div class="doc"><div id="edBody" contenteditable="true" style="min-height:240px">' + cleanHtml(amBodyHtml(d)) + '</div></div><textarea id="edHtml" class="ed-html" style="display:none"></textarea></div>' +
         '<div class="am-right"><div class="ep-h2">미리보기 <select id="pvWho" style="margin-left:6px;max-width:220px"></select></div><div id="pvR" style="font-size:12px;margin:6px 0"></div><div class="am-sub" id="pvS"></div><div class="mail-pv mail-html" id="pvB"></div></div></div>' +
         '<div class="form-actions">' + (x && can(key, "edit") ? '<button type="button" class="btn danger" id="amDel" style="margin-right:auto">삭제</button>' : '') + '<button type="button" class="btn ghost" id="amNo">취소</button><button type="button" class="btn primary" id="amOk">저장</button></div>', "wide am-modal");
@@ -3343,6 +3343,8 @@
       function drawVars(){ $("#mvPop", m).innerHTML = '<div class="ep-h">대상자마다 자동으로 바뀌는 값</div>' + MailCore.varsFor(curKind()).map(function(v){ return '<button type="button" data-mv="' + esc(v[0]) + '"><b>{' + esc(v[0]) + '}</b><small>' + esc(v[1]) + (v[4] ? ' · 날짜 뒤에 |요일 · |한글 표기 가능' : '') + '</small></button>'; }).join("");
         $all("[data-mv]", m).forEach(function(b){ b.onmousedown = function(e){ e.preventDefault(); }; b.onclick = function(){ $("#mvPop", m).hidden = true; insertVar(b.dataset.mv); }; }); }
       $("#mvBtn", m).onmousedown = function(e){ e.preventDefault(); }; $("#mvBtn", m).onclick = function(){ drawVars(); var p = $("#mvPop", m); p.hidden = !p.hidden; };
+      sb.from("portal_pages").select("id,title,cat,body_html").ilike("body_html", "%<details%").then(function(r){ if (!$("#mfSel", m)) return; S.pages.forEach(function(p){ var x = (r.data || []).filter(function(y){ return y.id === p.id; })[0]; if (x) p.body_html = x.body_html; });
+        forms = mailForms(); $("#mfSel", m).innerHTML = '<option value="">' + (forms.length ? "매뉴얼 양식 불러오기…" : "불러올 양식 없음") + '</option>' + forms.map(function(f, i){ return '<option value="' + i + '">' + esc(f.name + " · " + f.page) + '</option>'; }).join(""); });
       if ($("#mfSel", m)) $("#mfSel", m).onchange = function(e){ var f = forms[+e.target.value]; e.target.value = ""; if (!f) return; if (body.textContent.trim() && !confirm("「" + f.name + "」 양식으로 본문을 바꿀까요? 지금 본문은 지워집니다.")) return; body.innerHTML = cleanHtml(f.html); upd(); };
       function people2(){ return people; }
       function whoList(){ return amSrcRecs(F.source.value, F.tagq.value).slice().sort(function(a, b){ return String(b.data.start || "").localeCompare(String(a.data.start || "")); }).slice(0, 40); }
@@ -3998,6 +4000,155 @@
     CATS.forEach(function(c){ g.push({ name: c.name, keys: c.menus.map(function(m){ return [c.id + "." + m[0], m[1]]; }) }); });
     return g;
   }
+  /* =====================================================================
+     전체 내려받기(관리자): 매뉴얼 → Word(.docx, 편집 가능) · 자료 → Excel · 첨부파일 원본 · 원본 데이터 JSON → ZIP 하나
+     ===================================================================== */
+  function loadLib(src, test){ return test() ? Promise.resolve() : new Promise(function(res, rej){ var s = document.createElement("script"); s.src = src; s.onload = function(){ res(); }; s.onerror = function(){ rej(new Error(src + " 를 불러오지 못했습니다")); }; document.head.appendChild(s); }); }
+  async function fetchAllRows(table, order){ var out = [], from = 0; for (;;){ var q = sb.from(table).select("*").range(from, from + 999); if (order) q = q.order(order); var r = await q; if (r.error) throw new Error(table + ": " + r.error.message); out = out.concat(r.data || []); if (!r.data || r.data.length < 1000) break; from += 1000; } return out; }
+  function safeName(s){ return String(s || "").replace(/[\\\/:*?"<>|]/g, "_").replace(/\s+/g, " ").trim().slice(0, 80) || "이름없음"; }
+  /* ---------- HTML → Word(docx) 변환 ---------- */
+  function htmlToDocx(D, html, baseLevel){
+    var H = [D.HeadingLevel.HEADING_1, D.HeadingLevel.HEADING_2, D.HeadingLevel.HEADING_3, D.HeadingLevel.HEADING_4, D.HeadingLevel.HEADING_5, D.HeadingLevel.HEADING_6];
+    var NOTE = { info: "EFF6FF", tip: "ECFDF5", warn: "FFFBEB", danger: "FEF2F2" };
+    function hex(c){ if (!c) return null; c = String(c).trim(); var m = c.match(/^#([0-9a-f]{6})$/i); if (m) return m[1]; m = c.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/i); if (m) return [m[1], m[2], m[3]].map(function(v){ return (+v).toString(16).padStart(2, "0"); }).join(""); if (/danger/.test(c)) return "B91C1C"; if (/accent/.test(c)) return "1D4ED8"; return null; }
+    function runs(node, st, out){
+      node.childNodes.forEach(function(n){
+        if (n.nodeType === 3){ var t = n.nodeValue.replace(/\s+/g, " "); if (t) out.push(new D.TextRun({ text: t, bold: st.b, italics: st.i, underline: st.u ? {} : undefined, strike: st.s, color: st.color || undefined, size: st.size || undefined, shading: st.bg ? { type: D.ShadingType.CLEAR, fill: st.bg, color: "auto" } : undefined })); return; }
+        if (n.nodeType !== 1) return; var tg = n.tagName, s2 = Object.assign({}, st);
+        if (tg === "BR"){ out.push(new D.TextRun({ text: "", break: 1 })); return; }
+        if (tg === "IMG"){ out.push(new D.TextRun({ text: "[이미지]", italics: true, color: "6B7280" })); return; }
+        if (/^(B|STRONG|TH)$/.test(tg)) s2.b = true; if (/^(I|EM)$/.test(tg)) s2.i = true; if (tg === "U") s2.u = true; if (/^(S|STRIKE|DEL)$/.test(tg)) s2.s = true;
+        var cl = n.className || ""; if (/\bred\b/.test(cl)) s2.color = "B91C1C"; if (/\bblue\b/.test(cl)) s2.color = "1D4ED8"; if (/fs-s/.test(cl)) s2.size = 18; if (/fs-l/.test(cl)) s2.size = 26; if (/fs-xl/.test(cl)) s2.size = 30;
+        if (n.style){ var c1 = hex(n.style.color); if (c1) s2.color = c1; var b1 = hex(n.style.backgroundColor); if (b1) s2.bg = b1; }
+        if (tg === "A" && /^https?:/i.test(n.getAttribute("href") || "")){ var kids = []; runs(n, Object.assign({}, s2, { u: true, color: "1D4ED8" }), kids); out.push(new D.ExternalHyperlink({ link: n.getAttribute("href"), children: kids.length ? kids : [new D.TextRun({ text: n.getAttribute("href") })] })); return; }
+        if (/^(UL|OL|TABLE|DIV|P|H[1-6]|DETAILS|DL)$/.test(tg)) return;   // 블록은 바깥에서 처리
+        runs(n, s2, out);
+      });
+      return out;
+    }
+    function isInlineOnly(el){ return ![].some.call(el.childNodes, function(n){ return n.nodeType === 1 && /^(P|DIV|UL|OL|TABLE|H[1-6]|DETAILS|DL|HR)$/.test(n.tagName); }); }
+    function para(el, opt){ opt = opt || {}; var rs = runs(el, opt.st || {}, []); if (!rs.length && !opt.keepEmpty) return null;
+      var al = el.style && el.style.textAlign; return new D.Paragraph({ children: rs, heading: opt.heading, bullet: opt.bullet, alignment: al === "center" ? D.AlignmentType.CENTER : al === "right" ? D.AlignmentType.RIGHT : al === "justify" ? D.AlignmentType.JUSTIFIED : undefined, spacing: { after: 80 }, indent: opt.indent ? { left: opt.indent } : undefined }); }
+    function cellKids(el){ var k = isInlineOnly(el) ? [para(el, { keepEmpty: true })] : blocks(el, []); return k.filter(Boolean).length ? k.filter(Boolean) : [new D.Paragraph("")]; }
+    function table(tb){
+      var rows = [].slice.call(tb.rows);
+      return new D.Table({ width: { size: 100, type: D.WidthType.PERCENTAGE }, rows: rows.map(function(tr){ return new D.TableRow({ tableHeader: tr.parentNode.tagName === "THEAD", children: [].map.call(tr.cells, function(td){
+        var bg = hex(td.style && td.style.backgroundColor) || (td.tagName === "TH" ? "F3F4F6" : null), va = td.style && td.style.verticalAlign;
+        return new D.TableCell({ children: cellKids(td), columnSpan: td.colSpan > 1 ? td.colSpan : undefined, rowSpan: td.rowSpan > 1 ? td.rowSpan : undefined, shading: bg ? { fill: bg, type: D.ShadingType.CLEAR, color: "auto" } : undefined,
+          verticalAlign: va === "middle" ? D.VerticalAlign.CENTER : va === "bottom" ? D.VerticalAlign.BOTTOM : undefined, margins: { top: 60, bottom: 60, left: 100, right: 100 } }); }) }); }) });
+    }
+    function boxed(children, fill){ return new D.Table({ width: { size: 100, type: D.WidthType.PERCENTAGE }, rows: [new D.TableRow({ children: [new D.TableCell({ children: children.length ? children : [new D.Paragraph("")], shading: { fill: fill, type: D.ShadingType.CLEAR, color: "auto" }, margins: { top: 100, bottom: 100, left: 160, right: 160 } })] })] }); }
+    function list(el, level, out){ var n = 0, ordered = el.tagName === "OL";
+      [].forEach.call(el.children, function(li){ if (li.tagName !== "LI") return; n++;
+        var inl = document.createElement("span"), nested = [];
+        [].forEach.call(li.childNodes, function(c){ if (c.nodeType === 1 && /^(UL|OL)$/.test(c.tagName)) nested.push(c); else if (c.nodeType === 1 && /^(P|DIV)$/.test(c.tagName)){ inl.appendChild(c.cloneNode(true)); inl.appendChild(document.createElement("br")); } else inl.appendChild(c.cloneNode(true)); });
+        var rs = runs(inl, {}, []); while (rs.length && rs[rs.length - 1].__brk) rs.pop();
+        if (ordered) rs.unshift(new D.TextRun({ text: n + ". " }));
+        out.push(new D.Paragraph({ children: rs, bullet: ordered ? undefined : { level: Math.min(level, 8) }, indent: ordered ? { left: 360 * (level + 1), hanging: 260 } : undefined, spacing: { after: 40 } }));
+        nested.forEach(function(nl){ list(nl, level + 1, out); }); });
+      return out; }
+    function blocks(root, out){
+      [].forEach.call(root.childNodes, function(n){
+        if (n.nodeType === 3){ if (n.nodeValue.trim()) out.push(new D.Paragraph({ children: [new D.TextRun(n.nodeValue.trim())] })); return; }
+        if (n.nodeType !== 1) return; var tg = n.tagName, cl = n.className || "";
+        var hm = tg.match(/^H([1-6])$/); if (hm){ var lv = Math.min(5, baseLevel + (+hm[1] - 2)); out.push(para(n, { heading: H[Math.max(0, lv)] })); return; }
+        if (tg === "P"){ var p = para(n); if (p) out.push(p); return; }
+        if (tg === "UL" || tg === "OL"){ list(n, 0, out); return; }
+        if (tg === "TABLE"){ out.push(table(n)); out.push(new D.Paragraph("")); return; }
+        if (tg === "HR"){ out.push(new D.Paragraph({ border: { bottom: { color: "D1D5DB", space: 1, style: D.BorderStyle.SINGLE, size: 6 } } })); return; }
+        if (tg === "DETAILS"){ var sm = n.querySelector("summary"); if (sm) out.push(new D.Paragraph({ children: [new D.TextRun({ text: "▸ " + sm.textContent.trim(), bold: true })], spacing: { before: 120, after: 60 } }));
+          var bd = n.querySelector(".acc-b") || n; var tmp = []; [].forEach.call(bd.childNodes, function(c){ if (c !== sm) tmp.push(c); }); var holder = document.createElement("div"); tmp.forEach(function(c){ holder.appendChild(c.cloneNode(true)); }); blocks(holder, out); return; }
+        if (tg === "DIV" && /\bnote\b/.test(cl)){ var k = (cl.match(/\b(info|tip|warn|danger)\b/) || [0, "info"])[1], inner = [];
+          var copy = n.cloneNode(true), nt = copy.querySelector(".nt"); if (nt){ inner.push(new D.Paragraph({ children: [new D.TextRun({ text: nt.textContent.trim(), bold: true })] })); nt.remove(); }
+          if (isInlineOnly(copy)){ var pp = para(copy); if (pp) inner.push(pp); } else blocks(copy, inner); out.push(boxed(inner, NOTE[k])); out.push(new D.Paragraph("")); return; }
+        if (tg === "DL"){ var rows2 = [].slice.call(n.querySelectorAll(":scope > div")).map(function(r){ var dt = r.querySelector("dt"), dd = r.querySelector("dd"); return new D.TableRow({ children: [new D.TableCell({ children: [new D.Paragraph({ children: [new D.TextRun({ text: dt ? dt.textContent.trim() : "", bold: true })] })], shading: { fill: "F3F4F6", type: D.ShadingType.CLEAR, color: "auto" }, width: { size: 25, type: D.WidthType.PERCENTAGE } }), new D.TableCell({ children: dd ? cellKids(dd) : [new D.Paragraph("")] })] }); });
+          if (rows2.length){ out.push(new D.Table({ width: { size: 100, type: D.WidthType.PERCENTAGE }, rows: rows2 })); out.push(new D.Paragraph("")); } return; }
+        if (tg === "H4" || (tg === "DIV" && /kv-card\b/.test(cl) && false)) return;
+        if (tg === "DIV" || tg === "SECTION" || tg === "ARTICLE" || tg === "SPAN" && !isInlineOnly(n)){ if (isInlineOnly(n)){ var pd = para(n); if (pd) out.push(pd); } else blocks(n, out); return; }
+        var pi = para(n); if (pi) out.push(pi);
+      });
+      return out;
+    }
+    var t = document.createElement("template"); t.innerHTML = cleanHtml(html || ""); var host = document.createElement("div"); host.appendChild(t.content.cloneNode(true));
+    return blocks(host, []);
+  }
+  async function manualDocx(D, c, pages){
+    var list = flatPages(pages), kids = [], lastGrp = null;
+    kids.push(new D.Paragraph({ text: c.name + " 매뉴얼", heading: D.HeadingLevel.TITLE }));
+    kids.push(new D.Paragraph({ children: [new D.TextRun({ text: "HRM팀 노무관리파트 업무포털에서 내려받음 · " + todayStr() + " · 문서 " + list.length + "개", color: "6B7280", size: 18 })] }));
+    kids.push(new D.TableOfContents("목차", { hyperlink: true, headingStyleRange: "1-3" }));
+    kids.push(new D.Paragraph({ children: [new D.TextRun({ text: "※ 목차가 비어 보이면 Word에서 목차를 마우스 오른쪽 버튼 › 「필드 업데이트」를 누르세요.", color: "6B7280", size: 18 })] }));
+    list.forEach(function(p){
+      if (p.grp !== lastGrp){ lastGrp = p.grp; kids.push(new D.Paragraph({ text: p.grp || "기타", heading: D.HeadingLevel.HEADING_1, pageBreakBefore: true })); }
+      var depth = tocDepth(list, p), lv = Math.min(4, 1 + depth);
+      kids.push(new D.Paragraph({ text: p.title, heading: [D.HeadingLevel.HEADING_1, D.HeadingLevel.HEADING_2, D.HeadingLevel.HEADING_3, D.HeadingLevel.HEADING_4, D.HeadingLevel.HEADING_5][lv] }));
+      if (p.lead) kids.push(new D.Paragraph({ children: [new D.TextRun({ text: p.lead, italics: true, color: "4B5563" })] }));
+      kids.push(new D.Paragraph({ children: [new D.TextRun({ text: "최종 수정 " + String(p.updated_at || "").slice(0, 10) + (p.updated_by ? " · " + p.updated_by : ""), color: "9CA3AF", size: 16 })] }));
+      try { htmlToDocx(D, p.body_html || "", lv + 1).forEach(function(k){ kids.push(k); }); } catch(e){ kids.push(new D.Paragraph({ children: [new D.TextRun({ text: "[변환 오류: " + e.message + "]", color: "B91C1C" })] })); }
+    });
+    var doc = new D.Document({ creator: "HRM 노무관리파트 업무포털", title: c.name + " 매뉴얼", features: { updateFields: true },
+      styles: { default: { document: { run: { font: "맑은 고딕", size: 21 } } } },
+      sections: [{ properties: { page: { margin: { top: 1134, bottom: 1134, left: 1134, right: 1134 } } }, children: kids }] });
+    return D.Packer.toBlob(doc);
+  }
+  function fieldLabels(cat, menu){ var m = {}; Object.keys(REC_DEF).forEach(function(k){ var d = REC_DEF[k]; if (d.menu === menu && d.fields) d.fields.forEach(function(f){ if (!m[f[0]]) m[f[0]] = f[1]; }); }); return m; }
+  function flatVal(v){ if (v == null) return ""; if (typeof v === "object") return JSON.stringify(v); return v; }
+  function sheetFromRows(rows, labels, extraCols){
+    var keys = []; rows.forEach(function(r){ Object.keys(r).forEach(function(k){ if (keys.indexOf(k) < 0) keys.push(k); }); });
+    var pref = Object.keys(labels || {}); keys.sort(function(a, b){ var ia = pref.indexOf(a), ib = pref.indexOf(b); return (ia < 0 ? 999 : ia) - (ib < 0 ? 999 : ib); });
+    var aoa = [keys.map(function(k){ return (labels && labels[k]) || k; })].concat(rows.map(function(r){ return keys.map(function(k){ var v = flatVal(r[k]); return typeof v === "string" && v.length > 32000 ? v.slice(0, 32000) : v; }); }));
+    var ws = XLSX.utils.aoa_to_sheet(aoa); ws["!cols"] = keys.map(function(k){ return { wch: /content|note|body|summary|question|result/.test(k) ? 50 : 14 }; }); return ws;
+  }
+  function collectPaths(o, out){ if (!o || typeof o !== "object") return out; if (Array.isArray(o)){ o.forEach(function(x){ collectPaths(x, out); }); return out; }
+    if (typeof o.path === "string" && o.path && !/^https?:/.test(o.path)) out.push({ path: o.path, name: o.name || o.path.split("/").pop() });
+    Object.keys(o).forEach(function(k){ if (k !== "path") collectPaths(o[k], out); }); return out; }
+  async function exportAll(opt, log){
+    log("필요한 도구를 불러오는 중…");
+    await loadLib("https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js", function(){ return !!window.JSZip; });
+    if (opt.manual) await loadLib("https://cdn.jsdelivr.net/npm/docx@8.5.0/build/index.umd.js", function(){ return !!window.docx; });
+    if (!window.XLSX) throw new Error("엑셀 도구를 불러오지 못했습니다. 새로고침 후 다시 시도하세요.");
+    var zip = new JSZip(), stamp = todayStr(), root = zip.folder("HRM노무관리파트_업무포털_" + stamp);
+    log("데이터를 읽는 중…");
+    var T = {}, tables = [["portal_pages", "sort"], ["portal_records", "created_at"], ["portal_org", "sort"], ["portal_faq", "sort"], ["portal_events", "start_date"], ["portal_staff", "sort"], ["portal_att_settings"], ["portal_att_months"], ["portal_att_mails"], ["portal_access", "email"]];
+    for (var i = 0; i < tables.length; i++){ try { T[tables[i][0]] = await fetchAllRows(tables[i][0], tables[i][1]); } catch(e){ T[tables[i][0]] = []; log("· " + e.message + " (건너뜀)"); } }
+    var pages = T.portal_pages, recs = T.portal_records.filter(function(x){ return !(x.cat === "att" && x.menu === "_backup"); });
+    if (opt.manual){
+      var mf = root.folder("1_매뉴얼(Word)"), cats = CATS.filter(function(c){ return pages.some(function(p){ return p.cat === c.id && p.menu === "manual"; }); });
+      for (var j = 0; j < cats.length; j++){ var c = cats[j], ps = pages.filter(function(p){ return p.cat === c.id && p.menu === "manual"; }).sort(function(a, b){ return a.grp_sort - b.grp_sort || a.sort - b.sort; });
+        log("매뉴얼 Word 만드는 중… " + c.name + " (" + ps.length + "개 문서)");
+        mf.file(pad(j + 1) + "_" + safeName(c.name) + " 매뉴얼.docx", await manualDocx(window.docx, c, ps)); }
+    }
+    if (opt.data){
+      log("현황 자료 엑셀 만드는 중…");
+      var df = root.folder("2_현황자료(Excel)"), byCat = {};
+      recs.forEach(function(x){ (byCat[x.cat] = byCat[x.cat] || []).push(x); });
+      Object.keys(byCat).forEach(function(cat){ var c = catById(cat), wb = XLSX.utils.book_new(), groups = {};
+        byCat[cat].forEach(function(x){ var k = x.menu + (x.data && x.data.list ? "·" + x.data.list : ""); (groups[k] = groups[k] || []).push(x); });
+        Object.keys(groups).sort().forEach(function(k){ var menu = k.split("·")[0], c2 = c && c.menus.filter(function(m){ return m[0] === menu; })[0], nm = (c2 ? c2[1] : menu) + (k.indexOf("·") > 0 ? "·" + k.split("·")[1] : "");
+          var rows = groups[k].map(function(x){ return Object.assign({}, x.data, { _등록일: String(x.created_at || "").slice(0, 10), _수정일: String(x.updated_at || "").slice(0, 10), _수정자: x.updated_by || "" }); });
+          var sn = safeName(nm).replace(/[\[\]]/g, "").slice(0, 28), base = sn, q = 2; while (wb.SheetNames.indexOf(sn) >= 0) sn = base + "(" + (q++) + ")";
+          XLSX.utils.book_append_sheet(wb, sheetFromRows(rows, fieldLabels(cat, menu)), sn); });
+        df.file(safeName(c ? c.name : cat === "home" ? "홈(법령정보 등)" : cat) + ".xlsx", XLSX.write(wb, { type: "array", bookType: "xlsx" })); });
+      var wb2 = XLSX.utils.book_new();
+      [["업무분장", T.portal_org], ["FAQ", T.portal_faq], ["캘린더", T.portal_events], ["담당자 목록", T.portal_staff], ["근태 설정", T.portal_att_settings], ["근태 월별", T.portal_att_months], ["근태 메일", T.portal_att_mails]].forEach(function(s){ if (s[1] && s[1].length) XLSX.utils.book_append_sheet(wb2, sheetFromRows(s[1], {}), s[0]); });
+      if (wb2.SheetNames.length) df.file("홈·근태 기타 자료.xlsx", XLSX.write(wb2, { type: "array", bookType: "xlsx" }));
+    }
+    if (opt.files){
+      var paths = collectPaths([recs, T.portal_faq, T.portal_att_months, T.portal_org], []), seen = {}, ff = root.folder("3_첨부파일"), ok = 0, fail = 0;
+      paths = paths.filter(function(p){ if (seen[p.path]) return false; seen[p.path] = 1; return true; });
+      for (var k = 0; k < paths.length; k++){ if (k % 5 === 0) log("첨부파일 받는 중… " + (k + 1) + " / " + paths.length);
+        try { var dl = await sb.storage.from(BUCKET).download(paths[k].path); if (dl.error) throw dl.error; ff.file(paths[k].path.split("/").map(safeName).join("/"), dl.data); ok++; } catch(e){ fail++; } }
+      log("첨부파일 " + ok + "개" + (fail ? " (받지 못한 파일 " + fail + "개)" : ""));
+    }
+    if (opt.json){ var jf = root.folder("4_원본데이터(JSON)"); Object.keys(T).forEach(function(k){ jf.file(k + ".json", JSON.stringify(k === "portal_access" ? T[k].map(function(u){ return { email: u.email, name: u.name, team: u.team, perms: u.perms }; }) : T[k], null, 1)); }); }
+    root.file("읽어보기.txt", "HRM 노무관리파트 업무포털 전체 내려받기 (" + stamp + ")\r\n\r\n1_매뉴얼(Word): 카테고리별 매뉴얼. Word에서 바로 복사·수정할 수 있습니다. PDF가 필요하면 Word에서 「다른 이름으로 저장 › PDF」.\r\n   목차는 Word에서 목차를 마우스 오른쪽 버튼 › 필드 업데이트를 누르면 채워집니다.\r\n2_현황자료(Excel): 카테고리별 엑셀, 메뉴(목록)별 시트. 열 제목이 영문인 칸은 계산 결과 등 보조 값입니다.\r\n3_첨부파일: 기록·문서에 올린 원본 파일(저장소 경로 그대로).\r\n4_원본데이터(JSON): 다른 시스템으로 옮기거나 복원할 때 쓰는 전체 데이터.\r\n\r\n※ 인사 개인정보가 들어 있으니 보관·전달에 주의하세요.\r\n");
+    log("ZIP 파일로 묶는 중…");
+    var blob = await zip.generateAsync({ type: "blob", compression: "DEFLATE" }, function(m){ if (m.percent && Math.round(m.percent) % 20 === 0) log("ZIP 파일로 묶는 중… " + Math.round(m.percent) + "%"); });
+    var a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "HRM노무관리파트_업무포털_전체_" + stamp + ".zip"; document.body.appendChild(a); a.click(); setTimeout(function(){ URL.revokeObjectURL(a.href); a.remove(); }, 4000);
+    logp("admin", "export-all", [opt.manual ? "manual" : "", opt.data ? "data" : "", opt.files ? "files" : "", opt.json ? "json" : ""].filter(Boolean).join(",") + " " + Math.round(blob.size / 1024) + "KB");
+    log("완료: " + Math.round(blob.size / 1024 / 1024 * 10) / 10 + "MB 파일을 내려받았습니다.");
+  }
+
   async function renderAdmin(){
     app.innerHTML = shell('<div class="cat-head"><div class="crumb"><a href="#/">홈</a> › 권한 관리</div><h1>권한 관리</h1></div><div class="cat-wrap"><div class="cat-main" id="am"><p class="hint">불러오는 중…</p></div></div>', "권한 관리");
     wireShell();
@@ -4016,6 +4167,13 @@
       staff.map(function(s){ return '<tr><td class="num">' + s.sort + '</td><td>' + chip(s.name) + '</td><td>' + esc(s.team || "") + '</td><td>' + (s.active ? "사용" : "숨김") + '</td><td><button class="btn sm" data-s="' + esc(s.name) + '">수정</button></td></tr>'; }).join("") + '</tbody></table></section>' +
       '<section class="panel"><div class="panel-head"><h2>최근 변경 이력</h2></div><div id="logBox" class="log">불러오는 중…</div></section>';
     $("#am").innerHTML = h;
+    $("#am").insertAdjacentHTML("afterbegin", '<section class="panel" id="expP"><div class="panel-head"><div><h2>전체 내려받기</h2><div class="desc">포털의 매뉴얼과 쌓인 자료를 ZIP 파일 하나로 내려받습니다. 포털을 쓰지 않게 되거나 백업이 필요할 때 쓰세요. 인사 개인정보가 들어 있으니 보관에 주의하세요.</div></div></div>' +
+      '<div class="exp-opts"><label><input type="checkbox" id="exM" checked> <b>매뉴얼</b> — 카테고리별 <b>Word(.docx)</b>, 복사·수정 가능(PDF는 Word에서 다른 이름으로 저장)</label><label><input type="checkbox" id="exD" checked> <b>현황 자료</b> — 카테고리별 Excel(목록별 시트)</label>' +
+      '<label><input type="checkbox" id="exF"> <b>첨부파일</b> 원본 — 파일이 많으면 오래 걸리고 용량이 큽니다</label><label><input type="checkbox" id="exJ" checked> <b>원본 데이터(JSON)</b> — 다른 시스템으로 옮기거나 복원할 때</label></div>' +
+      '<div style="display:flex;gap:10px;align-items:center;margin-top:10px"><button class="btn primary" id="exGo">⬇ 전체 내려받기 (ZIP)</button><span class="hint" id="exLog" style="font-size:12.5px"></span></div></section>');
+    $("#exGo").onclick = async function(){ var b = this, o = { manual: $("#exM").checked, data: $("#exD").checked, files: $("#exF").checked, json: $("#exJ").checked };
+      if (!o.manual && !o.data && !o.files && !o.json){ alert("내려받을 항목을 하나 이상 고르세요."); return; }
+      b.disabled = true; try { await exportAll(o, function(t){ $("#exLog").textContent = t; }); } catch(e){ $("#exLog").textContent = "실패: " + (e.message || e); alert("내려받지 못했습니다: " + (e.message || e)); } b.disabled = false; };
     $("#uAdd").onclick = function(){ openUser(null, groups); };
     $all("[data-u]").forEach(function(b){ b.onclick = function(){ openUser(users.filter(function(u){ return u.email === b.dataset.u; })[0], groups); }; });
     $("#sAdd").onclick = function(){ openStaff(null, staff); };
