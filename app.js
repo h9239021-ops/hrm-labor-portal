@@ -4074,7 +4074,7 @@
   }
   async function manualDocx(D, c, pages){
     var list = flatPages(pages), kids = [], lastGrp = null;
-    kids.push(new D.Paragraph({ text: c.name + " 매뉴얼", heading: D.HeadingLevel.TITLE }));
+    var mName = /매뉴얼/.test(c.name) ? c.name : c.name + " 매뉴얼"; kids.push(new D.Paragraph({ text: mName, heading: D.HeadingLevel.TITLE }));
     kids.push(new D.Paragraph({ children: [new D.TextRun({ text: "HRM팀 노무관리파트 업무포털에서 내려받음 · " + todayStr() + " · 문서 " + list.length + "개", color: "6B7280", size: 18 })] }));
     kids.push(new D.TableOfContents("목차", { hyperlink: true, headingStyleRange: "1-3" }));
     kids.push(new D.Paragraph({ children: [new D.TextRun({ text: "※ 목차가 비어 보이면 Word에서 목차를 마우스 오른쪽 버튼 › 「필드 업데이트」를 누르세요.", color: "6B7280", size: 18 })] }));
@@ -4086,7 +4086,7 @@
       kids.push(new D.Paragraph({ children: [new D.TextRun({ text: "최종 수정 " + String(p.updated_at || "").slice(0, 10) + (p.updated_by ? " · " + p.updated_by : ""), color: "9CA3AF", size: 16 })] }));
       try { htmlToDocx(D, p.body_html || "", lv + 1).forEach(function(k){ kids.push(k); }); } catch(e){ kids.push(new D.Paragraph({ children: [new D.TextRun({ text: "[변환 오류: " + e.message + "]", color: "B91C1C" })] })); }
     });
-    var doc = new D.Document({ creator: "HRM 노무관리파트 업무포털", title: c.name + " 매뉴얼", features: { updateFields: true },
+    var doc = new D.Document({ creator: "HRM 노무관리파트 업무포털", title: mName, features: { updateFields: true },
       styles: { default: { document: { run: { font: "맑은 고딕", size: 21 } } } },
       sections: [{ properties: { page: { margin: { top: 1134, bottom: 1134, left: 1134, right: 1134 } } }, children: kids }] });
     return D.Packer.toBlob(doc);
@@ -4116,7 +4116,7 @@
       var mf = root.folder("1_매뉴얼(Word)"), cats = CATS.filter(function(c){ return pages.some(function(p){ return p.cat === c.id && p.menu === "manual"; }); });
       for (var j = 0; j < cats.length; j++){ var c = cats[j], ps = pages.filter(function(p){ return p.cat === c.id && p.menu === "manual"; }).sort(function(a, b){ return a.grp_sort - b.grp_sort || a.sort - b.sort; });
         log("매뉴얼 Word 만드는 중… " + c.name + " (" + ps.length + "개 문서)");
-        mf.file(pad(j + 1) + "_" + safeName(c.name) + " 매뉴얼.docx", await manualDocx(window.docx, c, ps)); }
+        mf.file(pad(j + 1) + "_" + safeName(/매뉴얼/.test(c.name) ? c.name : c.name + " 매뉴얼") + ".docx", await manualDocx(window.docx, c, ps)); }
     }
     if (opt.data){
       log("현황 자료 엑셀 만드는 중…");
