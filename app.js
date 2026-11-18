@@ -1972,6 +1972,9 @@
       '<div class="rec-tools">' + (def.fields.some(function(z){ return z[0] === "prior"; }) ? '<label class="hint" style="font-size:12.5px;display:inline-flex;gap:4px;align-items:center"><input type="checkbox" id="gHidePrior"' + (f.hidePrior ? " checked" : "") + '>입사 전 이력 숨기기</label>' : '') + (g.groups ? '<select id="gGrp"><option value="">전체 제도</option>' + g.groups.map(function(z){ return '<option' + (z[0] === f.grp ? " selected" : "") + '>' + esc(z[0]) + '</option>'; }).join("") + '</select>' : '') + (hasOrg ? '<select id="gOrg"><option value="">전체 소속</option>' + orgs.map(function(o){ return '<option' + (o === f.org ? " selected" : "") + '>' + esc(o) + '</option>'; }).join("") + '</select>' : '') +
       (hasTeam ? '<select id="gTeam"><option value="">전체 팀</option>' + teams.map(function(t){ return '<option' + (t === f.team ? " selected" : "") + '>' + esc(t) + '</option>'; }).join("") + '</select>' : '') +
       (g.status ? '<select id="gSt"><option value="">전체 상태</option>' + sts.map(function(s){ return '<option' + (s === f.st ? " selected" : "") + '>' + esc(s) + '</option>'; }).join("") + '</select>' : '') +
+      (g.yearSel ? '<select id="gYear"><option value="">전체 연도</option>' + ovUniq(all.map(function(x){ return String(x.data[g.sort || "start"] || "").slice(0, 4); }).filter(function(y){ return /^\d{4}$/.test(y); })).reverse().map(function(y){ return '<option value="' + y + '"' + (y === f.year ? " selected" : "") + '>' + y + '년</option>'; }).join("") + '</select>' : '') +
+      (g.typeSel ? '<select id="gType"><option value="">전체 ' + esc(genColLabel(def, g.typeF)) + '</option>' + shownTypes.map(function(t){ return '<option' + (t === f.type ? " selected" : "") + '>' + esc(t) + '</option>'; }).join("") + '</select>' : '') +
+      (g.sortOpts ? '<select id="gSort" title="정렬 순서">' + [["", esc(fLabel(def, g.sort || "start")) + " 최신순"]].concat(g.sortOpts.map(function(k){ return [k, esc(genColLabel(def, k)) + "별"]; })).map(function(o){ return '<option value="' + o[0] + '"' + ((f.sortBy || "") === o[0] ? " selected" : "") + '>정렬: ' + o[1] + '</option>'; }).join("") + '</select>' : '') +
       (issOn && f.iss ? issueLvSel(f, issueCount(key, all)) : '') + '<input type="search" id="gQ" placeholder="검색" value="' + esc(f.q) + '"><span class="grow"></span><span class="hint" id="gCnt" style="font-size:12px"></span>' +
       '<button class="btn sm" id="gCsv">CSV 내려받기</button>' + (w ? '<button class="btn sm primary" id="gAdd">+ ' + esc(def.noun) + ' 추가</button>' : '') + '</div><div id="gTbl"></div>';
     var list = [];
@@ -1980,8 +1983,12 @@
       var q = f.q.trim();
       var grpT = f.grp && g.groups ? (g.groups.filter(function(z){ return z[0] === f.grp; })[0] || [0, null])[1] : null;
       list = all.filter(function(x){ var d = x.data; return (!issOn || issueMatch(key, x, f)) && (!f.hidePrior || !d.prior) && (!grpT || grpT.indexOf(d[g.typeF]) >= 0) && (!f.type || String(d[g.typeF] || "").split(",").map(function(s){ return s.trim(); }).indexOf(f.type) >= 0) && (!f.org || d.org === f.org) && (!f.team || d.team === f.team) && (!f.st || genStatus(def, d) === f.st) &&
+        (!f.year || String(d[g.sort || "start"] || "").slice(0, 4) === f.year) &&
         (!q || def.fields.map(function(z){ return d[z[0]]; }).join(" ").indexOf(q) >= 0); })
-        .sort(defKey === "laws" ? lawCmp : function(a, b){ var k = g.sort || "start"; return String(b.data[k] || "").localeCompare(String(a.data[k] || "")) || String(a.data[g.nameF] || "").localeCompare(String(b.data[g.nameF] || "")); });
+        .sort(defKey === "laws" ? lawCmp : function(a, b){ var k = g.sort || "start";
+          if (f.sortBy){ var sb2 = f.sortBy, va = sb2 === "_status" ? genStatus(def, a.data) : String(a.data[sb2] || ""), vb = sb2 === "_status" ? genStatus(def, b.data) : String(b.data[sb2] || "");
+            if (va !== vb){ if (!va) return 1; if (!vb) return -1; var fk = sb2 === "_status" ? g.status : sb2, opts = (def.fields.filter(function(z){ return z[0] === fk; })[0] || [])[3]; if (Array.isArray(opts)){ var ia = opts.indexOf(va), ib = opts.indexOf(vb); if (ia >= 0 && ib >= 0) return ia - ib; } return va.localeCompare(vb); } }
+          return String(b.data[k] || "").localeCompare(String(a.data[k] || "")) || String(a.data[g.nameF] || "").localeCompare(String(b.data[g.nameF] || "")); });
       $("#gCnt").textContent = list.length + "건";
       var cols2 = g.cols.concat(issOn && f.iss ? ["_issue"] : []);
       function cell(k, x){ if (k === "_issue") return issueBadges(recIssues(key, x)); var h2 = genCell(def, k, x.data); return issOn && k === g.nameF ? h2 + orgChangedBadge(nm(x.data)) : h2; }
@@ -2000,6 +2007,9 @@
     if ($("#gOrg")) $("#gOrg").onchange = function(e){ f.org = e.target.value; f.team = ""; rer(); };
     if ($("#gTeam")) $("#gTeam").onchange = function(e){ f.team = e.target.value; draw(); };
     if ($("#gSt")) $("#gSt").onchange = function(e){ f.st = e.target.value; draw(); };
+    if ($("#gYear")) $("#gYear").onchange = function(e){ f.year = e.target.value; draw(); };
+    if ($("#gType")) $("#gType").onchange = function(e){ f.type = e.target.value; rer(); };
+    if ($("#gSort")) $("#gSort").onchange = function(e){ f.sortBy = e.target.value; draw(); };
     $("#gQ").addEventListener("input", function(e){ f.q = e.target.value; draw(); });
     $("#gCsv").onclick = function(){ downloadCsv(def.title, def.fields.map(function(z){ return [z[1], function(x){ return x.data[z[0]]; }]; }).concat(g.status ? [["상태", function(x){ return genStatus(def, x.data); }]] : []).concat(issOn ? [["이상 사유", function(x){ return recIssues(key, x).map(function(i){ return issueCat(i.t) + ": " + i.t; }).join(" / "); }]] : []), list); };
     if ($("#gAdd")) $("#gAdd").onclick = function(){ openRecord(c, defKey, null, rer); };
@@ -2655,7 +2665,7 @@
       ["company", "회사", "text"], ["org", "사업부", "text"], ["reporter", "신고인", "text"], ["victim", "피해 근로자", "text"], ["accused", "행위자(피신고인)", "text"], ["investigator", "조사자", "text"],
       ["status", "진행 상태", "select", ["접수", "조사 중", "인사위원회", "노동위원회 진행", "종결"]], ["result", "처리 결과", "select", ["해당(인정)", "미해당(혐의 없음)", "자진취하", "당사자 합의", "징계", "권고사직", "각하", "화해", "진행 중"]],
       ["action", "조치 내용", "text"], ["folder", "자료 폴더", "text"], ["summary", "사건 개요·주장 행위", "textarea"], ["note", "비고", "textarea"]],
-    gen: { typeF: "type", nameF: "target", status: "status", sort: "start", files: true, cols: ["type", "target", "start", "org", "accused", "result", "action", "_files", "_status"],
+    gen: { typeF: "type", nameF: "target", status: "status", sort: "start", files: true, yearSel: true, typeSel: true, sortOpts: ["org", "result", "_status", "type"], cols: ["type", "target", "start", "org", "accused", "result", "action", "_files", "_status"],
       hint: "직장 내 괴롭힘·성희롱 신고, 비위행위 조사, 노동위원회 사건의 접수·처리 현황입니다. 민감 정보이므로 권한이 있는 사람만 볼 수 있습니다.",
       stats: { date: "start", dims: [["사건 유형별", "type"], ["처리 결과별", "result"], ["사업부별", "org"], ["진행 상태별", "status"], ["회사별", "company"]], duration: ["start", "end", "평균 처리 기간"],
         extra: function(rows){
