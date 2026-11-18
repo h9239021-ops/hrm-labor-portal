@@ -1295,7 +1295,7 @@
     else if (c.id === "att" && menu === "automail"){ app.innerHTML = shell(head + '<div class="cat-wrap"><div class="cat-main" id="cm"></div></div>', c.name); renderAutoMail(c, sub); }
     else if (c.id === "leave" && menu === "annual"){ app.innerHTML = shell(head + '<div class="cat-wrap"><div class="cat-main" id="cm"></div></div>', c.name); renderAnnual(c, sub); }
     else if (c.id === "rules" && menu === "docs"){ app.innerHTML = shell(head + '<div class="cat-wrap"><div class="cat-main" id="cm"></div></div>', c.name); renderRules(c, sub); }
-    else if (GEN_MENU[key]){ app.innerHTML = shell(head + '<div class="cat-wrap"><div class="cat-main" id="cm"></div></div>', c.name); if (key === "case.cases" && can("case.discipline", "read")) loadRecs("case", "discipline").catch(function(){}).then(function(){ renderGen(c, GEN_MENU[key], sub); }); else renderGen(c, GEN_MENU[key], sub); }
+    else if (GEN_MENU[key]){ app.innerHTML = shell(head + '<div class="cat-wrap"><div class="cat-main" id="cm"></div></div>', c.name); if ((key === "case.cases" && can("case.discipline", "read")) || (key === "case.discipline" && can("case.cases", "read"))) loadRecs("case", key === "case.cases" ? "discipline" : "cases").catch(function(){}).then(function(){ renderGen(c, GEN_MENU[key], sub); }); else renderGen(c, GEN_MENU[key], sub); }
     else if (c.id === "att" && menu === "violations"){ app.innerHTML = shell(head + '<div class="cat-wrap"><div class="cat-main" id="cm"></div></div>', c.name); renderViol(c, sub); }
     else {
       app.innerHTML = shell(head + '<div class="cat-wrap"><div class="cat-main"><div class="soon-box"><div class="ic">' + c.ic + '</div><h2>' + esc(c.name) + ' 메뉴는 준비 중입니다</h2>' +
@@ -1625,6 +1625,9 @@
         if (f[2] === "stepsel") return '<label>' + f[1] + '<select name="step"><option value="">자동(기준 단계)</option>' + STEP.map(function(s, i){ return i ? '<option value="' + i + '"' + (String(v) === String(i) ? " selected" : "") + '>' + s + '</option>' : ''; }).join("") + '</select></label>';
         if (f[2] === "exsel") return '<label>' + f[1] + '<select name="exclude"><option value="">포함</option><option value="1"' + (v ? " selected" : "") + '>제외</option></select></label>';
         if (f[2] === "textarea") return '<label class="full">' + f[1] + '<textarea name="' + f[0] + '" rows="4">' + esc(v) + '</textarea></label>';
+        if (f[2] === "caseref"){ var cs = (S.recs["case.cases"] || []).slice().sort(function(a, b){ return String(b.data.start || "").localeCompare(String(a.data.start || "")); });
+          return '<label class="full">' + f[1] + ' <span class="hint" style="font-weight:500">사건명·피신고인·사업부로 검색해 고르면 사건 현황과 연결됩니다' + (cs.length ? '' : ' (사건 현황을 볼 권한이 없거나 등록된 사건이 없어 직접 입력만 됩니다)') + '</span><input name="' + f[0] + '" list="caseRefList" value="' + esc(v) + '" placeholder="사건 검색" autocomplete="off"><datalist id="caseRefList">' +
+            cs.map(function(x){ var e = x.data; return '<option value="' + esc(caseRefLabel(x)) + '">' + esc([e.type, e.accused ? "피신고인 " + e.accused : "", e.org, e.status].filter(Boolean).join(" · ")) + '</option>'; }).join("") + '</datalist></label>'; }
         return '<label>' + f[1] + '<input name="' + f[0] + '" type="' + (f[2] === "number" ? "number\" step=\"0.01" : f[2]) + '" value="' + esc(v) + '"' + (f[3] && typeof f[3] === "string" ? ' placeholder="' + esc(f[3]) + '"' : '') + '></label>';
       }).join("") +
       '<div class="form-actions">' + (!isNew && can(key, "edit") ? '<button type="button" class="btn danger" id="rDel" style="margin-right:auto">삭제</button>' : '') + '<button type="button" class="btn ghost" id="rNo">취소</button><button class="btn primary">저장</button></div></form>', "wide");
@@ -1640,6 +1643,8 @@
       e.preventDefault(); var fd = new FormData(e.target), data = Object.assign({}, x ? x.data : {});
       def.fields.forEach(function(f){ var v = f[2] === "multi" ? fd.getAll(f[0]).join(", ") : fd.get(f[0]); v = v == null ? "" : String(v).trim(); if (f[2] === "number" && v !== "") v = +v; if (f[2] === "exsel") v = v ? true : ""; if (v !== "") data[f[0]] = v; else delete data[f[0]]; });
       if (def.list) data.list = def.list;
+      if (defKey === "discipline"){ var hit = data.case_ref ? (S.recs["case.cases"] || []).filter(function(x){ return caseRefLabel(x) === data.case_ref || x.id === data.case_id && (x.data.target || "") === data.case_ref; })[0] : null;
+        if (hit){ data.case_id = hit.id; data.case_ref = caseRefLabel(hit); } else delete data.case_id; }
       if (def.fields[0][2] === "multi" && !data[def.fields[0][0]]){ alert(def.fields[0][1] + "을(를) 하나 이상 고르세요."); return; }
       if (defKey === "violations" && data.quarter && !/^\d{4}-[1-4]Q$/.test(data.quarter)){ alert("분기는 2026-3Q 형식으로 입력하세요."); return; }
       if (REQ_FIELDS[defKey] || defKey === "worktypes"){ var miss = missingRequired(def, defKey, data); if (miss.length && !confirm("필수 항목이 비어 있습니다: " + miss.join(", ") + "\n\n그래도 저장할까요?")) return; }
@@ -1654,6 +1659,7 @@
       after();
     });
   }
+  function caseRefLabel(x){ var e = x.data || {}; return (e.target || "사건") + " (" + (e.start || "접수일 없음") + ")"; }
   function downloadCsv(name, cols, rows){
     var lines = [cols.map(function(c){ return c[0]; }).join(",")].concat(rows.map(function(r){ return cols.map(function(c){ var v = c[1](r); return '"' + String(v == null ? "" : v).replace(/"/g, '""') + '"'; }).join(","); }));
     var blob = new Blob(["﻿" + lines.join("\r\n")], { type: "text/csv;charset=utf-8" });
@@ -2563,11 +2569,12 @@
       (linkOn ? orgHistHtml(nm(d)) : "") + limHtml + kidHtml + lkHtml +
       (!lkHtml && hist.length > 1 ? '<h4 style="margin:16px 0 6px;font-size:13px">' + esc(d[g.nameF]) + ' 님의 ' + esc(def.noun) + ' 이력 (총 ' + hist.length + '건)</h4><div class="tbl-box" style="max-height:220px"><table class="rec compact" style="min-width:0"><thead><tr><th>구분</th><th>기간</th><th>일수</th><th>상태</th></tr></thead><tbody>' +
         hist.map(function(y){ return '<tr class="' + (y.id === x.id ? "cur" : "") + '"><td>' + esc(y.data[g.typeF] || "") + '</td><td>' + genCell(def, "_period", y.data) + '</td><td>' + (y.data.days ? esc(y.data.days) + "일" : "") + '</td><td>' + genCell(def, "_status", y.data) + '</td></tr>'; }).join("") + '</tbody></table></div>' : '') +
-      '<div class="modal-actions" style="margin-top:14px"><span class="hint" style="font-size:11.5px;margin-right:auto">' + esc(x.updated_by || x.created_by || "") + ' · ' + esc(String(x.updated_at || x.created_at || "").slice(0, 10)) + '</span>' + (canEd ? '<button class="btn primary" id="dEd">수정</button>' : '') + '</div>', lkHtml || limHtml || kidHtml || hist.length > 1 || long.length > 1 || g.files ? "wide" : "mid");
+      '<div class="modal-actions" style="margin-top:14px"><span class="hint" style="font-size:11.5px;margin-right:auto">' + esc(x.updated_by || x.created_by || "") + ' · ' + esc(String(x.updated_at || x.created_at || "").slice(0, 10)) + '</span>' + (defKey === "discipline" && d.case_id && (S.recs["case.cases"] || []).some(function(y){ return y.id === d.case_id; }) ? '<button class="btn" id="dCase">관련 사건 보기</button>' : '') + (canEd ? '<button class="btn primary" id="dEd">수정</button>' : '') + '</div>', lkHtml || limHtml || kidHtml || hist.length > 1 || long.length > 1 || g.files ? "wide" : "mid");
     $("#dx", m).onclick = closeModal;
     if (linkOn){ wireLinked(m, x.id, after); ensureLinked(m, function(){ genDetail(c, defKey, x, after); }); }
     function reopenG(){ after(); if ((S.recs[key] || []).indexOf(x) >= 0) genDetail(c, defKey, x, after); }
     if ($("#dEd", m)) $("#dEd", m).onclick = function(){ openRecord(c, defKey, x, reopenG); };
+    if ($("#dCase", m)) $("#dCase", m).onclick = function(){ var cx = S.recs["case.cases"].filter(function(y){ return y.id === d.case_id; })[0]; genDetail(c, "cases", cx, function(){ genDetail(c, defKey, x, after); }); };
     if (linkOn) wirePriorBtns(m, d, reopenG);
     $all("[data-open]", m).forEach(function(b){ b.onclick = function(){ openFile(files[+b.dataset.open].path); }; });
     $all("[data-rm]", m).forEach(function(b){ b.onclick = async function(){
@@ -2663,7 +2670,7 @@
   REC_DEF.cases = { menu: "cases", title: "사건 현황", noun: "사건",
     fields: [["type", "유형", "select", ["직장 내 괴롭힘", "직장 내 성희롱", "비위행위", "노동위원회"]], ["target", "사건명", "text"], ["start", "접수일", "date"], ["end", "종결일", "date"],
       ["company", "회사", "text"], ["org", "사업부", "text"], ["reporter", "신고인", "text"], ["victim", "피해 근로자", "text"], ["accused", "행위자(피신고인)", "text"], ["investigator", "조사자", "text"],
-      ["status", "진행 상태", "select", ["접수", "조사 중", "인사위원회", "노동위원회 진행", "종결"]], ["result", "처리 결과", "select", ["해당(인정)", "미해당(혐의 없음)", "자진취하", "당사자 합의", "징계", "권고사직", "각하", "화해", "진행 중"]],
+      ["status", "진행 상태", "select", ["접수", "조사 중", "인사위원회", "노동청 진행", "노동위원회 진행", "종결"]], ["result", "처리 결과", "select", ["해당(인정)", "미해당(혐의 없음)", "자진취하", "당사자 합의", "징계", "권고사직", "각하", "화해", "진행 중"]],
       ["action", "조치 내용", "text"], ["folder", "자료 폴더", "text"], ["summary", "사건 개요·주장 행위", "textarea"], ["note", "비고", "textarea"]],
     gen: { typeF: "type", nameF: "target", status: "status", sort: "start", files: true, yearSel: true, typeSel: true, sortOpts: ["org", "result", "_status", "type"], cols: ["type", "target", "start", "org", "accused", "result", "action", "_files", "_status"],
       hint: "직장 내 괴롭힘·성희롱 신고, 비위행위 조사, 노동위원회 사건의 접수·처리 현황입니다. 민감 정보이므로 권한이 있는 사람만 볼 수 있습니다.",
@@ -2676,8 +2683,8 @@
         } } } };
   REC_DEF.discipline = { menu: "discipline", title: "징계 이력", noun: "징계",
     fields: [["type", "징계 종류", "select", ["경고", "견책", "감봉", "정직", "강등", "해고", "권고사직", "포상"]], ["target", "성명", "text"], ["company", "회사", "text"], ["org", "사업부", "text"], ["team", "팀", "text"], ["rank", "직위", "text"],
-      ["start", "징계 일자", "date"], ["detail", "징계 내용", "text", "예: 감봉 1개월"], ["reason", "사유", "text"], ["committee", "인사위원회", "text", "개최일 등"], ["case_ref", "관련 사건", "text"], ["period", "대상 기간", "text"], ["note", "비고", "textarea"]],
-    gen: { typeF: "type", nameF: "target", status: null, sort: "start", files: true, cols: ["type", "target", "org", "start", "detail", "reason", "case_ref", "_files"], history: false,
+      ["start", "징계 일자", "date"], ["detail", "징계 내용", "text", "예: 감봉 1개월"], ["reason", "사유", "text"], ["committee", "인사위원회", "text", "개최일 등"], ["case_ref", "관련 사건", "caseref"], ["period", "대상 기간", "text"], ["appeal", "재심 신청", "select", ["신청", "미신청"]], ["appeal_date", "재심 신청일", "date"], ["appeal_result", "재심 결과", "select", ["진행 중", "원처분 유지", "감경", "취소"]], ["note", "비고", "textarea"]],
+    gen: { typeF: "type", nameF: "target", status: null, sort: "start", files: true, yearSel: true, typeSel: true, cols: ["type", "target", "org", "start", "detail", "reason", "case_ref", "appeal", "_files"], history: false,
       hint: "인사위원회 의결 등으로 확정된 징계·포상 이력입니다(상벌규정 서식 1 관리대장).",
       stats: { date: "start", dims: [["징계 종류별", "type"], ["사업부별", "org"], ["사유별", "reason"]] } } };
   REC_DEF.agenda = { menu: "agenda", title: "안건 정리", noun: "안건",
