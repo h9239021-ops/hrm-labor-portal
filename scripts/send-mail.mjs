@@ -3,6 +3,8 @@
 // "발송 대기" 상태인 메일을 SMTP로 보냅니다. 규칙이 꺼져 있으면 아무것도 만들지 않습니다.
 import { createClient } from "@supabase/supabase-js";
 import nodemailer from "nodemailer";
+import { createRequire } from "module";
+const MailCore = createRequire(import.meta.url)("../mailcore.js");   // 포털과 같은 치환 칸 · 받는 사람 결정 · 메일용 HTML
 
 const { SUPABASE_URL, SUPABASE_SERVICE_KEY, SMTP_USER, SMTP_PASS } = process.env;
 const SMTP_HOST = process.env.SMTP_HOST || "smtp.worksmobile.com";
@@ -58,15 +60,21 @@ function dueTargets(all, rule) {
   }
   return out;
 }
-function fill(tpl, d) {
-  const map = { "이름": d.target, "소속": d.org, "팀": d.team, "구분": d.type, "시작일": d.start, "종료일": d.end, "복직일": d.return_date || (d.end ? addDay(d.end, 1) : ""), "일수": d.days, "담당자": SENDER };
-  return String(tpl || "").replace(/\{([^}]+)\}/g, (m, k) => (map[k] != null && map[k] !== "" ? map[k] : (k in map ? "-" : m)));
+const CTX = { sender: SENDER, today };
+const fill = (tpl, d) => MailCore.fill(tpl, d, CTX);
+const bodyHtmlOf = (rule) => rule.body_html || String(rule.body || "").split(/\r?\n/).map((l) => "<p>" + (MailCore.esc(l) || "<br>") + "</p>").join("");
+// 받는 사람: 새 형식(rcpt_to) → 예전 고정 수신자(to) → 예전 기본값(기록의 개인 메일, 없으면 주소록)
+function rcpt(rule, d, which) {
+  if (which === "cc") return MailCore.resolve(rule.rcpt_cc || { extra: rule.cc || "" }, d, people);
+  if (rule.rcpt_to) return MailCore.resolve(rule.rcpt_to, d, people);
+  if (rule.to) return MailCore.resolve({ extra: rule.to }, d, people);
+  return MailCore.resolve(d.email ? { selfPersonal: true } : { self: true }, d, people);
 }
-function emailOf(people, d) {
-  if (d.email && /@/.test(d.email)) return d.email;
-  let l = people.filter((p) => p.data.target === d.target);
-  if (l.length > 1) { const o = l.filter((p) => (p.data.org || "") === (d.org || "")); if (o.length) l = o; }
-  return l[0] ? l[0].data.email || "" : "";
+function build(rule, d) {
+  const to = rcpt(rule, d, "to"), cc = rcpt(rule, d, "cc");
+  const html = MailCore.fill(bodyHtmlOf(rule), d, CTX, { html: true });
+  return { email: to.list.map((x) => x.email).join(", "), cc: cc.list.map((x) => x.email).join(", "), warn: to.missing.concat(cc.missing),
+    subject: fill(rule.subject, d), body: MailCore.htmlToText(html), body_html: MailCore.emailHtml(html) };
 }
 async function insert(data) { const r = await sb.from("portal_records").insert({ cat: "att", menu: "automail", data, created_by: "auto-mail", updated_by: "auto-mail" }).select("*"); if (r.error) throw r.error; return r.data[0]; }
 async function patch(x, p) { const data = { ...x.data, ...p }; const r = await sb.from("portal_records").update({ data, updated_by: "auto-mail", updated_at: new Date().toISOString() }).eq("id", x.id); if (r.error) throw r.error; x.data = data; }
@@ -84,9 +92,9 @@ for (const rx of rules) {
   for (const t of dueTargets(all, rule)) {
     const key = rx.id + "|" + t.rec.id + "|" + t.date;
     if (keys.has(key)) continue;
-    const d = t.rec.data, email = rule.to || emailOf(people, d);
-    const row = { list: "queue", key, rule_id: rx.id, rule_name: rule.target, rec_id: t.rec.id, target: d.target || "", org: d.org || "", email, cc: rule.cc || "", subject: fill(rule.subject, d), body: fill(rule.body, d), due: t.due,
-      status: !email ? "주소 필요" : rule.mode === "auto" ? "발송 대기" : "승인 대기" };
+    const d = t.rec.data, m = build(rule, d);
+    const row = { list: "queue", key, rule_id: rx.id, rule_name: rule.target, rec_id: t.rec.id, target: d.target || "", org: d.org || "", ...m, due: t.due,
+      status: !m.email ? "주소 필요" : rule.mode === "auto" ? "발송 대기" : "승인 대기" };
     if (DRY) { console.log("[dry] would queue:", rule.target, "→", row.target, row.status); continue; }
     queue.push(await insert(row)); keys.add(key); made++;
   }
@@ -95,8 +103,8 @@ for (const rx of rules) {
 for (const x of queue.filter((q) => q.data.status === "주소 필요")) {
   const rule = (am.find((r) => r.id === x.data.rule_id) || {}).data || {};
   const rec = [...all.wt, ...all.absence, ...all.leave].find((r) => r.id === x.data.rec_id);
-  const email = rule.to || (rec ? emailOf(people, rec.data) : "");
-  if (email && !DRY) await patch(x, { email, status: rule.mode === "auto" ? "발송 대기" : "승인 대기" }); else noaddr++;
+  const m = rec ? build(rule, rec.data) : null;
+  if (m && m.email && !DRY) await patch(x, { ...m, status: rule.mode === "auto" ? "발송 대기" : "승인 대기" }); else noaddr++;
 }
 // ── 월별 퇴직자 연차 정산 메일 (휴가 › 연차유급휴가 관리) ──
 // 급여일(25일, 주말·공휴일이면 직전 영업일) 기준 영업일 5일 전부터 급여일 전까지, 그달 퇴사자 정산 내역을 한 번 보낸다.
@@ -120,17 +128,16 @@ try {
   const inMail = (x) => x.data.mail && x.data.mail.month === ym && x.data.mail.status !== "실패";
   const pending = ann.filter((x) => x.data.list === "settle" && String(x.data.retire || "").slice(0, 7) === ym && !inMail(x)).sort((a, b) => String(a.data.retire).localeCompare(String(b.data.retire)));
   const first = !monthMails.length;
-  if (acfg && acfg.data.enabled && /@/.test(acfg.data.to || "") && today >= sd.send && today < sd.pay && (first || pending.length)) {
-    const ymL = ym.replace("-", "년 ") + "월", akey = "annual-settle|" + ym + "|" + (monthMails.length + 1), rows = pending;
-    const NL = "\n";
-    const text = ymL + " 퇴직자 연차 정산 내역" + (first ? "을" : " 추가분을") + " 공유드립니다. (급여일 " + sd.pay + " 기준)" + NL + NL +
-      (rows.length ? rows.map((o, i) => { const d = o.data, R = d.result || {}; return (i + 1) + ". " + d.target + " (" + [d.org, d.team].filter(Boolean).join(" ") + ")" + NL + "   입사 " + d.join + " / 퇴사 " + d.retire +
-        NL + "   입사일 기준 " + R.hTotal + "일 · 회계연도 기준 " + R.fTotal + "일 · 차이 " + R.diffPay + "일" + NL + "   퇴직연도 잔여 " + r2((+R.curF || 0) + (+R.curM || 0) - (+R.used || 0)) + "일 · 미사용 보상휴가 " + (d.comp === "" || d.comp == null ? "미입력(확인 필요)" : d.comp + "일") +
-        NL + "   ▶ 최종 지급 일수 " + R.final + "일" + (d.note ? NL + "   비고: " + d.note : ""); }).join(NL + NL) : "이번 달 퇴직자 정산 기록이 없습니다.");
-    const row = { list: "queue", kind: "annual-settle", month: ym, round: first ? "정기" : "추가", key: akey, rule_name: "퇴직자 연차 정산(월별)" + (first ? "" : " 추가분"), target: "퇴직자 " + rows.length + "명", org: "", email: acfg.data.to, cc: acfg.data.cc || "",
+  const hasTo = acfg && (acfg.data.rcpt_to ? !MailCore.specEmpty(acfg.data.rcpt_to) : /@/.test(acfg.data.to || ""));
+  if (acfg && acfg.data.enabled && hasTo && today >= sd.send && today < sd.pay && (first || pending.length)) {
+    const rows = pending, akey = "annual-settle|" + ym + "|" + (monthMails.length + 1);
+    const mm = MailCore.settleMail(ym, rows, sd.pay, acfg.data, !first);
+    const to = MailCore.resolve(acfg.data.rcpt_to || { extra: acfg.data.to || "" }, {}, people), cc = MailCore.resolve(acfg.data.rcpt_cc || { extra: acfg.data.cc || "" }, {}, people);
+    const row = { list: "queue", kind: "annual-settle", month: ym, round: first ? "정기" : "추가", key: akey, rule_name: "퇴직자 연차 정산(월별)" + (first ? "" : " 추가분"), target: "퇴직자 " + rows.length + "명", org: "",
+      email: to.list.map((x) => x.email).join(", "), cc: cc.list.map((x) => x.email).join(", "), warn: to.missing.concat(cc.missing),
       people: rows.map((o) => ({ id: o.id, target: o.data.target, org: o.data.org || "", retire: o.data.retire, final: (o.data.result || {}).final })),
-      subject: "[연차 정산]" + (first ? " " : "[추가] ") + ymL + " 퇴직자 연차 정산 내역 (" + rows.length + "명)", body: text, due: sd.send, status: "발송 대기" };
-    if (DRY) console.log("[dry] would queue annual settle mail:", row.round, ymL, rows.map((o) => o.data.target).join(", ") || "(0명)", "send", sd.send, "pay", sd.pay);
+      subject: mm.subject, body: mm.text, body_html: mm.emailHtml, due: sd.send, status: to.list.length ? "발송 대기" : "주소 필요" };
+    if (DRY) console.log("[dry] would queue annual settle mail:", row.round, ym, rows.map((o) => o.data.target).join(", ") || "(0명)", "send", sd.send, "pay", sd.pay);
     else {
       queue.push(await insert(row)); keys.add(akey); made++;
       for (const o of rows) await patch(o, { mail: { month: ym, key: akey, status: "발송 대기", queued: today } });
@@ -151,7 +158,7 @@ if (ready.length && !DRY) {
     const tr = nodemailer.createTransport({ host: SMTP_HOST, port: SMTP_PORT, secure: SMTP_PORT === 465, auth: { user: SMTP_USER, pass: SMTP_PASS } });
     for (const x of ready) {
       try {
-        await tr.sendMail({ from: `"${SENDER}" <${SMTP_USER}>`, to: x.data.email, cc: x.data.cc || undefined, subject: x.data.subject, text: x.data.body });
+        await tr.sendMail({ from: `"${SENDER}" <${SMTP_USER}>`, to: x.data.email, cc: x.data.cc || undefined, subject: x.data.subject, text: x.data.body, html: x.data.body_html || undefined });
         const at = new Date().toISOString();
         await patch(x, { status: "발송 완료", sent_at: at, error: "" }); sent++; await markPeople(x, "발송 완료", { sent_at: at });
       } catch (e) { const er = String(e.message || e).slice(0, 300); await patch(x, { status: "실패", error: er }); failed++; await markPeople(x, "실패", { error: er }); }

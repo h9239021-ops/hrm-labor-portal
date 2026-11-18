@@ -184,6 +184,30 @@
   .doc details.acc>summary{list-style:none;cursor:pointer;padding:12px 16px;font-weight:700;display:flex;justify-content:space-between;align-items:center;gap:10px;}
   .doc details.acc>summary::-webkit-details-marker{display:none;}
   .doc details.acc .acc-b{padding:0 16px 14px;}
+  /* v24: 자동 메일 편집 · 수신자 선택 */
+  .am-modal{width:min(1280px,96vw)!important;max-width:96vw!important;}
+  .am-edit{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,1fr);gap:18px;align-items:start;}
+  @media (max-width:1000px){ .am-edit{grid-template-columns:1fr;} }
+  .am-edit .ep-h2,.settle-mail .ep-h2{font-size:12px;font-weight:700;color:var(--ink-500);border-bottom:1px solid var(--line-soft);padding:8px 0 4px;margin:6px 0;}
+  .am-right{position:sticky;top:0;max-height:80vh;overflow:auto;}
+  .rcp{border:1px solid var(--line);border-radius:10px;padding:8px 10px;display:flex;flex-direction:column;gap:6px;background:var(--surface);}
+  .rcp-auto{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:12.5px;} .rcp-auto label{display:inline-flex;gap:5px;align-items:center;font-weight:500;}
+  .rcp-chips{display:flex;flex-wrap:wrap;gap:4px;} .rcp-chips:empty{display:none;}
+  .rcp-chip{display:inline-flex;align-items:center;gap:4px;background:var(--accent-050);border:1px solid var(--accent-100);border-radius:100px;padding:2px 4px 2px 10px;font-size:12.5px;}
+  .rcp-chip small{color:var(--ink-500);} .rcp-chip button{border:0;background:none;cursor:pointer;color:var(--ink-500);font-size:11px;padding:0 4px;}
+  .rcp-find{position:relative;display:flex;gap:4px;flex-wrap:wrap;align-items:center;} .rcp-find input{flex:1;min-width:160px;}
+  .rcp-sug{position:absolute;left:0;top:100%;z-index:40;width:min(420px,100%);max-height:260px;overflow:auto;background:var(--surface);border:1px solid var(--line);border-radius:10px;box-shadow:var(--shadow);padding:4px;}
+  .rcp-sug button{display:flex;flex-wrap:wrap;gap:2px 8px;width:100%;text-align:left;border:0;background:none;padding:6px 8px;border-radius:7px;cursor:pointer;font-size:12.5px;font-family:var(--font-body);color:var(--ink-900);}
+  .rcp-sug button:hover{background:var(--paper-0);} .rcp-sug button small{color:var(--ink-500);} .rcp-sug button .hint{flex-basis:100%;font-size:11.5px;}
+  .rcp input[data-extra],.rcp input[data-q]{padding:5px 8px;border:1px solid var(--line);border-radius:7px;font-family:var(--font-body);font-size:12.5px;}
+  .rcp-pv{display:inline-block;background:var(--paper-0);border:1px solid var(--line-soft);border-radius:6px;padding:1px 7px;margin:2px;} .rcp-pv small{color:var(--ink-500);}
+  .mv-wrap{position:relative;} .mv-pop{right:0;left:auto!important;top:100%;width:320px;max-height:360px;overflow:auto;}
+  .mv-pop button{grid-template-columns:1fr!important;} .mv-pop button b{grid-column:1!important;} .mv-pop button small{grid-column:1!important;}
+  span.mvar{background:var(--accent-050);color:var(--accent-700);border-radius:4px;padding:0 3px;font-weight:600;}
+  mark.mv-miss{background:#fef3c7;color:#92400e;border-radius:4px;padding:0 3px;}
+  .mail-html{background:var(--surface)!important;font-size:13.5px;line-height:1.7;} .mail-html table{border-collapse:collapse;width:100%;font-size:12.5px;} .mail-html td,.mail-html th{border:1px solid var(--line);padding:5px 8px;text-align:left;vertical-align:top;} .mail-html th{background:var(--paper-0);}
+  .mail-html .note{border-radius:8px;padding:8px 12px;margin:8px 0;background:var(--accent-050);} .mail-html .note.warn{background:var(--warn-100);} .mail-html .note.danger{background:var(--danger-100);} .mail-html .note.tip{background:var(--good-100);} .mail-html .nt{display:block;font-weight:700;}
+  .mail-html span.red{color:var(--danger-700);} .mail-html span.blue{color:var(--accent-700);}
   /* v22: 연차유급휴가 관리 */
   .settle-grid{display:grid;grid-template-columns:minmax(0,420px) minmax(0,1fr);gap:18px;align-items:start;}
   @media (max-width:980px){ .settle-grid{grid-template-columns:1fr;} }
@@ -897,6 +921,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="config.js?v=202611131730"></script>
 <script src="logo.js?v=202611131730"></script>
-<script src="app.js?v=202611181100"></script>
+<script src="mailcore.js?v=202611181500"></script>
+<script src="app.js?v=202611181500"></script>
 </body>
 </html>
