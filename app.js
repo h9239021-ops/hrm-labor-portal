@@ -1625,6 +1625,8 @@
         if (f[2] === "stepsel") return '<label>' + f[1] + '<select name="step"><option value="">자동(기준 단계)</option>' + STEP.map(function(s, i){ return i ? '<option value="' + i + '"' + (String(v) === String(i) ? " selected" : "") + '>' + s + '</option>' : ''; }).join("") + '</select></label>';
         if (f[2] === "exsel") return '<label>' + f[1] + '<select name="exclude"><option value="">포함</option><option value="1"' + (v ? " selected" : "") + '>제외</option></select></label>';
         if (f[2] === "textarea") return '<label class="full">' + f[1] + '<textarea name="' + f[0] + '" rows="4">' + esc(v) + '</textarea></label>';
+        if (f[2] === "caselinks"){ var ids = Array.isArray(v) ? v : String(v || "").split(",").filter(Boolean);
+          return '<div class="full"><div class="hint" style="font-size:12.5px;font-weight:600;margin-bottom:4px">' + f[1] + ' <span style="font-weight:500">(여러 개 선택 가능)</span></div><div class="cl-pick" data-self="' + (x ? x.id : "") + '"><input type="hidden" name="' + f[0] + '" value="' + esc(ids.join(",")) + '"><button type="button" class="cl-btn">사건 선택 ▾</button><div class="cl-chips"></div><div class="cl-pop" hidden><input type="search" class="cl-q" placeholder="사건명 · 피신고인 · 사업부 검색"><div class="cl-list"></div></div></div></div>'; }
         if (f[2] === "caseref"){ var cs = (S.recs["case.cases"] || []).slice().sort(function(a, b){ return String(b.data.start || "").localeCompare(String(a.data.start || "")); });
           return '<label class="full">' + f[1] + ' <span class="hint" style="font-weight:500">사건명·피신고인·사업부로 검색해 고르면 사건 현황과 연결됩니다' + (cs.length ? '' : ' (사건 현황을 볼 권한이 없거나 등록된 사건이 없어 직접 입력만 됩니다)') + '</span><input name="' + f[0] + '" list="caseRefList" value="' + esc(v) + '" placeholder="사건 검색" autocomplete="off"><datalist id="caseRefList">' +
             cs.map(function(x){ var e = x.data; return '<option value="' + esc(caseRefLabel(x)) + '">' + esc([e.type, e.accused ? "피신고인 " + e.accused : "", e.org, e.status].filter(Boolean).join(" · ")) + '</option>'; }).join("") + '</datalist></label>'; }
@@ -1633,6 +1635,7 @@
       '<div class="form-actions">' + (!isNew && can(key, "edit") ? '<button type="button" class="btn danger" id="rDel" style="margin-right:auto">삭제</button>' : '') + '<button type="button" class="btn ghost" id="rNo">취소</button><button class="btn primary">저장</button></div></form>', "wide");
     $("#rNo", m).onclick = closeModal;
     markRequired(m, defKey, d);
+    if (defKey === "cases") wireCaseForm(m, x);
     if ($("#rDel", m)) $("#rDel", m).onclick = async function(){
       if (!confirm("이 항목을 삭제할까요?")) return;
       var r = await sb.from("portal_records").delete().eq("id", x.id).select("id");
@@ -1643,6 +1646,7 @@
       e.preventDefault(); var fd = new FormData(e.target), data = Object.assign({}, x ? x.data : {});
       def.fields.forEach(function(f){ var v = f[2] === "multi" ? fd.getAll(f[0]).join(", ") : fd.get(f[0]); v = v == null ? "" : String(v).trim(); if (f[2] === "number" && v !== "") v = +v; if (f[2] === "exsel") v = v ? true : ""; if (v !== "") data[f[0]] = v; else delete data[f[0]]; });
       if (def.list) data.list = def.list;
+      if (defKey === "cases"){ var lk = String(data.linked || "").split(",").filter(Boolean); if (lk.length) data.linked = lk; else delete data.linked; }
       if (defKey === "discipline"){ var hit = data.case_ref ? (S.recs["case.cases"] || []).filter(function(x){ return caseRefLabel(x) === data.case_ref || x.id === data.case_id && (x.data.target || "") === data.case_ref; })[0] : null;
         if (hit){ data.case_id = hit.id; data.case_ref = caseRefLabel(hit); } else delete data.case_id; }
       if (def.fields[0][2] === "multi" && !data[def.fields[0][0]]){ alert(def.fields[0][1] + "을(를) 하나 이상 고르세요."); return; }
@@ -1659,6 +1663,31 @@
       after();
     });
   }
+  // 사건 입력 창: 유형에 맞는 진행 상태·처리 결과, 연계 사건 선택기
+  function wireCaseForm(m, x){
+    var tSel = $('#rf select[name="type"]', m), sSel = $('#rf select[name="status"]', m), rSel = $('#rf select[name="result"]', m);
+    function fill(sel, opts, label){ if (!sel) return; var cur = sel.value; sel.innerHTML = '<option value="">' + (opts ? "" : "유형을 먼저 고르세요") + '</option>' + (opts || []).map(function(o){ return '<option' + (o === cur ? " selected" : "") + '>' + esc(o) + '</option>'; }).join("") + (cur && (!opts || opts.indexOf(cur) < 0) ? '<option selected>' + esc(cur) + '</option>' : ''); }
+    function sync(){ var fl = CASE_FLOW[tSel.value]; fill(sSel, fl && fl.status); fill(rSel, fl && fl.result); }
+    if (tSel){ tSel.addEventListener("change", sync); sync(); }
+    var box = $(".cl-pick", m); if (!box) return;
+    var hid = $('input[type="hidden"]', box), pop = $(".cl-pop", box), self = box.dataset.self, all = (S.recs["case.cases"] || []).filter(function(y){ return y.id !== self; }).sort(function(a, b){ return String(b.data.start || "").localeCompare(String(a.data.start || "")); });
+    function ids(){ return hid.value.split(",").filter(Boolean); }
+    function lab(y){ var e = y.data; return (e.target || "사건") + " · " + (e.start || "") + " · " + (e.type || "") + (e.org ? " · " + e.org : ""); }
+    function chips(){ $(".cl-chips", box).innerHTML = ids().map(function(id){ var y = all.filter(function(z){ return z.id === id; })[0]; return '<span class="cl-chip" data-id="' + id + '">' + esc(y ? lab(y) : "삭제된 사건") + '<button type="button" data-rm>✕</button></span>'; }).join("");
+      $all("[data-rm]", box).forEach(function(b){ b.onclick = function(){ hid.value = ids().filter(function(i){ return i !== b.parentNode.dataset.id; }).join(","); chips(); list(); }; });
+      $(".cl-btn", box).textContent = ids().length ? "사건 선택 ▾ (" + ids().length + "건)" : "사건 선택 ▾"; }
+    function list(){ var q = $(".cl-q", box).value.trim(), cur = ids();
+      var l = all.filter(function(y){ var e = y.data; return !q || [e.target, e.accused, e.org, e.type, e.victim].join(" ").indexOf(q) >= 0; });
+      $(".cl-list", box).innerHTML = l.length ? l.map(function(y){ return '<label><input type="checkbox" value="' + y.id + '"' + (cur.indexOf(y.id) >= 0 ? " checked" : "") + '><span>' + esc(lab(y)) + (y.data.accused ? ' <small>피신고인 ' + esc(y.data.accused) + '</small>' : '') + '</span></label>'; }).join("") : '<div class="hint" style="padding:6px">' + (all.length ? "맞는 사건이 없습니다." : "연결할 다른 사건이 없습니다.") + '</div>';
+      $all('.cl-list input', box).forEach(function(c){ c.onchange = function(){ var v2 = ids().filter(function(i){ return i !== c.value; }); if (c.checked) v2.push(c.value); hid.value = v2.join(","); chips(); }; }); }
+    $(".cl-btn", box).onclick = function(){ pop.hidden = !pop.hidden; if (!pop.hidden){ list(); $(".cl-q", box).focus(); } };
+    $(".cl-q", box).addEventListener("input", list);
+    document.addEventListener("mousedown", function(e){ if (!box.contains(e.target)) pop.hidden = true; });
+    chips();
+  }
+  // 상세 창: 연계 사건(내가 연결한 것 + 나를 연결한 것)
+  function caseLinksOf(x){ var all = S.recs["case.cases"] || [], mine = (x.data.linked || []).map(function(id){ return all.filter(function(y){ return y.id === id; })[0]; }).filter(Boolean);
+    var back = all.filter(function(y){ return y.id !== x.id && (y.data.linked || []).indexOf(x.id) >= 0 && mine.indexOf(y) < 0; }); return { mine: mine, back: back }; }
   function caseRefLabel(x){ var e = x.data || {}; return (e.target || "사건") + " (" + (e.start || "접수일 없음") + ")"; }
   function downloadCsv(name, cols, rows){
     var lines = [cols.map(function(c){ return c[0]; }).join(",")].concat(rows.map(function(r){ return cols.map(function(c){ var v = c[1](r); return '"' + String(v == null ? "" : v).replace(/"/g, '""') + '"'; }).join(","); }));
@@ -1948,7 +1977,7 @@
     if (k === "url") return '<a href="' + esc(v) + '" target="_blank" rel="noopener" onclick="event.stopPropagation()">원문 ↗</a>';
     v = String(v); return esc(v.length > 46 ? v.slice(0, 46) + "…" : v);
   }
-  function genColLabel(def, k){ return k === "_period" ? (def.gen.periodLabel || "기간") : k === "_status" ? "상태" : k === "_files" ? "첨부" : k === "_limit" ? "한도·잔여" : fLabel(def, k); }
+  function genColLabel(def, k){ return k === "_linked" ? "연계" : k === "_period" ? (def.gen.periodLabel || "기간") : k === "_status" ? "상태" : k === "_files" ? "첨부" : k === "_limit" ? "한도·잔여" : fLabel(def, k); }
   function genNav(c, menu, def, cur){
     if (!def.gen.stats) return "";
     var base = '#/c/' + c.id + '/' + menu;
@@ -1978,6 +2007,7 @@
       '<div class="rec-tools">' + (def.fields.some(function(z){ return z[0] === "prior"; }) ? '<label class="hint" style="font-size:12.5px;display:inline-flex;gap:4px;align-items:center"><input type="checkbox" id="gHidePrior"' + (f.hidePrior ? " checked" : "") + '>입사 전 이력 숨기기</label>' : '') + (g.groups ? '<select id="gGrp"><option value="">전체 제도</option>' + g.groups.map(function(z){ return '<option' + (z[0] === f.grp ? " selected" : "") + '>' + esc(z[0]) + '</option>'; }).join("") + '</select>' : '') + (hasOrg ? '<select id="gOrg"><option value="">전체 소속</option>' + orgs.map(function(o){ return '<option' + (o === f.org ? " selected" : "") + '>' + esc(o) + '</option>'; }).join("") + '</select>' : '') +
       (hasTeam ? '<select id="gTeam"><option value="">전체 팀</option>' + teams.map(function(t){ return '<option' + (t === f.team ? " selected" : "") + '>' + esc(t) + '</option>'; }).join("") + '</select>' : '') +
       (g.status ? '<select id="gSt"><option value="">전체 상태</option>' + sts.map(function(s){ return '<option' + (s === f.st ? " selected" : "") + '>' + esc(s) + '</option>'; }).join("") + '</select>' : '') +
+      (g.periodSel ? '<span class="ov-per"><span class="hint">' + esc(fLabel(def, g.sort || "start")) + '</span><input type="date" id="gFrom" value="' + esc(f.from || "") + '"><span>~</span><input type="date" id="gTo" value="' + esc(f.to || "") + '"><button type="button" class="btn sm" data-gper="y">올해</button><button type="button" class="btn sm" data-gper="3m">최근 3개월</button><button type="button" class="btn sm" data-gper="">전체</button></span>' : '') +
       (g.yearSel ? '<select id="gYear"><option value="">전체 연도</option>' + ovUniq(all.map(function(x){ return String(x.data[g.sort || "start"] || "").slice(0, 4); }).filter(function(y){ return /^\d{4}$/.test(y); })).reverse().map(function(y){ return '<option value="' + y + '"' + (y === f.year ? " selected" : "") + '>' + y + '년</option>'; }).join("") + '</select>' : '') +
       (g.typeSel ? '<select id="gType"><option value="">전체 ' + esc(genColLabel(def, g.typeF)) + '</option>' + shownTypes.map(function(t){ return '<option' + (t === f.type ? " selected" : "") + '>' + esc(t) + '</option>'; }).join("") + '</select>' : '') +
       (g.sortOpts ? '<select id="gSort" title="정렬 순서">' + [["", esc(fLabel(def, g.sort || "start")) + " 최신순"]].concat(g.sortOpts.map(function(k){ return [k, esc(genColLabel(def, k)) + "별"]; })).map(function(o){ return '<option value="' + o[0] + '"' + ((f.sortBy || "") === o[0] ? " selected" : "") + '>정렬: ' + o[1] + '</option>'; }).join("") + '</select>' : '') +
@@ -1990,6 +2020,7 @@
       var grpT = f.grp && g.groups ? (g.groups.filter(function(z){ return z[0] === f.grp; })[0] || [0, null])[1] : null;
       list = all.filter(function(x){ var d = x.data; return (!issOn || issueMatch(key, x, f)) && (!f.hidePrior || !d.prior) && (!grpT || grpT.indexOf(d[g.typeF]) >= 0) && (!f.type || String(d[g.typeF] || "").split(",").map(function(s){ return s.trim(); }).indexOf(f.type) >= 0) && (!f.org || d.org === f.org) && (!f.team || d.team === f.team) && (!f.st || genStatus(def, d) === f.st) &&
         (!f.year || String(d[g.sort || "start"] || "").slice(0, 4) === f.year) &&
+        (!f.from || String(d[g.sort || "start"] || "") >= f.from) && (!f.to || (d[g.sort || "start"] && String(d[g.sort || "start"]) <= f.to)) &&
         (!q || def.fields.map(function(z){ return d[z[0]]; }).join(" ").indexOf(q) >= 0); })
         .sort(defKey === "laws" ? lawCmp : function(a, b){ var k = g.sort || "start";
           if (f.sortBy){ var sb2 = f.sortBy, va = sb2 === "_status" ? genStatus(def, a.data) : String(a.data[sb2] || ""), vb = sb2 === "_status" ? genStatus(def, b.data) : String(b.data[sb2] || "");
@@ -1997,7 +2028,7 @@
           return String(b.data[k] || "").localeCompare(String(a.data[k] || "")) || String(a.data[g.nameF] || "").localeCompare(String(b.data[g.nameF] || "")); });
       $("#gCnt").textContent = list.length + "건";
       var cols2 = g.cols.concat(issOn && f.iss ? ["_issue"] : []);
-      function cell(k, x){ if (k === "_issue") return issueBadges(recIssues(key, x)); var h2 = genCell(def, k, x.data); return issOn && k === g.nameF ? h2 + orgChangedBadge(nm(x.data)) : h2; }
+      function cell(k, x){ if (k === "_issue") return issueBadges(recIssues(key, x)); if (k === "_linked"){ var lk = caseLinksOf(x), n = lk.mine.length + lk.back.length; return n ? '<span class="badge info" title="' + esc(lk.mine.concat(lk.back).map(function(y){ return y.data.target; }).join(", ")) + '">' + n + '건</span>' : ''; } var h2 = genCell(def, k, x.data); return issOn && k === g.nameF ? h2 + orgChangedBadge(nm(x.data)) : h2; }
       $("#gTbl").innerHTML = '<div class="tbl-box"><table class="rec compact"><thead><tr>' + cols2.map(function(k){ return '<th>' + (k === "_issue" ? "이상 사유" : esc(genColLabel(def, k))) + '</th>'; }).join("") + '</tr></thead><tbody>' +
         (list.length ? list.map(function(x){ var s = genStatus(def, x.data); return '<tr class="clk' + (/종료|종결/.test(s) ? " ended" : "") + '" data-rid="' + x.id + '" tabindex="0">' + cols2.map(function(k){ return '<td>' + cell(k, x) + '</td>'; }).join("") + '</tr>'; }).join("")
           : '<tr><td colspan="' + cols2.length + '" class="hint" style="padding:18px">해당하는 항목이 없습니다.</td></tr>') + '</tbody></table></div>';
@@ -2014,6 +2045,9 @@
     if ($("#gTeam")) $("#gTeam").onchange = function(e){ f.team = e.target.value; draw(); };
     if ($("#gSt")) $("#gSt").onchange = function(e){ f.st = e.target.value; draw(); };
     if ($("#gYear")) $("#gYear").onchange = function(e){ f.year = e.target.value; draw(); };
+    if ($("#gFrom")) $("#gFrom").onchange = function(e){ f.from = e.target.value; draw(); };
+    if ($("#gTo")) $("#gTo").onchange = function(e){ f.to = e.target.value; draw(); };
+    $all("[data-gper]", host).forEach(function(b){ b.onclick = function(){ var k = b.dataset.gper, t = todayStr(); f.from = k === "y" ? t.slice(0, 4) + "-01-01" : k === "3m" ? ymd(new Date(new Date().getFullYear(), new Date().getMonth() - 3, new Date().getDate())) : ""; f.to = k ? t : ""; $("#gFrom").value = f.from; $("#gTo").value = f.to; draw(); }; });
     if ($("#gType")) $("#gType").onchange = function(e){ f.type = e.target.value; rer(); };
     if ($("#gSort")) $("#gSort").onchange = function(e){ f.sortBy = e.target.value; draw(); };
     $("#gQ").addEventListener("input", function(e){ f.q = e.target.value; draw(); });
@@ -2553,7 +2587,8 @@
   function genDetail(c, defKey, x, after){
     var def = REC_DEF[defKey], g = def.gen, d = x.data, key = c.id + "." + def.menu;
     var canEd = can(key, "edit") || (can(key, "write") && String(x.created_by || "").toLowerCase() === me.email);
-    var long = def.fields.filter(function(z){ return z[2] === "textarea"; }), short = def.fields.filter(function(z){ return z[2] !== "textarea" && z[0] !== g.typeF && z[0] !== g.nameF; });
+    var long = def.fields.filter(function(z){ return z[2] === "textarea"; }), short = def.fields.filter(function(z){ return z[2] !== "textarea" && z[2] !== "caselinks" && z[0] !== g.typeF && z[0] !== g.nameF; });
+    var clk = defKey === "cases" ? caseLinksOf(x) : null;
     var st = genStatus(def, d);
     var hist = g.history ? genRows(c, def).filter(function(y){ return y.id !== x.id && String(y.data[g.nameF] || "").trim() === String(d[g.nameF] || "").trim(); }).concat([x]).sort(function(a, b){ return String(a.data.start || "").localeCompare(String(b.data.start || "")); }) : [];
     var files = d.files || [];
@@ -2566,6 +2601,7 @@
       long.map(function(z){ return d[z[0]] ? '<h4 style="margin:14px 0 6px;font-size:13px">' + z[1] + '</h4><div class="wraptext" style="font-size:13.5px;line-height:1.65;background:var(--paper-0);border-radius:10px;padding:12px 14px">' + esc(d[z[0]]) + '</div>' : ''; }).join("") +
       (g.files ? '<h4 style="margin:14px 0 6px;font-size:13px">첨부 파일 (' + files.length + ')</h4><div class="file-list" id="gdFiles">' + (files.length ? files.map(function(fl, i){ return '<div class="fl"><button class="lk" data-open="' + i + '">📄 ' + esc(fl.name) + '</button><span class="hint">' + (fl.size ? Math.round(fl.size / 1024) + "KB · " : "") + esc(fl.at || "") + '</span>' + (canEd ? '<button class="btn sm ghost" data-rm="' + i + '">삭제</button>' : '') + '</div>'; }).join("") : '<span class="hint" style="font-size:12.5px">첨부된 파일이 없습니다.</span>') + '</div>' +
         (canEd ? '<label class="btn sm" style="margin-top:8px;display:inline-block;cursor:pointer">+ 파일 첨부<input type="file" id="gdUp" multiple hidden></label>' : '') : '') +
+      (clk && (clk.mine.length || clk.back.length) ? '<h4 style="margin:14px 0 6px;font-size:13px">연계 사건</h4><div class="cl-view">' + clk.mine.map(function(y){ return '<button type="button" class="cl-item" data-clk="' + y.id + '"><b>' + esc(y.data.target) + '</b> <small>' + esc([y.data.start, y.data.type, y.data.org, y.data.status].filter(Boolean).join(" · ")) + '</small></button>'; }).join("") + clk.back.map(function(y){ return '<button type="button" class="cl-item back" data-clk="' + y.id + '"><b>' + esc(y.data.target) + '</b> <small>' + esc([y.data.start, y.data.type, y.data.org, y.data.status].filter(Boolean).join(" · ")) + ' · 이 사건을 연계함</small></button>'; }).join("") + '</div>' : '') +
       (linkOn ? orgHistHtml(nm(d)) : "") + limHtml + kidHtml + lkHtml +
       (!lkHtml && hist.length > 1 ? '<h4 style="margin:16px 0 6px;font-size:13px">' + esc(d[g.nameF]) + ' 님의 ' + esc(def.noun) + ' 이력 (총 ' + hist.length + '건)</h4><div class="tbl-box" style="max-height:220px"><table class="rec compact" style="min-width:0"><thead><tr><th>구분</th><th>기간</th><th>일수</th><th>상태</th></tr></thead><tbody>' +
         hist.map(function(y){ return '<tr class="' + (y.id === x.id ? "cur" : "") + '"><td>' + esc(y.data[g.typeF] || "") + '</td><td>' + genCell(def, "_period", y.data) + '</td><td>' + (y.data.days ? esc(y.data.days) + "일" : "") + '</td><td>' + genCell(def, "_status", y.data) + '</td></tr>'; }).join("") + '</tbody></table></div>' : '') +
@@ -2574,6 +2610,7 @@
     if (linkOn){ wireLinked(m, x.id, after); ensureLinked(m, function(){ genDetail(c, defKey, x, after); }); }
     function reopenG(){ after(); if ((S.recs[key] || []).indexOf(x) >= 0) genDetail(c, defKey, x, after); }
     if ($("#dEd", m)) $("#dEd", m).onclick = function(){ openRecord(c, defKey, x, reopenG); };
+    $all("[data-clk]", m).forEach(function(b){ b.onclick = function(){ var y = (S.recs["case.cases"] || []).filter(function(z){ return z.id === b.dataset.clk; })[0]; if (y) genDetail(c, "cases", y, function(){ genDetail(c, defKey, x, after); }); }; });
     if ($("#dCase", m)) $("#dCase", m).onclick = function(){ var cx = S.recs["case.cases"].filter(function(y){ return y.id === d.case_id; })[0]; genDetail(c, "cases", cx, function(){ genDetail(c, defKey, x, after); }); };
     if (linkOn) wirePriorBtns(m, d, reopenG);
     $all("[data-open]", m).forEach(function(b){ b.onclick = function(){ openFile(files[+b.dataset.open].path); }; });
@@ -2667,12 +2704,22 @@
           return { ins: (cc.length ? ["육아휴직 사용 " + cc.length + "건 중 남성은 <b>" + men + "건(" + pc(men, cc.length) + "%)</b>입니다."] : []).concat(["앞으로 90일 안에 복직 예정은 <b>" + back.length + "명</b>입니다."]),
             panels: wsPanel("복직 예정 (90일 이내)", t + " ~ " + in90, back.length ? '<table class="tbl mini"><thead><tr><th>종료일</th><th>이름</th><th>소속</th><th>구분</th></tr></thead><tbody>' + back.map(function(x){ var d = x.data; return '<tr><td>' + esc(d.end) + '</td><td><b>' + esc(d.target) + '</b></td><td>' + esc([d.org, d.team].filter(Boolean).join(" ")) + '</td><td>' + esc(d.type) + '</td></tr>'; }).join("") + '</tbody></table>' : '<p class="hint">예정된 복직이 없습니다.</p>', " wide") };
         } } } };
+  // 사건 유형별 진행 상태 · 처리 결과 선택지
+  var CASE_FLOW = {
+    "직장 내 괴롭힘": { status: ["접수", "조사 중", "인사위원회", "노동청 결과 대기", "종결"], result: ["해당(인정)", "미해당(혐의 없음)", "자진 취하", "당사자 합의", "징계", "진행 중"] },
+    "직장 내 성희롱": { status: ["접수", "조사 중", "인사위원회", "노동청 결과 대기", "종결"], result: ["해당(인정)", "미해당(혐의 없음)", "자진 취하", "당사자 합의", "징계", "진행 중"] },
+    "비위행위": { status: ["접수", "조사 중", "인사위원회", "재심", "종결"], result: ["미해당(혐의 없음)", "징계", "권고사직", "불문처리"] },
+    "노동위원회": { status: ["접수", "답변서 진행", "심문회의", "판정서 대기", "재심 신청", "재심 판정서 대기", "후속조치", "종결"], result: ["기각", "각하", "화해", "인정"] },
+    "산재": { status: ["접수", "보험가입자 의견서", "결과 대기", "재심신청", "종결"], result: ["해당(인정)", "미해당(불인정)"] } };
+  // 목록 정렬·필터용 전체 순서(예전 값 「노동청 진행」 「노동위원회 진행」 「자진취하」 포함)
+  var CASE_STATUS_ALL = ["접수", "조사 중", "답변서 진행", "보험가입자 의견서", "인사위원회", "심문회의", "판정서 대기", "결과 대기", "노동청 결과 대기", "노동청 진행", "노동위원회 진행", "재심", "재심 신청", "재심신청", "재심 판정서 대기", "후속조치", "종결"];
+  var CASE_RESULT_ALL = ["해당(인정)", "인정", "미해당(혐의 없음)", "미해당(불인정)", "기각", "각하", "자진 취하", "자진취하", "당사자 합의", "화해", "징계", "권고사직", "불문처리", "진행 중"];
   REC_DEF.cases = { menu: "cases", title: "사건 현황", noun: "사건",
-    fields: [["type", "유형", "select", ["직장 내 괴롭힘", "직장 내 성희롱", "비위행위", "노동위원회"]], ["target", "사건명", "text"], ["start", "접수일", "date"], ["end", "종결일", "date"],
+    fields: [["type", "유형", "select", ["직장 내 괴롭힘", "직장 내 성희롱", "비위행위", "노동위원회", "산재"]], ["target", "사건명", "text"], ["start", "접수일", "date"], ["end", "종결일", "date"],
       ["company", "회사", "text"], ["org", "사업부", "text"], ["reporter", "신고인", "text"], ["victim", "피해 근로자", "text"], ["accused", "행위자(피신고인)", "text"], ["investigator", "조사자", "text"],
-      ["status", "진행 상태", "select", ["접수", "조사 중", "인사위원회", "노동청 진행", "노동위원회 진행", "종결"]], ["result", "처리 결과", "select", ["해당(인정)", "미해당(혐의 없음)", "자진취하", "당사자 합의", "징계", "권고사직", "각하", "화해", "진행 중"]],
-      ["action", "조치 내용", "text"], ["folder", "자료 폴더", "text"], ["summary", "사건 개요·주장 행위", "textarea"], ["note", "비고", "textarea"]],
-    gen: { typeF: "type", nameF: "target", status: "status", sort: "start", files: true, yearSel: true, typeSel: true, sortOpts: ["org", "result", "_status", "type"], cols: ["type", "target", "start", "org", "accused", "result", "action", "_files", "_status"],
+      ["status", "진행 상태", "select", CASE_STATUS_ALL], ["result", "처리 결과", "select", CASE_RESULT_ALL],
+      ["action", "조치 내용", "text"], ["folder", "자료 폴더", "text"], ["linked", "연계 사건", "caselinks"], ["summary", "사건 개요·주장 행위", "textarea"], ["note", "비고", "textarea"]],
+    gen: { typeF: "type", nameF: "target", status: "status", sort: "start", files: true, yearSel: true, typeSel: true, sortOpts: ["org", "result", "_status", "type"], periodSel: true, cols: ["type", "target", "start", "org", "accused", "result", "action", "_linked", "_files", "_status"],
       hint: "직장 내 괴롭힘·성희롱 신고, 비위행위 조사, 노동위원회 사건의 접수·처리 현황입니다. 민감 정보이므로 권한이 있는 사람만 볼 수 있습니다.",
       stats: { date: "start", dims: [["사건 유형별", "type"], ["처리 결과별", "result"], ["사업부별", "org"], ["진행 상태별", "status"], ["회사별", "company"]], duration: ["start", "end", "평균 처리 기간"],
         extra: function(rows){

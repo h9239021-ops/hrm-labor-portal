@@ -184,6 +184,14 @@
   .doc details.acc>summary{list-style:none;cursor:pointer;padding:12px 16px;font-weight:700;display:flex;justify-content:space-between;align-items:center;gap:10px;}
   .doc details.acc>summary::-webkit-details-marker{display:none;}
   .doc details.acc .acc-b{padding:0 16px 14px;}
+  /* v28: 연계 사건 선택 */
+  .cl-pick{position:relative;font-size:12.5px;} .cl-btn{font-size:12.5px;padding:5px 10px;border:1px solid var(--line);border-radius:7px;background:var(--surface);cursor:pointer;font-family:var(--font-body);color:var(--ink-900);}
+  .cl-chips{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px;} .cl-chip{display:inline-flex;align-items:center;gap:3px;font-size:12px;background:var(--accent-050);border:1px solid var(--accent-100);border-radius:100px;padding:2px 4px 2px 9px;}
+  .cl-chip button{border:0;background:none;cursor:pointer;color:var(--ink-500);font-size:11px;}
+  .cl-pop{position:absolute;z-index:45;top:34px;left:0;width:min(520px,100%);background:var(--surface);border:1px solid var(--line);border-radius:10px;box-shadow:var(--shadow);padding:6px;}
+  .cl-q{width:100%;font-size:12.5px;padding:5px 8px;border:1px solid var(--line);border-radius:7px;margin-bottom:4px;font-family:var(--font-body);}
+  .cl-list{max-height:240px;overflow:auto;} .cl-list label{display:flex;gap:7px;align-items:flex-start;font-size:12.5px;font-weight:500;padding:5px 6px;border-radius:6px;cursor:pointer;} .cl-list label:hover{background:var(--paper-0);} .cl-list small{color:var(--ink-500);}
+  .cl-view{display:flex;flex-direction:column;gap:4px;} .cl-item{text-align:left;border:1px solid var(--line-soft);background:var(--surface);border-radius:8px;padding:6px 10px;cursor:pointer;font-size:12.5px;font-family:var(--font-body);color:var(--ink-900);} .cl-item:hover{border-color:var(--accent-500);} .cl-item small{color:var(--ink-500);} .cl-item.back{background:var(--paper-0);}
   /* v25: 전체 내려받기 */
   .exp-opts{display:flex;flex-direction:column;gap:6px;font-size:13px;} .exp-opts label{display:flex;gap:8px;align-items:flex-start;}
   /* v24: 자동 메일 편집 · 수신자 선택 */
@@ -924,6 +932,6 @@
 <script src="config.js?v=202611131730"></script>
 <script src="logo.js?v=202611131730"></script>
 <script src="mailcore.js?v=202611181500"></script>
-<script src="app.js?v=202611181900"></script>
+<script src="app.js?v=202611201000"></script>
 </body>
 </html>
