@@ -509,10 +509,21 @@
       '<a class="brand" href="#/"><img src="' + (window.LOGO_SRC || "") + '" alt="ConnectWave"><span class="sep"></span><span class="nm">HRM 노무관리파트 업무포털</span></a>' +
       (area ? '<span class="hd-area">› ' + esc(area) + '</span><a class="btn sm" href="#/" style="margin-left:8px">🏠 업무포털 홈</a>' : '') +
       '<div class="hd-r">' + (isAdmin() && area !== "권한 관리" ? '<a class="btn sm ghost" href="#/admin">권한 관리</a>' : '') +
-      '<span class="who" title="' + esc(me.email) + '">' + esc(me.name) + (me.team ? " · " + esc(me.team) : "") + '</span><button class="btn sm" id="logout">로그아웃</button></div>' +
+      '<span class="who" title="' + esc(me.email) + '">' + esc(me.name) + (me.team ? " · " + esc(me.team) : "") + '</span><button class="btn sm ghost" id="pwChg" title="내 로그인 비밀번호 바꾸기">비밀번호 변경</button><button class="btn sm" id="logout">로그아웃</button></div>' +
       '</div></header>' + inner;
   }
-  function wireShell(){ var b = $("#logout"); if (b) b.onclick = async function(){ await sb.auth.signOut(); me = null; location.hash = "#/"; renderLogin(); }; }
+  function wireShell(){ var b = $("#logout"); if (b) b.onclick = async function(){ await sb.auth.signOut(); me = null; location.hash = "#/"; renderLogin(); }; var pw = $("#pwChg"); if (pw) pw.onclick = openPwChange; }
+  // 내 비밀번호 바꾸기(로그인한 본인 계정). 근로감독 대시보드와 같은 계정이라 대시보드 비밀번호도 함께 바뀐다.
+  function openPwChange(){
+    var m = showModal('<h3>비밀번호 변경</h3><p class="hint" style="font-size:12.5px">' + esc(me.email) + ' 계정의 비밀번호를 바꿉니다. 근로감독 대시보드와 같은 계정이라 대시보드 비밀번호도 함께 바뀝니다.</p>' +
+      '<form class="f" id="pwf"><label class="full">새 비밀번호 (8자 이상)<input type="password" name="p1" autocomplete="new-password" minlength="8" required></label><label class="full">새 비밀번호 확인<input type="password" name="p2" autocomplete="new-password" minlength="8" required></label>' +
+      '<div class="form-actions"><button type="button" class="btn ghost" id="pwNo">취소</button><button class="btn primary">변경</button></div></form>', "mid");
+    $("#pwNo", m).onclick = closeModal;
+    $("#pwf", m).addEventListener("submit", async function(e){ e.preventDefault(); var fd = new FormData(e.target), p1 = String(fd.get("p1") || ""), p2 = String(fd.get("p2") || "");
+      if (p1.length < 8){ alert("8자 이상으로 정하세요."); return; } if (p1 !== p2){ alert("두 칸의 비밀번호가 다릅니다."); return; }
+      var r = await sb.auth.updateUser({ password: p1 }); if (r.error){ alert("바꾸지 못했습니다: " + r.error.message); return; }
+      logp("home", "password", me.email); closeModal(); toast("비밀번호를 바꿨습니다. 다음 로그인부터 새 비밀번호를 쓰세요."); });
+  }
   function render(){
     if (!me) return;
     window.onscroll = null;
