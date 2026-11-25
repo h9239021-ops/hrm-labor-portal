@@ -14,7 +14,7 @@
   var CATS = [
     { id: "att", name: "근태", ic: "🕒", desc: "선택적 근로시간제 운영, 분기 근태 미준수 관리, 시간외근로·보상휴가",
       items: ["근태 운영", "(분기)근태 미준수 관리", "시간외근로"],
-      menus: [["manual", "근태관리 매뉴얼"], ["violations", "근태 위반자 관리"], ["worktypes", "근무형태 현황"], ["automail", "자동 메일"]] },
+      menus: [["manual", "근태관리 매뉴얼"], ["violations", "근태 위반자 관리"], ["worktypes", "근무형태 현황"]] },
     { id: "leave", name: "휴가", ic: "🌴", desc: "연차·연차 촉진, 리프레쉬·보상·경조휴가, 휴가 사용 현황",
       items: ["연차/휴가", "연차 촉진", "휴가 현황"], menus: [["manual", "휴가 매뉴얼"], ["status", "휴가 현황"], ["annual", "연차유급휴가 관리"]] },
     { id: "absence", name: "휴직", ic: "🍼", desc: "모성보호, 육아·질병 휴직, 복직 관리, 휴직·복직 현황",
@@ -40,7 +40,7 @@
   ];
   // menus drawn by the shared record list: "cat.menu" → REC_DEF key
   var GEN_MENU = { "leave.status": "leave", "absence.status": "absence", "case.cases": "cases", "case.discipline": "discipline", "council.agenda": "agenda", "safety.status": "safety", "advice.opinions": "opinions" };
-  var HOME_KEYS = [["home.org", "업무분장표"], ["home.calendar", "연간 계획 캘린더"], ["home.faq", "FAQ"], ["home.laws", "법령정보"]];
+  var HOME_KEYS = [["home.org", "업무분장표"], ["home.calendar", "연간 계획 캘린더"], ["home.faq", "FAQ"], ["home.laws", "법령정보"], ["att.automail", "자동 메일"]];
   var DOW = ["일", "월", "화", "수", "목", "금", "토"];
 
   /* ---------- utils ---------- */
@@ -537,6 +537,7 @@
     else if (p[0] === "faq" && can("home.faq", "read")){ renderFaqPage(p[1]); }
     else if (p[0] === "laws" && can("home.laws", "read")){ renderLawPage(); }
     else if (p[0] === "overview" && canChg()){ renderOverview(p[1]); }
+    else if (p[0] === "automail" && can("att.automail", "read")){ renderAutoMailPage(p[1]); }
     else renderHome();
     wireShell();
   }
@@ -559,6 +560,7 @@
         (showCal ? '<section class="card2" id="calCard"></section><section class="card2" id="todoCard"></section>' : '') +
         (showChg ? '<section class="card2 chgc" id="chgCard"></section>' : '') + '</div>';
     }
+    if (can("att.automail", "read")) h += '<section class="card2 am-strip" id="amStrip"><span class="hint">자동 메일 현황 불러오는 중…</span></section>';
     var cats = CATS.filter(catVisible);
     h += '<section style="margin-top:26px"><div class="sec-h"><h2>업무 카테고리</h2></div><div class="cats">' +
       (cats.length ? cats.map(catCard).join("") : '<p class="hint">열람 가능한 카테고리가 없습니다.</p>') + '</div></section>';
@@ -569,6 +571,7 @@
     if (showCal){ calRefresh(); }
     if (showFaq) renderFaq();
     if (can("home.laws", "read")) renderLawHome();
+    if (can("att.automail", "read")) renderAmStrip();
     if (showChg){ renderChg(); loadChanges().then(function(){ if ($("#chgCard")){ renderChg(); if (showCal) renderCal(); } }); }
   }
 
@@ -1295,6 +1298,8 @@
      CATEGORY
      ===================================================================== */
   function renderCategory(c, menu, sub){
+    if (c.id === "att" && menu === "automail"){ location.replace("#/automail" + (sub ? "/" + sub : "")); return; }
+    if (c.id === "leave" && menu === "annual" && sub === "mail"){ location.replace("#/automail/settle"); return; }
     var menus = c.menus.filter(function(m){ return level(c.id + "." + m[0]) >= 1; });
     if (!menus.length){ location.hash = "#/"; return; }
     if (!menu || !menus.some(function(m){ return m[0] === menu; })) menu = menus[0][0];
@@ -1303,7 +1308,6 @@
     var key = c.id + "." + menu;
     if (menu === "manual"){ app.innerHTML = shell(head + '<div class="cat-wrap" id="cw"></div>', c.name); renderManual(c, key, sub); }
     else if (c.id === "att" && menu === "worktypes"){ app.innerHTML = shell(head + '<div class="cat-wrap"><div class="cat-main" id="cm"></div></div>', c.name); if (sub === "exceptions" || sub === "list") renderWorktypes(c, sub === "list" ? "worktypes" : "exceptions"); else renderWtStats(c); }
-    else if (c.id === "att" && menu === "automail"){ app.innerHTML = shell(head + '<div class="cat-wrap"><div class="cat-main" id="cm"></div></div>', c.name); renderAutoMail(c, sub); }
     else if (c.id === "leave" && menu === "annual"){ app.innerHTML = shell(head + '<div class="cat-wrap"><div class="cat-main" id="cm"></div></div>', c.name); renderAnnual(c, sub); }
     else if (c.id === "rules" && menu === "docs"){ app.innerHTML = shell(head + '<div class="cat-wrap"><div class="cat-main" id="cm"></div></div>', c.name); renderRules(c, sub); }
     else if (GEN_MENU[key]){ app.innerHTML = shell(head + '<div class="cat-wrap"><div class="cat-main" id="cm"></div></div>', c.name); if ((key === "case.cases" && can("case.discipline", "read")) || (key === "case.discipline" && can("case.cases", "read"))) loadRecs("case", key === "case.cases" ? "discipline" : "cases").catch(function(){}).then(function(){ renderGen(c, GEN_MENU[key], sub); }); else renderGen(c, GEN_MENU[key], sub); }
@@ -2952,11 +2956,11 @@
   var annSub = "advance", advF = { y: "", org: "", ten: "", adj: "", q: "" }, setF = { y: "", m: "", org: "", q: "" };
   function annRecs(list){ return (S.recs["leave.annual"] || []).filter(function(x){ return x.data.list === list; }); }
   async function renderAnnual(c, sub){
-    var host = $("#cm"); annSub = ["advance", "settle", "calc", "mail"].indexOf(sub) >= 0 ? sub : "advance";
+    var host = $("#cm"); annSub = ["advance", "settle", "calc"].indexOf(sub) >= 0 ? sub : "advance";
     try { await loadRecs("leave", "annual"); } catch(e){ host.innerHTML = '<div class="banner danger">불러오지 못했습니다: ' + esc(e.message) + '</div>'; return; }
     if (!$("#cm")) return;
-    var nav = '<nav class="subtabs">' + [["advance", "연차 선부여"], ["settle", "퇴직자 연차 정산"], ["calc", "＋ 정산 추가(계산)"], ["mail", "정산 메일 설정"]].map(function(t){ return '<a href="#/c/leave/annual/' + t[0] + '" class="' + (annSub === t[0] ? "on" : "") + '">' + t[1] + (t[0] === "advance" ? ' <span class="hint">' + annRecs("advance").length + '</span>' : t[0] === "settle" ? ' <span class="hint">' + annRecs("settle").length + '</span>' : '') + '</a>'; }).join("") + '</nav>';
-    if (annSub === "advance") drawAdvance(c, nav); else if (annSub === "settle") drawSettleList(c, nav); else if (annSub === "calc") drawSettleCalc(c, nav, null); else drawSettleMail(c, nav);
+    var nav = '<nav class="subtabs">' + [["advance", "연차 선부여"], ["settle", "퇴직자 연차 정산"], ["calc", "＋ 정산 추가(계산)"], ["mail", "정산 메일 설정 ↗"]].map(function(t){ return '<a href="' + (t[0] === "mail" ? "#/automail/settle" : "#/c/leave/annual/" + t[0]) + '" title="' + (t[0] === "mail" ? "자동 메일 › 퇴직자 연차 정산 메일로 이동" : "") + '" class="' + (annSub === t[0] ? "on" : "") + '">' + t[1] + (t[0] === "advance" ? ' <span class="hint">' + annRecs("advance").length + '</span>' : t[0] === "settle" ? ' <span class="hint">' + annRecs("settle").length + '</span>' : '') + '</a>'; }).join("") + '</nav>';
+    if (annSub === "advance") drawAdvance(c, nav); else if (annSub === "settle") drawSettleList(c, nav); else drawSettleCalc(c, nav, null);
   }
   function advUsed(d){ var u = String(d.used == null ? "" : d.used).trim(); if (/^o$/i.test(u)) return +d.days || 0; if (/^x$/i.test(u) || !u) return 0; var n = parseFloat(u); return isNaN(n) ? 0 : n; }
   function drawAdvance(c, nav){
@@ -3095,18 +3099,18 @@
     var pm = mailMonth || ym, pend = annRecs("settle").filter(function(x){ return String(x.data.retire || "").slice(0, 7) === pm && !inMail(x, pm); }), sentM = hist.some(function(q){ return q.data.month === pm; });
     var rows = pend;
     var months = ovUniq(annRecs("settle").map(function(x){ return String(x.data.retire || "").slice(0, 7); }).concat([ym])).reverse();
-    host.innerHTML = nav + '<div class="hint" style="font-size:12.5px;margin:-4px 0 12px">매월 급여일(25일, 주말·공휴일이면 직전 영업일) 기준 <b>영업일 5일 전</b>에 그달 퇴사자 정산 내역을 아래 받는 사람에게 보냅니다. 받는 사람·참조는 근태 › 자동 메일의 <b>수신 주소록</b> 명단에서 고르거나 직접 입력합니다. 머리말·맺음말은 자유롭게 고칠 수 있고, 퇴직자별 내역 표는 자동으로 붙습니다.</div>' +
+    host.innerHTML = nav + '<div class="hint" style="font-size:12.5px;margin:-4px 0 12px">매월 급여일(25일, 주말·공휴일이면 직전 영업일) 기준 <b>영업일 5일 전</b>에 그달 퇴사자 정산 내역을 아래 받는 사람에게 보냅니다. 받는 사람·참조는 자동 메일 › <b>수신 주소록</b> 명단에서 고르거나 직접 입력합니다. 머리말·맺음말은 자유롭게 고칠 수 있고, 퇴직자별 내역 표는 자동으로 붙습니다.</div>' +
       '<div class="kpis" style="grid-template-columns:repeat(3,minmax(0,1fr));margin-bottom:12px"><div class="kpi"><div class="k">이번 달 발송 예정일</div><div class="v" style="font-size:22px">' + md(sd.send) + '</div><div class="s">급여일 ' + md(sd.pay) + '</div></div><div class="kpi"><div class="k">다음 달 발송 예정일</div><div class="v" style="font-size:22px">' + md(sd2.send) + '</div><div class="s">급여일 ' + md(sd2.pay) + '</div></div><div class="kpi"><div class="k">마지막 대기열 등록</div><div class="v" style="font-size:18px">' + esc(cfg.sent_month || "-") + '</div><div class="s">' + esc(cfg.last_sent || "") + '</div></div></div>' +
       '<div class="settle-mail"><form class="f" id="mcF" onsubmit="return false"><label class="full"><span><input type="checkbox" name="enabled"' + (cfg.enabled ? " checked" : "") + '> 매월 자동 발송 사용</span></label>' +
         '<div class="full ep-h2">받는 사람</div><div class="full">' + rcpHtml("to", toSpec, people, { noSelf: true }) + '</div><div class="full ep-h2">참조(CC)</div><div class="full">' + rcpHtml("cc", ccSpec, people, { noSelf: true }) + '</div>' +
-        (canAm ? '' : '<p class="full hint" style="font-size:12px">수신 주소록을 보려면 근태 › 자동 메일 권한이 필요합니다. 지금은 직접 입력만 할 수 있습니다.</p>') + '</form>' +
+        (canAm ? '' : '<p class="full hint" style="font-size:12px">수신 주소록을 보려면 자동 메일 권한이 필요합니다. 지금은 직접 입력만 할 수 있습니다.</p>') + '</form>' +
         '<div class="ep-h2">머리말 <span class="hint" style="font-weight:500">{대상월} {급여일} {인원} {추가}(추가분이면 「 추가분」)을 쓸 수 있습니다. 아래에 퇴직자별 내역 표가 자동으로 붙습니다.</span></div>' + editorBar() +
         '<div class="doc"><div id="edBody" contenteditable="true" style="min-height:90px">' + cleanHtml(cfg.head_html || MailCore.SETTLE_HEAD) + '</div></div><textarea id="edHtml" class="ed-html" style="display:none"></textarea>' +
         '<div class="ep-h2">맺음말 <span class="hint" style="font-weight:500">(표 아래, 비워도 됩니다)</span></div><textarea id="mcFoot" rows="3" style="width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:8px;font-family:var(--font-body)">' + esc(MailCore.htmlToText(cfg.foot_html || "")) + '</textarea>' +
         (w ? '<div class="form-actions"><button class="btn primary" id="mcSave">설정 저장</button></div>' : '') + '</div>' +
       '<h4 style="margin:18px 0 6px;font-size:13px">발송 기록</h4>' + (canAm ? (amAll ? (hist.length ? '<div class="tbl-box"><table class="rec compact" style="min-width:0"><thead><tr><th>대상 월</th><th>구분</th><th>등록일</th><th>상태</th><th>발송 시각</th><th>받는 사람</th><th>포함된 퇴직자</th></tr></thead><tbody>' +
         hist.map(function(q){ var d = q.data, st = d.status; return '<tr><td>' + esc(d.month) + '</td><td>' + esc(d.round || "") + '</td><td>' + esc(String(q.created_at || "").slice(0, 10)) + '</td><td><span class="badge ' + (st === "발송 완료" ? "good" : st === "실패" ? "danger" : "warn") + '"' + (d.error ? ' title="' + esc(d.error) + '"' : '') + '>' + esc(st) + '</span>' + (d.error ? '<small class="hint" style="display:block;font-size:11px;max-width:220px">' + esc(d.error) + '</small>' : '') + '</td><td>' + esc(d.sent_at ? String(d.sent_at).replace("T", " ").slice(0, 16) : "") + '</td><td style="font-size:12px">' + esc(d.email) + (d.cc ? '<br><span class="hint">참조 ' + esc(d.cc) + '</span>' : '') + '</td>' +
-          '<td style="font-size:12.5px">' + ((d.people || []).length ? (d.people || []).map(function(p){ return esc(p.target) + ' <span class="hint">(' + esc(p.retire) + ' · ' + esc(p.final) + '일)</span>'; }).join("<br>") : '<span class="hint">0명</span>') + '</td></tr>'; }).join("") + '</tbody></table></div>' : '<p class="hint" style="font-size:12.5px">아직 정산 메일 발송 기록이 없습니다.</p>') : '<p class="hint">불러오는 중…</p>') : '<p class="hint" style="font-size:12.5px">발송 기록은 근태 › 자동 메일 권한이 있어야 볼 수 있습니다. 퇴직자별 상태는 「퇴직자 연차 정산」 목록의 「정산 메일」 열에서 확인하세요.</p>') +
+          '<td style="font-size:12.5px">' + ((d.people || []).length ? (d.people || []).map(function(p){ return esc(p.target) + ' <span class="hint">(' + esc(p.retire) + ' · ' + esc(p.final) + '일)</span>'; }).join("<br>") : '<span class="hint">0명</span>') + '</td></tr>'; }).join("") + '</tbody></table></div>' : '<p class="hint" style="font-size:12.5px">아직 정산 메일 발송 기록이 없습니다.</p>') : '<p class="hint">불러오는 중…</p>') : '<p class="hint" style="font-size:12.5px">발송 기록은 자동 메일 권한이 있어야 볼 수 있습니다. 퇴직자별 상태는 「퇴직자 연차 정산」 목록의 「정산 메일」 열에서 확인하세요.</p>') +
       '<h4 style="margin:18px 0 6px;font-size:13px">아직 메일에 포함되지 않은 퇴직자 <select id="mcM" style="margin-left:6px">' + months.map(function(m){ return '<option' + (m === pm ? " selected" : "") + '>' + m + '</option>'; }).join("") + '</select> <span class="hint">' + rows.length + '명' + (sentM ? " · 이 달은 이미 발송 기록이 있어 [추가]로 나갑니다" : "") + '</span></h4>' +
       (w && canAm && can("att.automail", "write") ? '<div style="margin:0 0 8px"><button class="btn sm" id="mcQ">지금 대기열에 넣기</button> <span class="hint" style="font-size:12px">저장된 설정 기준으로 지금 보낼 메일을 대기열에 넣습니다. 다음 자동 실행 또는 GitHub Actions › auto-mail › Run workflow 때 발송됩니다.</span></div>' : '') +
       '<div id="mcRc" style="font-size:12.5px;margin-bottom:6px"></div><div class="am-sub" id="mcS"></div><div class="mail-pv mail-html" id="mcB"></div>';
@@ -3320,20 +3324,60 @@
   function amSpecText(spec, people){ spec = MailCore.normSpec(spec); var a = []; if (spec.self) a.push("대상자 본인"); if (spec.selfPersonal) a.push("본인 개인 메일"); if (spec.leader) a.push("상위 직책자");
     spec.ids.forEach(function(id){ var p = people.filter(function(q){ return q.id === id; })[0]; if (p) a.push(p.data.target + (p.data.role ? "(" + p.data.role + ")" : "")); }); MailCore.splitMails(spec.extra).forEach(function(e){ a.push(e); }); return a.join(", "); }
 
+  // 발송 규칙 탭의 고정 카드: 퇴직자 연차 정산(월별) — 설정은 휴가 › 연차유급휴가 관리 데이터(config)에 그대로 저장
+  function settleRuleCard(people){
+    if (!can("leave.annual", "read")) return "";
+    var cx = (S.recs["leave.annual"] || []).filter(function(x){ return x.data.list === "config"; })[0], d = cx ? cx.data : {}, ym = todayStr().slice(0, 7), sd = settleSendDate(ym);
+    var nx = todayStr() <= sd.send ? sd : settleSendDate(ymd(new Date(+ym.slice(0, 4), +ym.slice(5, 7), 1)).slice(0, 7));
+    var toTxt = d.rcpt_to ? amSpecText(d.rcpt_to, people) : (d.to || "미지정"), ccTxt = d.rcpt_cc ? amSpecText(d.rcpt_cc, people) : (d.cc || "");
+    return '<div class="am-rule fixed' + (d.enabled ? " on" : "") + '"><div class="am-h"><div><b>퇴직자 연차 정산(월별)</b> <span class="badge ' + (d.enabled ? "good" : "neutral") + '">' + (d.enabled ? "켜짐" : "꺼짐") + '</span> <span class="badge info">자동 발송</span> <span class="badge neutral">고정 규칙</span></div>' +
+      '<div class="tools"><a class="btn sm" href="#/automail/settle">설정 · 미리보기</a></div></div>' +
+      '<div class="hint" style="font-size:12.5px;margin-top:4px">대상: 그달 퇴사자 정산 기록(휴가 › 연차유급휴가 관리) · 시점: 급여일(25일, 휴일이면 직전 영업일) 기준 영업일 5일 전 · 다음 발송 ' + esc(md(nx.send)) + ' (급여일 ' + esc(md(nx.pay)) + ')</div>' +
+      '<div class="hint" style="font-size:12.5px">받는 사람: ' + esc(toTxt || "미지정") + (ccTxt ? ' · 참조: ' + esc(ccTxt) : '') + '</div></div>';
+  }
+  function amNav(tab, qn, pn){ var t = [["", "발송 규칙"], ["settle", "퇴직자 연차 정산 메일"], ["queue", "발송 대기·기록"], ["people", "수신 주소록"]];
+    return '<nav class="subtabs">' + t.filter(function(x){ return x[0] !== "settle" || can("leave.annual", "read"); }).map(function(x){ return '<a href="#/automail' + (x[0] ? "/" + x[0] : "") + '" class="' + ((tab || "rules") === (x[0] || "rules") ? "on" : "") + '">' + x[1] + (x[0] === "queue" && qn != null ? ' <span class="hint">' + qn + '</span>' : x[0] === "people" && pn != null ? ' <span class="hint">' + pn + '</span>' : '') + '</a>'; }).join("") + '</nav>'; }
+  async function renderAmStrip(){
+    try { await Promise.all([loadRecs("att", "automail"), can("leave.annual", "read") ? loadRecs("leave", "annual") : null, can("att.worktypes", "read") ? loadRecs("att", "worktypes") : null, can("absence.status", "read") ? loadRecs("absence", "status") : null, can("leave.status", "read") ? loadRecs("leave", "status") : null]); } catch(e){ if ($("#amStrip")) $("#amStrip").innerHTML = '<span class="hint">자동 메일 현황을 불러오지 못했습니다.</span>'; return; }
+    var host = $("#amStrip"); if (!host) return;
+    var all = S.recs["att.automail"] || [], q = all.filter(function(x){ return x.data.list === "queue"; }), cfg = all.filter(function(x){ return x.data.list === "config"; })[0];
+    var wait = q.filter(function(x){ return x.data.status === "승인 대기"; }).length, noaddr = q.filter(function(x){ return x.data.status === "주소 필요"; }).length, ready = q.filter(function(x){ return x.data.status === "발송 대기"; }).length;
+    var t = todayStr(), wk = addDay(t, 6), keys = {}; q.forEach(function(x){ keys[x.data.key] = 1; });
+    var soon = 0; all.filter(function(x){ return x.data.list === "rule" && x.data.enabled; }).forEach(function(r){ amTargets(r.data, t).forEach(function(g){ if (g.due >= t && g.due <= wk && !keys[r.id + "|" + g.rec.id + "|" + g.date]) soon++; }); });
+    var st = "", ac = (S.recs["leave.annual"] || []).filter(function(x){ return x.data.list === "config"; })[0];
+    if (can("leave.annual", "read")){ var ym = t.slice(0, 7), sd = settleSendDate(ym), nx = t <= sd.send ? sd : settleSendDate(ymd(new Date(+ym.slice(0, 4), +ym.slice(5, 7), 1)).slice(0, 7)); st = '<a class="am-s" href="#/automail/settle"><small>연차 정산 메일</small><b>' + md(nx.send) + '</b><small>' + (ac && ac.data.enabled ? "자동 발송 켜짐" : "꺼짐") + '</small></a>'; }
+    host.innerHTML = '<div class="am-strip-h"><b>📨 자동 메일</b><span class="hint">' + (cfg && cfg.data.last_run ? "발송기 마지막 실행 " + esc(cfg.data.last_run) : "발송기 실행 기록 없음") + '</span></div><div class="am-strip-b">' +
+      '<a class="am-s' + (wait ? " hot" : "") + '" href="#/automail/queue"><small>승인 대기</small><b>' + wait + '<small>건</small></b><small>' + (wait ? "확인 후 승인 필요" : "없음") + '</small></a>' +
+      '<a class="am-s" href="#/automail/queue"><small>발송 대기</small><b>' + ready + '<small>건</small></b><small>다음 실행 때 발송</small></a>' +
+      '<a class="am-s" href="#/automail"><small>이번 주 발송 예정</small><b>' + soon + '<small>건</small></b><small>' + t.slice(5) + ' ~ ' + wk.slice(5) + '</small></a>' +
+      '<a class="am-s' + (noaddr ? " warn" : "") + '" href="#/automail/queue"><small>주소 필요</small><b>' + noaddr + '<small>건</small></b><small>' + (noaddr ? "수신 주소록 확인" : "없음") + '</small></a>' + st +
+      '<a class="btn sm primary am-go" href="#/automail">자동 메일 관리 ›</a></div>';
+  }
+  async function renderAutoMailPage(sub){
+    app.innerHTML = shell('<div class="cat-head"><div class="crumb"><a href="#/">홈</a> › 자동 메일</div><h1><span>📨</span>자동 메일</h1><p class="hint" style="margin:4px 0 14px;font-size:13px">휴가·휴직·근무형태 기록과 퇴직자 연차 정산에 맞춰 나가는 안내 메일을 한곳에서 관리합니다.</p></div><div class="cat-wrap"><div class="cat-main" id="cm"><p class="hint">불러오는 중…</p></div></div>', "자동 메일");
+    wireShell();
+    if (sub === "settle"){
+      if (!can("leave.annual", "read")){ $("#cm").innerHTML = amNav("settle") + '<div class="banner warn">휴가 › 연차유급휴가 관리 권한이 있어야 볼 수 있습니다.</div>'; return; }
+      try { await Promise.all([loadRecs("leave", "annual"), loadRecs("att", "automail")]); } catch(e){ $("#cm").innerHTML = '<div class="banner danger">불러오지 못했습니다: ' + esc(e.message) + '</div>'; return; }
+      if (!$("#cm")) return; var am = S.recs["att.automail"] || [];
+      drawSettleMail(catById("leave"), amNav("settle", am.filter(function(x){ return x.data.list === "queue"; }).length, am.filter(function(x){ return x.data.list === "people"; }).length) + '<div class="hint" style="font-size:12.5px;margin:-4px 0 10px">퇴직자별 정산 내역 확인·계산은 <a href="#/c/leave/annual/settle">휴가 › 연차유급휴가 관리 › 퇴직자 연차 정산</a>에서 합니다.</div>');
+      return; }
+    renderAutoMail(catById("att"), sub);
+  }
   async function renderAutoMail(c, sub){
     var host = $("#cm"), key = "att.automail"; amTab = ["queue", "people"].indexOf(sub) >= 0 ? sub : "rules";
     host.innerHTML = '<p class="hint">불러오는 중…</p>';
-    try { await Promise.all([loadRecs("att", "automail"), can("att.worktypes", "read") ? loadRecs("att", "worktypes") : null, can("absence.status", "read") ? loadRecs("absence", "status") : null, can("leave.status", "read") ? loadRecs("leave", "status") : null]); }
+    try { await Promise.all([loadRecs("att", "automail"), can("leave.annual", "read") ? loadRecs("leave", "annual") : null, can("att.worktypes", "read") ? loadRecs("att", "worktypes") : null, can("absence.status", "read") ? loadRecs("absence", "status") : null, can("leave.status", "read") ? loadRecs("leave", "status") : null]); }
     catch(err){ host.innerHTML = '<div class="banner danger">불러오지 못했습니다: ' + esc(err.message) + '</div>'; return; }
     if (!$("#cm")) return;
     var all = S.recs[key], rules = all.filter(function(x){ return x.data.list === "rule"; }), queue = all.filter(function(x){ return x.data.list === "queue"; }), people = all.filter(function(x){ return x.data.list === "people"; }), w = can(key, "write");
     function rer(){ renderAutoMail(c, sub); }
     var cfg = all.filter(function(x){ return x.data.list === "config"; })[0];
-    var h = '<nav class="subtabs"><a href="#/c/att/automail" class="' + (amTab === "rules" ? "on" : "") + '">발송 규칙</a><a href="#/c/att/automail/queue" class="' + (amTab === "queue" ? "on" : "") + '">발송 대기·기록 <span class="hint">' + queue.length + '</span></a><a href="#/c/att/automail/people" class="' + (amTab === "people" ? "on" : "") + '">수신 주소록 <span class="hint">' + people.length + '</span></a></nav>' +
+    var h = amNav(amTab === "rules" ? "" : amTab, queue.length, people.length) +
       '<div class="banner ' + (cfg && cfg.data.last_run ? "info" : "warn") + '" style="margin-top:0">' + (cfg && cfg.data.last_run ? "발송기 마지막 실행: " + esc(cfg.data.last_run) + " · " + esc(cfg.data.last_msg || "") : "아직 발송기가 실행된 적이 없습니다. GitHub 저장소 Secrets(SUPABASE_SERVICE_KEY · SMTP_USER · SMTP_PASS)를 등록해야 실제 메일이 나갑니다.") + '</div>';
     if (amTab === "rules"){
       h += '<div class="hint" style="font-size:12.5px;margin:0 0 12px">근무형태 현황·휴직·휴가 기록의 시작/종료일에 맞춰 메일을 보냅니다. 본문은 서식 있게 쓸 수 있고, <b>{이름}</b>·<b>{휴직 예정일}</b> 같은 값은 대상자마다 자동으로 바뀝니다. 받는 사람·참조는 대상자 본인 · 상위 직책자 · 수신 주소록 명단에서 여러 명 고를 수 있습니다. 규칙마다 <b>자동 발송</b> 또는 <b>승인 후 발송</b>을 고르고, 꺼 둔 규칙은 아무것도 보내지 않습니다.</div>' +
-        '<div class="rec-tools"><span class="grow"></span>' + (w ? '<button class="btn sm primary" id="amAdd">+ 규칙 추가</button>' : '') + '</div><div class="am-rules">' +
+        '<div class="rec-tools"><span class="grow"></span>' + (w ? '<button class="btn sm primary" id="amAdd">+ 규칙 추가</button>' : '') + '</div><div class="am-rules">' + settleRuleCard(people) +
         (rules.length ? rules.sort(function(a, b){ return String(a.data.target).localeCompare(String(b.data.target)); }).map(function(x){ var d = x.data, tg = amTargets(d);
           var toTxt = d.rcpt_to ? amSpecText(d.rcpt_to, people) : (d.to || "대상자 본인"), ccTxt = d.rcpt_cc ? amSpecText(d.rcpt_cc, people) : (d.cc || "");
           return '<div class="am-rule' + (d.enabled ? " on" : "") + '"><div class="am-h"><div><b>' + esc(d.target) + '</b> <span class="badge ' + (d.enabled ? "good" : "neutral") + '">' + (d.enabled ? "켜짐" : "꺼짐") + '</span> <span class="badge info">' + (d.mode === "auto" ? "자동 발송" : "승인 후 발송") + '</span></div>' +
@@ -3345,7 +3389,7 @@
       var qs = queue.slice().sort(function(a, b){ return String(b.data.due || "").localeCompare(String(a.data.due || "")) || String(b.created_at || "").localeCompare(String(a.created_at || "")); });
       h += '<div class="hint" style="font-size:12.5px;margin:0 0 12px">발송기가 만든 메일입니다. "승인 대기"는 내용을 확인하고 승인하면 다음 실행 때 발송됩니다. "주소 필요"는 수신 주소록을 채우면 다음 실행 때 다시 시도합니다. 행을 누르면 실제 본문을 볼 수 있습니다.</div>' +
         '<div class="tbl-box"><table class="rec compact"><thead><tr><th>발송 예정일</th><th>규칙</th><th>대상</th><th>받는 사람</th><th>참조</th><th>제목</th><th>상태</th><th>발송 시각</th><th></th></tr></thead><tbody>' +
-        (qs.length ? qs.map(function(x){ var d = x.data; return '<tr class="clk" data-qid="' + x.id + '"><td>' + esc(d.due || "") + '</td><td>' + esc(d.rule_name || "") + '</td><td><b>' + esc(d.target || "") + '</b></td><td style="font-size:12px;max-width:220px">' + esc(d.email || "") + (d.warn && d.warn.length ? '<br><span class="badge warn" title="' + esc(d.warn.join(" / ")) + '">확인 ' + d.warn.length + '</span>' : '') + '</td><td style="font-size:12px;max-width:200px">' + esc(d.cc || "") + '</td><td>' + esc(d.subject || "") + '</td><td><span class="badge ' + stCls(d.status || "") + '"' + (d.error ? ' title="' + esc(d.error) + '"' : '') + '>' + esc(d.status || "") + '</span></td><td>' + esc(String(d.sent_at || "").slice(0, 16).replace("T", " ")) + '</td><td>' + (w && d.status === "승인 대기" ? '<button class="btn sm primary" data-qok="' + x.id + '">승인</button>' : '') + '</td></tr>'; }).join("") : '<tr><td colspan="9" class="hint" style="padding:18px">아직 만들어진 메일이 없습니다.</td></tr>') + '</tbody></table></div>';
+        (qs.length ? qs.map(function(x){ var d = x.data; return '<tr class="clk" data-qid="' + x.id + '"><td>' + esc(d.due || "") + '</td><td>' + (d.kind === "annual-settle" ? '<span class="badge info">연차 정산</span> ' + esc(d.month || "") + ' ' + esc(d.round || "") : esc(d.rule_name || "")) + '</td><td><b>' + esc(d.target || "") + '</b>' + (d.people && d.people.length ? '<small class="hint" style="display:block;font-size:11.5px;max-width:200px">' + esc(d.people.map(function(p){ return p.target; }).join(", ")) + '</small>' : '') + '</td><td style="font-size:12px;max-width:220px">' + esc(d.email || "") + (d.warn && d.warn.length ? '<br><span class="badge warn" title="' + esc(d.warn.join(" / ")) + '">확인 ' + d.warn.length + '</span>' : '') + '</td><td style="font-size:12px;max-width:200px">' + esc(d.cc || "") + '</td><td>' + esc(d.subject || "") + '</td><td><span class="badge ' + stCls(d.status || "") + '"' + (d.error ? ' title="' + esc(d.error) + '"' : '') + '>' + esc(d.status || "") + '</span></td><td>' + esc(String(d.sent_at || "").slice(0, 16).replace("T", " ")) + '</td><td>' + (w && d.status === "승인 대기" ? '<button class="btn sm primary" data-qok="' + x.id + '">승인</button>' : '') + '</td></tr>'; }).join("") : '<tr><td colspan="9" class="hint" style="padding:18px">아직 만들어진 메일이 없습니다.</td></tr>') + '</tbody></table></div>';
     } else {
       var pl = people.filter(function(x){ return !amPKind || (x.data.kind || "직원") === amPKind; }).sort(function(a, b){ return AM_KINDS.indexOf(a.data.kind || "직원") - AM_KINDS.indexOf(b.data.kind || "직원") || String(a.data.target).localeCompare(String(b.data.target)); });
       h += '<div class="hint" style="font-size:12.5px;margin:0 0 12px">자동 메일의 받는 사람·참조 명단입니다. <b>직원</b>은 「대상자 본인」 주소를 찾을 때(이름, 동명이인은 소속까지), <b>직책자</b>는 「대상자의 상위 직책자」를 찾을 때(담당 범위에 대상자의 팀 또는 소속이 들어간 사람) 쓰입니다. <b>HR 담당 · 유관부서</b>는 규칙에서 골라 넣습니다. 엑셀에서 「구분 · 이름 · 소속 · 팀 · 회사 메일 · 개인 메일 · 역할 · 담당 범위」 열을 복사해 붙여 넣을 수 있습니다.</div>' +
