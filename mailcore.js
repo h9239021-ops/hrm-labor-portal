@@ -61,15 +61,36 @@
   }
   // 받는 사람 · 참조: { self, selfPersonal, leader, ids:[], extra:"" } (예전 규칙의 문자열은 extra로 읽음)
   function normSpec(v) {
-    if (v && typeof v === "object") return { self: !!v.self, selfPersonal: !!v.selfPersonal, leader: !!v.leader, sameTeam: !!v.sameTeam, ids: (v.ids || []).slice(), teams: (v.teams || []).slice(), extra: v.extra || "" };
-    return { self: false, selfPersonal: false, leader: false, sameTeam: false, ids: [], teams: [], extra: String(v || "") };
+    if (v && typeof v === "object") return { self: !!v.self, selfPersonal: !!v.selfPersonal, leader1: !!(v.leader1 || v.leader), leader2: !!v.leader2, leader3: !!v.leader3, sameTeam: !!v.sameTeam, ids: (v.ids || []).slice(), teams: (v.teams || []).slice(), extra: v.extra || "" };
+    return { self: false, selfPersonal: false, leader1: false, leader2: false, leader3: false, sameTeam: false, ids: [], teams: [], extra: String(v || "") };
   }
   function splitMails(s) { return String(s || "").split(/[,;\s]+/).map(function (x) { return x.trim(); }).filter(function (x) { return /@/.test(x); }); }
   function pdata(p) { return p.data || p; }
   function active(p) { var x = pdata(p); return !x.inactive; }
   // 조직도 기준 팀 구성원(퇴사·제외 표시된 사람 제외)
+  // 같은 팀 = 조직도의 「팀」 기준(파트 아님). 팀 이름이 여러 사업부에 있으면 소속(회사·부문·사업부 중 하나)이 맞는 쪽을 쓴다
   function teamMembers(people, org, team) { org = String(org || "").trim(); team = String(team || "").trim(); if (!team) return [];
-    return people.filter(function (p) { var x = pdata(p); return active(p) && (x.kind === "직원" || x.kind === "직책자" || !x.kind) && String(x.team || "").trim() === team && (!org || String(x.org || "").trim() === org); }).map(pdata); }
+    var l = people.filter(function (p) { var x = pdata(p); return active(p) && (x.kind === "직원" || x.kind === "직책자" || !x.kind) && String(x.team || "").trim() === team; }).map(pdata);
+    if (org) { var o = l.filter(function (x) { return [x.org, x.division, x.company, x.hq].map(function (v) { return String(v || "").trim(); }).indexOf(org) >= 0; }); if (o.length) return o; }
+    return l; }
+  // 조직 단계: 파트 → 팀 → 실 → 본부 → 사업부 → 부문
+  var LV_NAMES = ["파트", "팀", "실", "본부", "사업부", "부문"];
+  function units(x) { return [x.part, x.team, x.office, x.hq, x.org, x.division].map(function (v) { v = String(v || "").trim(); return v === "-" ? "" : v; }); }
+  function deepest(u) { for (var i = 0; i < u.length; i++) if (u[i]) return i; return -1; }
+  function isHead(x) { var p = String(x.position || "").trim(); return x.kind === "직책자" || (!!p && p !== "-" && !/팀원/.test(p)); }
+  // 대상자 위로 직책자 사슬(1차, 2차, 3차 …)
+  function leaderChain(people, d) {
+    var me = findSelf(people, d), tu = me && deepest(units(me)) >= 0 ? units(me) : ["", String(d.team || "").trim(), "", "", String(d.org || "").trim(), ""], nm = String(d.target || "").trim(), comp = me ? me.company : "";
+    var heads = people.filter(active).map(pdata).filter(function (x) { return isHead(x) && String(x.target || "").trim() !== nm && deepest(units(x)) >= 0; });
+    // 같은 단계 · 같은 조직 경로(그 단계부터 위쪽이 모두 같음)의 직책자를 한 차수로 묶는다(공동 팀장 등)
+    var chain = [], seen = {};
+    for (var L = Math.max(0, deepest(tu)); L < tu.length; L++) { if (!tu[L]) continue;
+      var grp = heads.filter(function (x) { var u = units(x); if (deepest(u) !== L || u[L] !== tu[L]) return false; for (var k = L + 1; k < u.length; k++) if (u[k] && tu[k] && u[k] !== tu[k]) return false; return !comp || !x.company || x.company === comp; })
+        .filter(function (x) { var k = (x.email || x.target); if (seen[k]) return false; seen[k] = 1; return true; });
+      if (grp.length) chain.push({ heads: grp, level: LV_NAMES[L] + " · " + tu[L] }); }
+    if (!chain.length) { var fl = findLeaders(people, d); if (fl.length) chain.push({ heads: fl, level: "담당 범위" }); }
+    return chain;
+  }
   function findSelf(people, d) {
     var nm = String(d.target || "").trim(); if (!nm) return null;
     var l = people.filter(function (p) { var x = pdata(p); return String(x.target || "").trim() === nm && active(p); });
@@ -91,14 +112,15 @@
     function add(email, name, why) { email = String(email || "").trim(); if (!/@/.test(email)) return; var k = email.toLowerCase(); if (seen[k]) return; seen[k] = 1; list.push({ email: email, name: name || "", why: why }); }
     if (spec.self) { var me = findSelf(people, d); if (me && me.email) add(me.email, d.target, "대상자 본인"); else missing.push("대상자 본인 회사 메일(주소록에 " + (d.target || "이름") + " 없음)"); }
     if (spec.selfPersonal) { var pm = d.email || ((findSelf(people, d) || {}).email2); if (pm) add(pm, d.target, "대상자 개인 메일"); else missing.push("대상자 개인 메일(기록·주소록에 없음)"); }
-    if (spec.leader) { var ls = findLeaders(people, d); if (ls.length) ls.forEach(function (x) { add(x.email, x.target, "상위 직책자"); }); else missing.push("상위 직책자(" + [d.org, d.team].filter(Boolean).join(" ") + " 담당 직책자 미지정)"); }
+    if (spec.leader1 || spec.leader2 || spec.leader3) { var ch = leaderChain(people, d);
+      [spec.leader1, spec.leader2, spec.leader3].forEach(function (on, i) { if (!on) return; var h = ch[i]; if (h) h.heads.forEach(function (x) { add(x.email, x.target, "상위 직책자 " + (i + 1) + "차(" + (x.position || "") + " · " + h.level + ")"); }); else missing.push("상위 직책자 " + (i + 1) + "차(" + [d.org, d.team].filter(Boolean).join(" ") + " 위 직책자 없음)"); }); }
     if (spec.sameTeam) { var tm = teamMembers(people, d.org, d.team); if (tm.length) tm.forEach(function (x) { add(x.email, x.target, "같은 팀"); }); else missing.push("대상자와 같은 팀(" + [d.org, d.team].filter(Boolean).join(" ") + ") 구성원이 조직도에 없음"); }
     spec.teams.forEach(function (t) { var tm2 = teamMembers(people, t.org, t.team); if (tm2.length) tm2.forEach(function (x) { add(x.email, x.target, (t.org ? t.org + " " : "") + t.team); }); else missing.push((t.org ? t.org + " " : "") + t.team + " 구성원이 조직도에 없음"); });
     spec.ids.forEach(function (id) { var p = people.filter(function (q) { return q.id === id; })[0]; if (p) add(pdata(p).email, pdata(p).target, pdata(p).role || pdata(p).kind || "명단"); else missing.push("명단에서 지워진 사람"); });
     splitMails(spec.extra).forEach(function (e) { add(e, "", "직접 입력"); });
     return { list: list, missing: missing };
   }
-  function specEmpty(spec) { spec = normSpec(spec); return !spec.self && !spec.selfPersonal && !spec.leader && !spec.sameTeam && !spec.ids.length && !spec.teams.length && !splitMails(spec.extra).length; }
+  function specEmpty(spec) { spec = normSpec(spec); return !spec.self && !spec.selfPersonal && !spec.leader1 && !spec.leader2 && !spec.leader3 && !spec.sameTeam && !spec.ids.length && !spec.teams.length && !splitMails(spec.extra).length; }
   // 포털 편집기 HTML → 메일용(클래스 대신 인라인 스타일)
   var NOTE_C = { info: ["#eff6ff", "#93c5fd"], tip: ["#ecfdf5", "#86efac"], warn: ["#fffbeb", "#fcd34d"], danger: ["#fef2f2", "#fca5a5"] };
   function emailHtml(html) {
@@ -131,5 +153,5 @@
     var html = head + tbl + foot;
     return { subject: "[연차 정산]" + (extra ? "[추가] " : " ") + ymL + " 퇴직자 연차 정산 내역 (" + rows.length + "명)", html: html, emailHtml: emailHtml(html), text: htmlToText(html) };
   }
-  return { teamMembers: teamMembers, VARS: VARS, varsFor: varsFor, fill: fill, fmtDate: fmtDate, normSpec: normSpec, resolve: resolve, specEmpty: specEmpty, splitMails: splitMails, emailHtml: emailHtml, htmlToText: htmlToText, settleMail: settleMail, SETTLE_HEAD: SETTLE_HEAD, esc: esc, addDay: addDay };
+  return { leaderChain: leaderChain, teamMembers: teamMembers, VARS: VARS, varsFor: varsFor, fill: fill, fmtDate: fmtDate, normSpec: normSpec, resolve: resolve, specEmpty: specEmpty, splitMails: splitMails, emailHtml: emailHtml, htmlToText: htmlToText, settleMail: settleMail, SETTLE_HEAD: SETTLE_HEAD, esc: esc, addDay: addDay };
 });
