@@ -109,7 +109,9 @@
     ["lbl","표"],["rowAbove","↑ 행","위에 행 넣기"],["rowAdd","↓ 행","아래에 행 넣기"],["colLeft","← 열","왼쪽에 열 넣기"],["colAdd","→ 열","오른쪽에 열 넣기"],["rowDel","행 삭제"],["colDel","열 삭제"],["|"],
     ["merge","셀 병합","끌어서 선택한 칸들을 하나로 합칩니다"],["split","셀 분할","합친 칸은 원래대로, 한 칸은 좌우 · 위아래로 나눕니다"],["shade","음영 ▾","칸 배경색"],["valign","세로 정렬 ▾","칸 안 위·가운데·아래"],["hdr","머리글 행","첫 행을 머리글로 바꾸거나 되돌립니다"],["colAll","정렬: 칸만"],["sel","tw","표 너비",[["","표 너비"],["60","좁게 60%"],["80","보통 80%"],["100","전체 100%"]]],["tblDel","표 삭제"],
     ["lbl2","칸을 끌거나 Shift+클릭하면 여러 칸 선택 · 열 경계선을 끌면 너비 조절 · Tab으로 다음 칸"]];
-  function editorBar(){ return '<div class="ed-bar" id="edBar">' + ED_BTNS.map(function(b){ if (b[0] === "|") return '<span class="sep"></span>'; if (b[0] === "grow") return '<span class="grow"></span>';
+  function pickBtns(keys){ return keys.map(function(k){ if (k === "|" || k === "grow") return [k]; return ED_BTNS.filter(function(b){ return b[0] === k || (b[0] === "sel" && b[1] === k); })[0]; }).filter(Boolean); }
+  var MAIL_BTNS = pickBtns(["bold", "italic", "under", "color", "hl", "fs", "|", "ul", "ol", "alL", "alC", "|", "link", "note", "table", "rowAdd", "colAdd", "rowDel", "colDel", "|", "clear", "grow", "undo", "redo"]);
+  function editorBar(list){ return '<div class="ed-bar' + (list ? " ed-bar-mail" : "") + '" id="edBar">' + (list || ED_BTNS).map(function(b){ if (b[0] === "|") return '<span class="sep"></span>'; if (b[0] === "grow") return '<span class="grow"></span>';
       if (b[0] === "br") return '<span class="brk"></span>'; if (b[0] === "lbl") return '<span class="lbl">' + b[1] + '</span>'; if (b[0] === "lbl2") return '<span class="lbl2">' + b[1] + '</span>';
       if (b[0] === "sel") return '<select data-edsel="' + b[1] + '" title="' + b[2] + '">' + b[3].map(function(o){ return '<option value="' + o[0] + '">' + o[1] + '</option>'; }).join("") + '</select>';
       return '<button type="button" data-ed="' + b[0] + '"' + (b[2] ? ' title="' + b[2] + '"' : '') + '>' + b[1] + '</button>'; }).join("") + '</div>'; }
@@ -509,10 +511,11 @@
       '<a class="brand" href="#/"><img src="' + (window.LOGO_SRC || "") + '" alt="ConnectWave"><span class="sep"></span><span class="nm">HRM 노무관리파트 업무포털</span></a>' +
       (area ? '<span class="hd-area">› ' + esc(area) + '</span><a class="btn sm" href="#/" style="margin-left:8px">🏠 업무포털 홈</a>' : '') +
       '<div class="hd-r">' + (isAdmin() && area !== "권한 관리" ? '<a class="btn sm ghost" href="#/admin">권한 관리</a>' : '') +
-      '<span class="who" title="' + esc(me.email) + '">' + esc(me.name) + (me.team ? " · " + esc(me.team) : "") + '</span><button class="btn sm ghost" id="pwChg" title="내 로그인 비밀번호 바꾸기">비밀번호 변경</button><button class="btn sm" id="logout">로그아웃</button></div>' +
+      '<span class="who" title="' + esc(me.email) + '">' + esc(me.name) + (me.team ? " · " + esc(me.team) : "") + '</span>' + (can("att.automail", "read") ? '<button type="button" class="hd-ic" id="amIc" title="자동 메일">📨<b class="hd-badge" id="amBadge" hidden></b></button>' : '') + '<button type="button" class="hd-ic bear" id="megaBtn" title="전체 메뉴">🐻<span>전체 메뉴</span></button><button class="btn sm ghost" id="pwChg" title="내 로그인 비밀번호 바꾸기">비밀번호 변경</button><button class="btn sm" id="logout">로그아웃</button></div>' +
       '</div></header>' + inner;
   }
-  function wireShell(){ var b = $("#logout"); if (b) b.onclick = async function(){ await sb.auth.signOut(); me = null; location.hash = "#/"; renderLogin(); }; var pw = $("#pwChg"); if (pw) pw.onclick = openPwChange; }
+  function wireShell(){ var b = $("#logout"); if (b) b.onclick = async function(){ await sb.auth.signOut(); me = null; location.hash = "#/"; renderLogin(); }; var pw = $("#pwChg"); if (pw) pw.onclick = openPwChange;
+    var mg = $("#megaBtn"); if (mg) mg.onclick = toggleMega; var ai = $("#amIc"); if (ai){ ai.onclick = function(){ toggleAmPop(ai); }; amBadgeRefresh(); } }
   // 내 비밀번호 바꾸기(로그인한 본인 계정). 근로감독 대시보드와 같은 계정이라 대시보드 비밀번호도 함께 바뀐다.
   function openPwChange(){
     var m = showModal('<h3>비밀번호 변경</h3><p class="hint" style="font-size:12.5px">' + esc(me.email) + ' 계정의 비밀번호를 바꿉니다. 근로감독 대시보드와 같은 계정이라 대시보드 비밀번호도 함께 바뀝니다.</p>' +
@@ -560,7 +563,6 @@
         (showCal ? '<section class="card2" id="calCard"></section><section class="card2" id="todoCard"></section>' : '') +
         (showChg ? '<section class="card2 chgc" id="chgCard"></section>' : '') + '</div>';
     }
-    if (can("att.automail", "read")) h += '<section class="card2 am-strip" id="amStrip"><span class="hint">자동 메일 현황 불러오는 중…</span></section>';
     var cats = CATS.filter(catVisible);
     h += '<section style="margin-top:26px"><div class="sec-h"><h2>업무 카테고리</h2></div><div class="cats">' +
       (cats.length ? cats.map(catCard).join("") : '<p class="hint">열람 가능한 카테고리가 없습니다.</p>') + '</div></section>';
@@ -571,7 +573,6 @@
     if (showCal){ calRefresh(); }
     if (showFaq) renderFaq();
     if (can("home.laws", "read")) renderLawHome();
-    if (can("att.automail", "read")) renderAmStrip();
     if (showChg){ renderChg(); loadChanges().then(function(){ if ($("#chgCard")){ renderChg(); if (showCal) renderCal(); } }); }
   }
 
@@ -3104,7 +3105,7 @@
       '<div class="settle-mail"><form class="f" id="mcF" onsubmit="return false"><label class="full"><span><input type="checkbox" name="enabled"' + (cfg.enabled ? " checked" : "") + '> 매월 자동 발송 사용</span></label>' +
         '<div class="full ep-h2">받는 사람</div><div class="full">' + rcpHtml("to", toSpec, people, { noSelf: true }) + '</div><div class="full ep-h2">참조(CC)</div><div class="full">' + rcpHtml("cc", ccSpec, people, { noSelf: true }) + '</div>' +
         (canAm ? '' : '<p class="full hint" style="font-size:12px">수신 주소록을 보려면 자동 메일 권한이 필요합니다. 지금은 직접 입력만 할 수 있습니다.</p>') + '</form>' +
-        '<div class="ep-h2">머리말 <span class="hint" style="font-weight:500">{대상월} {급여일} {인원} {추가}(추가분이면 「 추가분」)을 쓸 수 있습니다. 아래에 퇴직자별 내역 표가 자동으로 붙습니다.</span></div>' + editorBar() +
+        '<div class="ep-h2">머리말 <span class="hint" style="font-weight:500">{대상월} {급여일} {인원} {추가}(추가분이면 「 추가분」)을 쓸 수 있습니다. 아래에 퇴직자별 내역 표가 자동으로 붙습니다.</span></div>' + editorBar(MAIL_BTNS) +
         '<div class="doc"><div id="edBody" contenteditable="true" style="min-height:90px">' + cleanHtml(cfg.head_html || MailCore.SETTLE_HEAD) + '</div></div><textarea id="edHtml" class="ed-html" style="display:none"></textarea>' +
         '<div class="ep-h2">맺음말 <span class="hint" style="font-weight:500">(표 아래, 비워도 됩니다)</span></div><textarea id="mcFoot" rows="3" style="width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:8px;font-family:var(--font-body)">' + esc(MailCore.htmlToText(cfg.foot_html || "")) + '</textarea>' +
         (w ? '<div class="form-actions"><button class="btn primary" id="mcSave">설정 저장</button></div>' : '') + '</div>' +
@@ -3294,36 +3295,46 @@
     if (rule.to) return MailCore.resolve({ extra: rule.to }, d, people);
     var r = MailCore.resolve({ selfPersonal: !!d.email, self: !d.email }, d, people); return r;
   }
-  /* 받는 사람 · 참조 선택기 */
+  /* 받는 사람 · 참조 선택기: 자동 대상 · 명단(직원 포함) · 팀 단위 · 직접 입력 */
+  function amTeams(people){ var m = {}; people.forEach(function(p){ var x = p.data; if (x.inactive || !x.team || (x.kind && x.kind !== "직원" && x.kind !== "직책자")) return; var k = (x.org || "") + "|" + x.team; (m[k] = m[k] || { org: x.org || "", team: x.team, n: 0 }).n++; }); return Object.keys(m).sort().map(function(k){ return m[k]; }); }
   function rcpHtml(key, spec, people, opt){
     spec = MailCore.normSpec(spec); opt = opt || {};
-    var chips = spec.ids.map(function(id){ var p = people.filter(function(q){ return q.id === id; })[0]; return p ? rcpChip(p) : ''; }).join("");
+    var chips = spec.teams.map(function(t){ return rcpTeamChip(t, people); }).join("") + spec.ids.map(function(id){ var p = people.filter(function(q){ return q.id === id; })[0]; return p ? rcpChip(p) : ''; }).join("");
     return '<div class="rcp" data-rcp="' + key + '">' +
-      (opt.noSelf ? '' : '<div class="rcp-auto"><label><input type="checkbox" data-k="self"' + (spec.self ? " checked" : "") + '> 대상자 본인(회사 메일)</label><label><input type="checkbox" data-k="selfPersonal"' + (spec.selfPersonal ? " checked" : "") + '> 대상자 본인(개인 메일)</label><label><input type="checkbox" data-k="leader"' + (spec.leader ? " checked" : "") + '> 대상자의 상위 직책자</label></div>') +
+      (opt.noSelf ? '' : '<div class="rcp-auto"><label><input type="checkbox" data-k="self"' + (spec.self ? " checked" : "") + '> 대상자 본인(회사 메일)</label><label><input type="checkbox" data-k="selfPersonal"' + (spec.selfPersonal ? " checked" : "") + '> 대상자 본인(개인 메일)</label><label><input type="checkbox" data-k="leader"' + (spec.leader ? " checked" : "") + '> 대상자의 상위 직책자</label><label><input type="checkbox" data-k="sameTeam"' + (spec.sameTeam ? " checked" : "") + '> 대상자와 같은 팀 전체</label></div>') +
       '<div class="rcp-chips">' + chips + '</div>' +
-      '<div class="rcp-find"><input type="search" data-q placeholder="명단에서 찾기 (이름 · 역할 · 소속)"><span class="rcp-kinds">' + AM_KINDS.filter(function(k){ return k !== "직원"; }).map(function(k){ return '<button type="button" class="btn sm ghost" data-kq="' + k + '">' + k + ' ▾</button>'; }).join("") + '</span><div class="rcp-sug" hidden></div></div>' +
+      '<div class="rcp-find"><input type="search" data-q placeholder="이름 · 팀 · 역할로 찾기 (팀원도 검색됩니다)"><span class="rcp-kinds"><button type="button" class="btn sm ghost" data-tq>👥 팀 ▾</button>' + AM_KINDS.filter(function(k){ return k !== "직원"; }).map(function(k){ return '<button type="button" class="btn sm ghost" data-kq="' + k + '">' + k + ' ▾</button>'; }).join("") + '</span><div class="rcp-sug" hidden></div></div>' +
       '<input data-extra placeholder="명단에 없는 주소 직접 입력 (쉼표로 여러 개)" value="' + esc(spec.extra || "") + '"></div>';
   }
-  function rcpChip(p){ var x = p.data; return '<span class="rcp-chip" data-id="' + p.id + '" title="' + esc(x.email || "") + '"><b>' + esc(x.target) + '</b>' + (x.role || x.kind ? ' <small>' + esc(x.role || x.kind) + '</small>' : '') + '<button type="button" data-rm>✕</button></span>'; }
-  function rcpRead(box){ var o = { ids: $all(".rcp-chip", box).map(function(c){ return c.dataset.id; }), extra: ($("[data-extra]", box) || {}).value || "" };
+  function rcpChip(p){ var x = p.data; return '<span class="rcp-chip" data-id="' + p.id + '" title="' + esc(x.email || "") + '"><b>' + esc(x.target) + '</b>' + (x.role || x.team || x.kind ? ' <small>' + esc(x.role || [x.org, x.team].filter(Boolean).join(" ") || x.kind) + '</small>' : '') + (x.inactive ? ' <small style="color:var(--danger-700)">퇴사·제외</small>' : '') + '<button type="button" data-rm>✕</button></span>'; }
+  function rcpTeamChip(t, people){ var n = MailCore.teamMembers(people, t.org, t.team).length; return '<span class="rcp-chip team" data-team="' + esc((t.org || "") + "|" + t.team) + '" title="발송할 때의 조직도 기준 팀 전원"><b>👥 ' + esc((t.org ? t.org + " " : "") + t.team) + '</b> <small>' + n + '명</small><button type="button" data-rm>✕</button></span>'; }
+  function rcpRead(box){ var o = { ids: $all(".rcp-chip[data-id]", box).map(function(c){ return c.dataset.id; }), teams: $all(".rcp-chip[data-team]", box).map(function(c){ var p = c.dataset.team.split("|"); return { org: p[0], team: p.slice(1).join("|") }; }), extra: ($("[data-extra]", box) || {}).value || "" };
     $all("[data-k]", box).forEach(function(c){ o[c.dataset.k] = c.checked; }); return o; }
   function rcpWire(box, people, onChange){
-    var q = $("[data-q]", box), sug = $(".rcp-sug", box);
+    var q = $("[data-q]", box), sug = $(".rcp-sug", box), act = people.filter(function(p){ return !p.data.inactive; });
     function ch(){ if (onChange) onChange(); }
     function wireChips(){ $all("[data-rm]", box).forEach(function(b){ b.onclick = function(){ b.parentNode.remove(); ch(); }; }); }
-    function show(list){ if (!list.length){ sug.innerHTML = '<div class="hint" style="padding:6px 8px;font-size:12px">맞는 사람이 없습니다. 수신 주소록 탭에서 먼저 등록하세요.</div>'; sug.hidden = false; return; }
-      sug.innerHTML = list.slice(0, 30).map(function(p){ var x = p.data; return '<button type="button" data-pick="' + p.id + '"><b>' + esc(x.target) + '</b> <small>' + esc([x.kind, x.role, x.org, x.team].filter(Boolean).join(" · ")) + '</small><span class="hint">' + esc(x.email || "주소 없음") + '</span></button>'; }).join(""); sug.hidden = false;
-      $all("[data-pick]", sug).forEach(function(b){ b.onmousedown = function(e){ e.preventDefault(); var id = b.dataset.pick; if (!$('.rcp-chip[data-id="' + id + '"]', box)){ $(".rcp-chips", box).insertAdjacentHTML("beforeend", rcpChip(people.filter(function(p){ return p.id === id; })[0])); wireChips(); ch(); } }; }); }
-    q.addEventListener("input", function(){ var s = q.value.trim(); if (!s){ sug.hidden = true; return; } show(people.filter(function(p){ var x = p.data; return [x.target, x.role, x.org, x.team, x.kind, x.email].join(" ").indexOf(s) >= 0; })); });
+    function addHtml(h, sel){ if (!$(sel, box)){ $(".rcp-chips", box).insertAdjacentHTML("beforeend", h); wireChips(); ch(); } }
+    function showTeams(s){ var ts = amTeams(people).filter(function(t){ return !s || (t.org + " " + t.team).indexOf(s) >= 0; });
+      sug.innerHTML = ts.length ? '<div class="ep-h" style="padding:4px 8px">팀을 고르면 발송할 때의 조직도 기준 팀 전원이 들어갑니다</div>' + ts.map(function(t){ return '<button type="button" data-pteam="' + esc(t.org + "|" + t.team) + '"><b>👥 ' + esc((t.org ? t.org + " " : "") + t.team) + '</b> <small>' + t.n + '명</small></button>'; }).join("") : '<div class="hint" style="padding:6px 8px;font-size:12px">조직도에 팀 정보가 없습니다. 수신 주소록에서 조직도 엑셀을 먼저 올리세요.</div>'; sug.hidden = false;
+      $all("[data-pteam]", sug).forEach(function(b){ b.onmousedown = function(e){ e.preventDefault(); var p = b.dataset.pteam.split("|"); addHtml(rcpTeamChip({ org: p[0], team: p.slice(1).join("|") }, people), '.rcp-chip[data-team="' + b.dataset.pteam.replace(/"/g, '\\"') + '"]'); }; }); }
+    function show(list){ if (!list.length){ sug.innerHTML = '<div class="hint" style="padding:6px 8px;font-size:12px">맞는 사람이 없습니다. 수신 주소록에 먼저 등록하세요.</div>'; sug.hidden = false; return; }
+      sug.innerHTML = list.slice(0, 40).map(function(p){ var x = p.data; return '<button type="button" data-pick="' + p.id + '"><b>' + esc(x.target) + '</b> <small>' + esc([x.kind, x.position || x.role, x.org, x.team].filter(Boolean).join(" · ")) + '</small><span class="hint">' + esc(x.email || "주소 없음") + '</span></button>'; }).join(""); sug.hidden = false;
+      $all("[data-pick]", sug).forEach(function(b){ b.onmousedown = function(e){ e.preventDefault(); addHtml(rcpChip(people.filter(function(p){ return p.id === b.dataset.pick; })[0]), '.rcp-chip[data-id="' + b.dataset.pick + '"]'); }; }); }
+    q.addEventListener("input", function(){ var s = q.value.trim(); if (!s){ sug.hidden = true; return; }
+      var tm = amTeams(people).filter(function(t){ return (t.org + " " + t.team).indexOf(s) >= 0; }).length;
+      show(act.filter(function(p){ var x = p.data; return [x.target, x.role, x.org, x.team, x.kind, x.position, x.email].join(" ").indexOf(s) >= 0; }));
+      if (tm) sug.insertAdjacentHTML("afterbegin", '<button type="button" class="rcp-sug-team" data-tq2><b>👥 「' + esc(s) + '」 팀 ' + tm + '개 보기</b></button>'), $("[data-tq2]", sug).onmousedown = function(e){ e.preventDefault(); showTeams(s); }; });
     q.addEventListener("blur", function(){ setTimeout(function(){ sug.hidden = true; }, 150); });
-    $all("[data-kq]", box).forEach(function(b){ b.onclick = function(){ show(people.filter(function(p){ return p.data.kind === b.dataset.kq; })); q.focus(); }; });
+    $("[data-tq]", box).onclick = function(){ showTeams(""); q.focus(); };
+    $all("[data-kq]", box).forEach(function(b){ b.onclick = function(){ show(act.filter(function(p){ return p.data.kind === b.dataset.kq; })); q.focus(); }; });
     $all("[data-k]", box).forEach(function(c){ c.onchange = ch; }); var ex = $("[data-extra]", box); if (ex) ex.addEventListener("input", ch);
     wireChips();
   }
   function rcpSummary(r){ return r.list.map(function(x){ return '<span class="rcp-pv" title="' + esc(x.why) + '">' + esc(x.name ? x.name + " <" + x.email + ">" : x.email) + ' <small>' + esc(x.why) + '</small></span>'; }).join("") + r.missing.map(function(mm){ return '<span class="badge warn" style="margin:2px">' + esc(mm) + '</span>'; }).join(""); }
-  function amSpecText(spec, people){ spec = MailCore.normSpec(spec); var a = []; if (spec.self) a.push("대상자 본인"); if (spec.selfPersonal) a.push("본인 개인 메일"); if (spec.leader) a.push("상위 직책자");
+  function amSpecText(spec, people){ spec = MailCore.normSpec(spec); var a = []; if (spec.self) a.push("대상자 본인"); if (spec.selfPersonal) a.push("본인 개인 메일"); if (spec.leader) a.push("상위 직책자"); if (spec.sameTeam) a.push("대상자 같은 팀 전체");
+    spec.teams.forEach(function(t){ a.push("👥" + (t.org ? t.org + " " : "") + t.team); });
     spec.ids.forEach(function(id){ var p = people.filter(function(q){ return q.id === id; })[0]; if (p) a.push(p.data.target + (p.data.role ? "(" + p.data.role + ")" : "")); }); MailCore.splitMails(spec.extra).forEach(function(e){ a.push(e); }); return a.join(", "); }
-
   // 발송 규칙 탭의 고정 카드: 퇴직자 연차 정산(월별) — 설정은 휴가 › 연차유급휴가 관리 데이터(config)에 그대로 저장
   function settleRuleCard(people){
     if (!can("leave.annual", "read")) return "";
@@ -3337,22 +3348,46 @@
   }
   function amNav(tab, qn, pn){ var t = [["", "발송 규칙"], ["settle", "퇴직자 연차 정산 메일"], ["queue", "발송 대기·기록"], ["people", "수신 주소록"]];
     return '<nav class="subtabs">' + t.filter(function(x){ return x[0] !== "settle" || can("leave.annual", "read"); }).map(function(x){ return '<a href="#/automail' + (x[0] ? "/" + x[0] : "") + '" class="' + ((tab || "rules") === (x[0] || "rules") ? "on" : "") + '">' + x[1] + (x[0] === "queue" && qn != null ? ' <span class="hint">' + qn + '</span>' : x[0] === "people" && pn != null ? ' <span class="hint">' + pn + '</span>' : '') + '</a>'; }).join("") + '</nav>'; }
-  async function renderAmStrip(){
-    try { await Promise.all([loadRecs("att", "automail"), can("leave.annual", "read") ? loadRecs("leave", "annual") : null, can("att.worktypes", "read") ? loadRecs("att", "worktypes") : null, can("absence.status", "read") ? loadRecs("absence", "status") : null, can("leave.status", "read") ? loadRecs("leave", "status") : null]); } catch(e){ if ($("#amStrip")) $("#amStrip").innerHTML = '<span class="hint">자동 메일 현황을 불러오지 못했습니다.</span>'; return; }
-    var host = $("#amStrip"); if (!host) return;
-    var all = S.recs["att.automail"] || [], q = all.filter(function(x){ return x.data.list === "queue"; }), cfg = all.filter(function(x){ return x.data.list === "config"; })[0];
-    var wait = q.filter(function(x){ return x.data.status === "승인 대기"; }).length, noaddr = q.filter(function(x){ return x.data.status === "주소 필요"; }).length, ready = q.filter(function(x){ return x.data.status === "발송 대기"; }).length;
-    var t = todayStr(), wk = addDay(t, 6), keys = {}; q.forEach(function(x){ keys[x.data.key] = 1; });
-    var soon = 0; all.filter(function(x){ return x.data.list === "rule" && x.data.enabled; }).forEach(function(r){ amTargets(r.data, t).forEach(function(g){ if (g.due >= t && g.due <= wk && !keys[r.id + "|" + g.rec.id + "|" + g.date]) soon++; }); });
-    var st = "", ac = (S.recs["leave.annual"] || []).filter(function(x){ return x.data.list === "config"; })[0];
-    if (can("leave.annual", "read")){ var ym = t.slice(0, 7), sd = settleSendDate(ym), nx = t <= sd.send ? sd : settleSendDate(ymd(new Date(+ym.slice(0, 4), +ym.slice(5, 7), 1)).slice(0, 7)); st = '<a class="am-s" href="#/automail/settle"><small>연차 정산 메일</small><b>' + md(nx.send) + '</b><small>' + (ac && ac.data.enabled ? "자동 발송 켜짐" : "꺼짐") + '</small></a>'; }
-    host.innerHTML = '<div class="am-strip-h"><b>📨 자동 메일</b><span class="hint">' + (cfg && cfg.data.last_run ? "발송기 마지막 실행 " + esc(cfg.data.last_run) : "발송기 실행 기록 없음") + '</span></div><div class="am-strip-b">' +
-      '<a class="am-s' + (wait ? " hot" : "") + '" href="#/automail/queue"><small>승인 대기</small><b>' + wait + '<small>건</small></b><small>' + (wait ? "확인 후 승인 필요" : "없음") + '</small></a>' +
-      '<a class="am-s" href="#/automail/queue"><small>발송 대기</small><b>' + ready + '<small>건</small></b><small>다음 실행 때 발송</small></a>' +
-      '<a class="am-s" href="#/automail"><small>이번 주 발송 예정</small><b>' + soon + '<small>건</small></b><small>' + t.slice(5) + ' ~ ' + wk.slice(5) + '</small></a>' +
-      '<a class="am-s' + (noaddr ? " warn" : "") + '" href="#/automail/queue"><small>주소 필요</small><b>' + noaddr + '<small>건</small></b><small>' + (noaddr ? "수신 주소록 확인" : "없음") + '</small></a>' + st +
-      '<a class="btn sm primary am-go" href="#/automail">자동 메일 관리 ›</a></div>';
+  // 조직도 갱신 상태
+  function rosterInfo(all){ var logs = (all || S.recs["att.automail"] || []).filter(function(x){ return x.data.list === "roster_log"; }).map(function(x, i){ return { x: x, i: i }; }).sort(function(a, b){ return String(b.x.data.at || "").localeCompare(String(a.x.data.at || "")) || String(b.x.created_at || "").localeCompare(String(a.x.created_at || "")) || b.i - a.i; }).map(function(o){ return o.x; }), last = logs[0] ? logs[0].data : null, t = todayStr();
+    var days = last ? Math.round((parseD(t) - parseD(last.at)) / 864e5) : null; return { logs: logs, last: last, days: days, need: !last || String(last.at).slice(0, 7) < t.slice(0, 7), stale: !last || days > 35 }; }
+  // 자동 메일 요약(상단 📨 아이콘 · 창)
+  async function amSummary(){
+    await Promise.all([loadRecs("att", "automail"), can("leave.annual", "read") ? loadRecs("leave", "annual") : null, can("att.worktypes", "read") ? loadRecs("att", "worktypes") : null, can("absence.status", "read") ? loadRecs("absence", "status") : null, can("leave.status", "read") ? loadRecs("leave", "status") : null]);
+    var all = S.recs["att.automail"] || [], q = all.filter(function(x){ return x.data.list === "queue"; }), cfg = all.filter(function(x){ return x.data.list === "config"; })[0], t = todayStr(), wk = addDay(t, 6), keys = {};
+    q.forEach(function(x){ keys[x.data.key] = 1; });
+    var o = { wait: q.filter(function(x){ return x.data.status === "승인 대기"; }).length, noaddr: q.filter(function(x){ return x.data.status === "주소 필요"; }).length, ready: q.filter(function(x){ return x.data.status === "발송 대기"; }).length, soon: 0, last: cfg && cfg.data.last_run, roster: rosterInfo(all) };
+    all.filter(function(x){ return x.data.list === "rule" && x.data.enabled; }).forEach(function(r){ amTargets(r.data, t).forEach(function(g){ if (g.due >= t && g.due <= wk && !keys[r.id + "|" + g.rec.id + "|" + g.date]) o.soon++; }); });
+    if (can("leave.annual", "read")){ var ac = (S.recs["leave.annual"] || []).filter(function(x){ return x.data.list === "config"; })[0], ym = t.slice(0, 7), sd = settleSendDate(ym); o.settle = t <= sd.send ? sd : settleSendDate(ymd(new Date(+ym.slice(0, 4), +ym.slice(5, 7), 1)).slice(0, 7)); o.settleOn = !!(ac && ac.data.enabled); }
+    return o;
   }
+  async function amBadgeRefresh(){ var b = $("#amBadge"); if (!b) return; try { var o = await amSummary(), n = o.wait + o.noaddr + (o.roster.need ? 1 : 0); b = $("#amBadge"); if (!b) return; b.textContent = n; b.hidden = !n; b.title = (o.wait ? "승인 대기 " + o.wait + "건 " : "") + (o.noaddr ? "주소 필요 " + o.noaddr + "건 " : "") + (o.roster.need ? "조직도 갱신 필요" : ""); } catch(e){} }
+  async function toggleAmPop(btn){
+    var old = $("#amPop"); if (old){ old.remove(); return; } closeMega();
+    var p = document.createElement("div"); p.id = "amPop"; p.className = "hd-pop"; p.innerHTML = '<p class="hint">불러오는 중…</p>'; document.body.appendChild(p);
+    var r = btn.getBoundingClientRect(); p.style.top = (r.bottom + 6) + "px"; p.style.right = Math.max(8, window.innerWidth - r.right) + "px";
+    var o; try { o = await amSummary(); } catch(e){ p.innerHTML = '<p class="hint">불러오지 못했습니다.</p>'; return; }
+    function it(href, lab, val, sub, cls){ return '<a class="am-s' + (cls ? " " + cls : "") + '" href="' + href + '"><small>' + lab + '</small><b>' + val + '</b><small>' + sub + '</small></a>'; }
+    p.innerHTML = '<div class="hd-pop-h"><b>📨 자동 메일</b><span class="hint">' + (o.last ? "발송기 마지막 실행 " + esc(o.last) : "발송기 실행 기록 없음") + '</span></div>' +
+      (o.roster.need ? '<a class="banner warn" style="display:block;margin:0 0 8px;font-size:12.5px;text-decoration:none" href="#/automail/people">🗂 ' + (o.roster.last ? "조직도 갱신 필요 — 마지막 갱신 " + esc(o.roster.last.at) : "조직도를 아직 올리지 않았습니다") + ' ›</a>' : '') +
+      '<div class="am-pop-g">' + it("#/automail/queue", "승인 대기", o.wait + "<small>건</small>", o.wait ? "확인 후 승인 필요" : "없음", o.wait ? "hot" : "") + it("#/automail/queue", "발송 대기", o.ready + "<small>건</small>", "다음 실행 때 발송") +
+      it("#/automail", "이번 주 발송 예정", o.soon + "<small>건</small>", todayStr().slice(5) + " ~ " + addDay(todayStr(), 6).slice(5)) + it("#/automail/queue", "주소 필요", o.noaddr + "<small>건</small>", o.noaddr ? "수신 주소록 확인" : "없음", o.noaddr ? "warn" : "") +
+      (o.settle ? it("#/automail/settle", "연차 정산 메일", md(o.settle.send), o.settleOn ? "자동 발송 켜짐" : "꺼짐") : '') + '</div>' +
+      '<a class="btn sm primary" style="display:block;text-align:center;margin-top:10px" href="#/automail">자동 메일 관리 ›</a>';
+  }
+  function closeMega(){ var x = $("#megaP"); if (x) x.remove(); var y = $("#amPop"); if (y) y.remove(); }
+  function toggleMega(){
+    if ($("#megaP")){ closeMega(); return; } closeMega();
+    var cats = CATS.filter(catVisible), home = [["#/", "🏠 홈"]].concat(can("home.laws", "read") ? [["#/laws", "⚖️ 법령정보"]] : []).concat(canChg() ? [["#/overview", "📋 현황 종합"]] : []).concat(can("att.automail", "read") ? [["#/automail", "📨 자동 메일"]] : []).concat(isAdmin() ? [["#/admin", "🔐 권한 관리"]] : []);
+    var p = document.createElement("div"); p.id = "megaP"; p.className = "mega";
+    p.innerHTML = '<div class="mega-in"><div class="mega-h"><b>🐻 전체 메뉴</b><span class="grow"></span><button type="button" class="btn sm ghost" id="megaX">닫기 ✕</button></div><div class="mega-home">' + home.map(function(h){ return '<a href="' + h[0] + '">' + h[1] + '</a>'; }).join("") + '</div><div class="mega-grid">' +
+      cats.map(function(c){ var ms = c.menus.filter(function(m){ return level(c.id + "." + m[0]) >= 1; }); return '<div class="mega-c"><a class="mega-t" href="' + (c.link ? c.link : "#/c/" + c.id) + '"' + (c.link ? ' target="_blank" rel="noopener"' : '') + '><span>' + c.ic + '</span>' + esc(c.name) + (c.link ? ' ↗' : '') + '</a>' + ms.map(function(m){ return '<a href="#/c/' + c.id + '/' + m[0] + '">' + esc(m[1]) + '</a>'; }).join("") + '</div>'; }).join("") + '</div></div>';
+    document.body.appendChild(p);
+    $("#megaX").onclick = closeMega; p.addEventListener("click", function(e){ if (e.target === p || (e.target.closest && e.target.closest("a"))) closeMega(); });
+  }
+  document.addEventListener("keydown", function(e){ if (e.key === "Escape") closeMega(); });
+  window.addEventListener("hashchange", closeMega);
+  document.addEventListener("mousedown", function(e){ var p = $("#amPop"); if (p && !p.contains(e.target) && !(e.target.closest && e.target.closest("#amIc"))) p.remove(); });
   async function renderAutoMailPage(sub){
     app.innerHTML = shell('<div class="cat-head"><div class="crumb"><a href="#/">홈</a> › 자동 메일</div><h1><span>📨</span>자동 메일</h1><p class="hint" style="margin:4px 0 14px;font-size:13px">휴가·휴직·근무형태 기록과 퇴직자 연차 정산에 맞춰 나가는 안내 메일을 한곳에서 관리합니다.</p></div><div class="cat-wrap"><div class="cat-main" id="cm"><p class="hint">불러오는 중…</p></div></div>', "자동 메일");
     wireShell();
@@ -3363,6 +3398,62 @@
       drawSettleMail(catById("leave"), amNav("settle", am.filter(function(x){ return x.data.list === "queue"; }).length, am.filter(function(x){ return x.data.list === "people"; }).length) + '<div class="hint" style="font-size:12.5px;margin:-4px 0 10px">퇴직자별 정산 내역 확인·계산은 <a href="#/c/leave/annual/settle">휴가 › 연차유급휴가 관리 › 퇴직자 연차 정산</a>에서 합니다.</div>');
       return; }
     renderAutoMail(catById("att"), sub);
+  }
+  // 조직도 엑셀 올리기 → 변경 확인 → 반영
+  var ROSTER_COLS = [["target", "이름", /^(이름|성명|사원명|직원명|성 ?명)$/], ["emp_id", "사번", /사번|사원 ?번호|직원 ?번호|emp/i], ["company", "회사", /^(회사|법인|회사명|법인명)/], ["org", "사업부(소속)", /사업부|소속|부문|division/i],
+    ["hq", "본부", /본부|센터|실$/], ["team", "팀", /^(팀|팀명|부서|부서명)$|팀$/], ["position", "직책", /직책|직무|position/i], ["email", "회사 메일", /메일|e-?mail/i]];
+  function rosterKind(pos){ return /팀장|파트장|실장|본부장|사업부장|부문장|센터장|대표|CEO/i.test(pos || "") ? "직책자" : "직원"; }
+  function rosterScope(r){ var p = r.position || ""; if (/사업부장|부문장|대표|CEO/i.test(p)) return r.org || r.team || ""; if (/본부장|실장|센터장/.test(p)) return r.hq || r.team || r.org || ""; if (/팀장|파트장/.test(p)) return r.team || ""; return ""; }
+  function openRosterUpload(all, done){
+    var m = showModal('<h3>조직도 엑셀 올리기</h3><p class="hint" style="font-size:12.5px">인사시스템이나 HRBP 「입퇴사자 공유」 파일의 <b>재직자 명단</b>을 그대로 올리세요. 열 이름을 자동으로 알아보고, 반영 전에 지금 명단과 비교해 보여 줍니다. 직접 넣은 HR 담당 · 유관부서 명단은 건드리지 않습니다.</p>' +
+      '<label class="btn" style="cursor:pointer;display:inline-block">📂 엑셀 파일 고르기<input type="file" id="roF" accept=".xlsx,.xls,.csv" hidden></label> <span class="hint" id="roName"></span><div id="roBody"></div>', "wide");
+    var rows = null, head = [], hIdx = 0, map = {}, fname = "";
+    $("#roF", m).onchange = async function(e){ var f = e.target.files[0]; if (!f) return; fname = f.name; $("#roName", m).textContent = f.name;
+      try { var wb = XLSX.read(await f.arrayBuffer(), { type: "array", cellDates: true }), ws = wb.Sheets[wb.SheetNames[0]], aoa = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "", raw: false }); }
+      catch(err){ $("#roBody", m).innerHTML = '<div class="banner danger">파일을 읽지 못했습니다: ' + esc(err.message) + '</div>'; return; }
+      hIdx = 0; for (var i = 0; i < Math.min(15, aoa.length); i++){ if (aoa[i].some(function(c){ return ROSTER_COLS[0][2].test(String(c).trim()); })){ hIdx = i; break; } }
+      head = aoa[hIdx].map(function(c){ return String(c).trim(); }); rows = aoa.slice(hIdx + 1);
+      map = {}; ROSTER_COLS.forEach(function(c){ var ix = head.findIndex(function(h){ return c[2].test(h); }); if (c[0] === "email"){ var pref = head.findIndex(function(h){ return /회사|업무|사내/.test(h) && c[2].test(h); }); if (pref >= 0) ix = pref; } if (c[0] === "org"){ var o2 = head.findIndex(function(h){ return /사업부/.test(h); }); if (o2 >= 0) ix = o2; } map[c[0]] = ix; });
+      draw(); };
+    function parse(){ var out = []; rows.forEach(function(r){ var o = {}; ROSTER_COLS.forEach(function(c){ o[c[0]] = map[c[0]] >= 0 ? String(r[map[c[0]]] == null ? "" : r[map[c[0]]]).trim() : ""; }); if (o.target) out.push(o); }); return out; }
+    function draw(){
+      var ro = parse(), cur = all.filter(function(x){ return x.data.list === "people" && (x.data.kind === "직원" || x.data.kind === "직책자" || !x.data.kind); });
+      function keyOf(d){ return d.emp_id ? "#" + d.emp_id : (d.target + "|" + (d.org || "")); }
+      var byKey = {}; cur.forEach(function(x){ byKey[keyOf(x.data)] = x; if (x.data.emp_id) byKey[x.data.target + "|" + (x.data.org || "")] = byKey[x.data.target + "|" + (x.data.org || "")] || x; });
+      var seenKey = {}, dup = [], add = [], chg = [], same = 0, used = {};
+      ro.forEach(function(r){ var k = keyOf(r); if (seenKey[k]) dup.push(r); seenKey[k] = 1; r.kind = rosterKind(r.position); r.scope = rosterScope(r);
+        var ex = byKey[k] || byKey[r.target + "|" + (r.org || "")]; if (!ex){ add.push(r); return; } used[ex.id] = 1;
+        var diffs = ["org", "hq", "team", "position", "email", "kind", "company"].filter(function(f){ return String(ex.data[f] || "") !== String(r[f] || "") && !(f === "email" && !r.email); });
+        if (ex.data.inactive) diffs.push("복귀"); if (diffs.length) chg.push({ x: ex, r: r, diffs: diffs }); else same++; });
+      var gone = cur.filter(function(x){ return !used[x.id] && !x.data.inactive; });
+      var noMail = ro.filter(function(r){ return !/@/.test(r.email); }), teams = {}; ro.forEach(function(r){ if (!r.team) return; var k = (r.org || "") + " " + r.team; teams[k] = teams[k] || { lead: false }; if (r.kind === "직책자") teams[k].lead = true; });
+      var noLead = Object.keys(teams).filter(function(k){ return !teams[k].lead; });
+      function lst(arr, f){ return arr.length ? '<div class="ro-list">' + arr.slice(0, 200).map(f).join("") + (arr.length > 200 ? '<div class="hint">… 외 ' + (arr.length - 200) + '명</div>' : '') + '</div>' : ''; }
+      $("#roBody", m).innerHTML = '<details class="mapbox" style="margin:10px 0"><summary>열 매핑 확인·변경 (' + (hIdx + 1) + '번째 줄을 제목으로 읽음)' + (map.target < 0 || map.email < 0 ? ' <span class="badge danger">필수 열 미지정</span>' : '') + '</summary><div class="pgrid">' +
+        ROSTER_COLS.map(function(c){ return '<label>' + c[1] + '<select data-map="' + c[0] + '"><option value="-1">(없음)</option>' + head.map(function(h, i){ return '<option value="' + i + '"' + (map[c[0]] === i ? " selected" : "") + '>' + esc(h || "(빈 제목 " + (i + 1) + ")") + '</option>'; }).join("") + '</select></label>'; }).join("") + '</div></details>' +
+        '<div class="kpis" style="grid-template-columns:repeat(5,minmax(0,1fr));margin:8px 0">' + [["올린 인원", ro.length], ["신규", add.length], ["변경", chg.length], ["빠짐(퇴사 추정)", gone.length], ["변경 없음", same]].map(function(k){ return '<div class="kpi"><div class="k">' + k[0] + '</div><div class="v" style="font-size:22px">' + k[1] + '<small>명</small></div></div>'; }).join("") + '</div>' +
+        (noMail.length || dup.length || noLead.length ? '<div class="banner warn" style="font-size:12.5px">' + (noMail.length ? "메일 없는 사람 " + noMail.length + "명: " + esc(noMail.slice(0, 15).map(function(r){ return r.target; }).join(", ")) + (noMail.length > 15 ? " 외" : "") + "<br>" : "") + (dup.length ? "같은 사람이 두 번 이상: " + esc(dup.map(function(r){ return r.target; }).join(", ")) + "<br>" : "") + (noLead.length ? "직책자(팀장 등)가 없는 팀 " + noLead.length + "개: " + esc(noLead.slice(0, 12).join(", ")) + (noLead.length > 12 ? " 외" : "") + " — 「상위 직책자」 받는 사람이 비게 됩니다" : "") + '</div>' : '') +
+        (add.length ? '<h4 class="ro-h">신규 ' + add.length + '명</h4>' + lst(add, function(r){ return '<span>' + esc(r.target) + ' <small>' + esc([r.org, r.team, r.position].filter(Boolean).join(" · ")) + '</small></span>'; }) : '') +
+        (chg.length ? '<h4 class="ro-h">변경 ' + chg.length + '명</h4>' + lst(chg, function(c){ return '<span>' + esc(c.r.target) + ' <small>' + esc(c.diffs.map(function(f){ return f === "복귀" ? "퇴사·제외 → 재직" : ({ org: "소속", hq: "본부", team: "팀", position: "직책", email: "메일", kind: "구분", company: "회사" }[f] + " " + (c.x.data[f] || "-") + "→" + (c.r[f] || "-")); }).join(" / ")) + '</small></span>'; }) : '') +
+        (gone.length ? '<h4 class="ro-h">명단에서 빠진 사람 ' + gone.length + '명 <span class="hint" style="font-weight:500">(지우지 않고 「퇴사·제외」로 표시해 발송 대상에서만 뺍니다)</span></h4>' + lst(gone, function(x){ return '<span>' + esc(x.data.target) + ' <small>' + esc([x.data.org, x.data.team].filter(Boolean).join(" ")) + '</small></span>'; }) : '') +
+        '<div class="form-actions"><button type="button" class="btn ghost" id="roNo">취소</button><button type="button" class="btn primary" id="roOk"' + (map.target < 0 ? " disabled" : "") + '>이대로 반영</button></div>';
+      $all("[data-map]", m).forEach(function(s){ s.onchange = function(){ map[s.dataset.map] = +s.value; draw(); }; });
+      $("#roNo", m).onclick = closeModal;
+      $("#roOk", m).onclick = async function(){ var b = this; if (!confirm("신규 " + add.length + "명, 변경 " + chg.length + "명, 퇴사·제외 " + gone.length + "명을 반영할까요?")) return; b.disabled = true; b.textContent = "반영 중…";
+        try {
+          var now = new Date().toISOString(), today = todayStr();
+          function pick(r){ return { target: r.target, emp_id: r.emp_id || "", company: r.company || "", org: r.org || "", hq: r.hq || "", team: r.team || "", position: r.position || "", email: r.email || "", kind: r.kind, scope: r.scope || "", source: "roster", roster_at: today }; }
+          var ins = add.map(function(r){ return { cat: "att", menu: "automail", data: Object.assign({ list: "people" }, pick(r)), updated_by: me.email }; });
+          var ups = chg.map(function(c){ var d = Object.assign({}, c.x.data, pick(c.r)); if (!c.r.email) d.email = c.x.data.email || ""; delete d.inactive; delete d.inactive_at; if (c.x.data.kind === "직책자" && c.r.kind === "직원" && c.x.data.source !== "roster") d.kind = "직책자"; if (!d.scope && c.x.data.scope) d.scope = c.x.data.scope; return { id: c.x.id, cat: "att", menu: "automail", data: d, updated_by: me.email, updated_at: now }; })
+            .concat(gone.map(function(x){ return { id: x.id, cat: "att", menu: "automail", data: Object.assign({}, x.data, { inactive: true, inactive_at: today }), updated_by: me.email, updated_at: now }; }));
+          for (var i = 0; i < ins.length; i += 300){ var r1 = await sb.from("portal_records").insert(ins.slice(i, i + 300)); if (r1.error) throw r1.error; }
+          for (var j = 0; j < ups.length; j += 15){ var rs = await Promise.all(ups.slice(j, j + 15).map(function(u){ return sb.from("portal_records").update({ data: u.data, updated_by: u.updated_by, updated_at: u.updated_at }).eq("id", u.id).select("id"); }));
+            rs.forEach(function(r2){ if (r2.error) throw r2.error; }); b.textContent = "반영 중… " + Math.min(j + 15, ups.length) + " / " + ups.length; }
+          var r3 = await sb.from("portal_records").insert({ cat: "att", menu: "automail", data: { list: "roster_log", at: today, by: me.name, file: fname, total: ro.length, add: add.length, chg: chg.length, gone: gone.length, no_mail: noMail.length }, updated_by: me.email }); if (r3.error) throw r3.error;
+          logp("att.automail", "roster", fname + " +" + add.length + " ~" + chg.length + " -" + gone.length);
+          delete S.recs["att.automail"]; closeModal(); toast("조직도를 반영했습니다."); done(); amBadgeRefresh();
+        } catch(err){ alert("반영하지 못했습니다: " + (err.message || err)); b.disabled = false; b.textContent = "이대로 반영"; } };
+    }
   }
   async function renderAutoMail(c, sub){
     var host = $("#cm"), key = "att.automail"; amTab = ["queue", "people"].indexOf(sub) >= 0 ? sub : "rules";
@@ -3387,14 +3478,18 @@
             '<div class="hint" style="font-size:12.5px">받는 사람: ' + esc(toTxt) + (ccTxt ? ' · 참조: ' + esc(ccTxt) : '') + '</div><div class="am-sub">제목: ' + esc(d.subject || "") + '</div></div>'; }).join("") : '<p class="hint" style="padding:14px">등록된 규칙이 없습니다.</p>') + '</div>';
     } else if (amTab === "queue"){
       var qs = queue.slice().sort(function(a, b){ return String(b.data.due || "").localeCompare(String(a.data.due || "")) || String(b.created_at || "").localeCompare(String(a.created_at || "")); });
+      var ros2 = rosterInfo(all); if (ros2.stale && people.some(function(x){ return x.data.source === "roster"; })) h += '<div class="banner warn" style="margin-top:0">🗂 조직도가 ' + ros2.days + '일 전 기준입니다. 상위 직책자 · 팀 단위 받는 사람이 실제와 다를 수 있으니 최신 조직도를 올리세요.</div>';
       h += '<div class="hint" style="font-size:12.5px;margin:0 0 12px">발송기가 만든 메일입니다. "승인 대기"는 내용을 확인하고 승인하면 다음 실행 때 발송됩니다. "주소 필요"는 수신 주소록을 채우면 다음 실행 때 다시 시도합니다. 행을 누르면 실제 본문을 볼 수 있습니다.</div>' +
         '<div class="tbl-box"><table class="rec compact"><thead><tr><th>발송 예정일</th><th>규칙</th><th>대상</th><th>받는 사람</th><th>참조</th><th>제목</th><th>상태</th><th>발송 시각</th><th></th></tr></thead><tbody>' +
         (qs.length ? qs.map(function(x){ var d = x.data; return '<tr class="clk" data-qid="' + x.id + '"><td>' + esc(d.due || "") + '</td><td>' + (d.kind === "annual-settle" ? '<span class="badge info">연차 정산</span> ' + esc(d.month || "") + ' ' + esc(d.round || "") : esc(d.rule_name || "")) + '</td><td><b>' + esc(d.target || "") + '</b>' + (d.people && d.people.length ? '<small class="hint" style="display:block;font-size:11.5px;max-width:200px">' + esc(d.people.map(function(p){ return p.target; }).join(", ")) + '</small>' : '') + '</td><td style="font-size:12px;max-width:220px">' + esc(d.email || "") + (d.warn && d.warn.length ? '<br><span class="badge warn" title="' + esc(d.warn.join(" / ")) + '">확인 ' + d.warn.length + '</span>' : '') + '</td><td style="font-size:12px;max-width:200px">' + esc(d.cc || "") + '</td><td>' + esc(d.subject || "") + '</td><td><span class="badge ' + stCls(d.status || "") + '"' + (d.error ? ' title="' + esc(d.error) + '"' : '') + '>' + esc(d.status || "") + '</span></td><td>' + esc(String(d.sent_at || "").slice(0, 16).replace("T", " ")) + '</td><td>' + (w && d.status === "승인 대기" ? '<button class="btn sm primary" data-qok="' + x.id + '">승인</button>' : '') + '</td></tr>'; }).join("") : '<tr><td colspan="9" class="hint" style="padding:18px">아직 만들어진 메일이 없습니다.</td></tr>') + '</tbody></table></div>';
     } else {
-      var pl = people.filter(function(x){ return !amPKind || (x.data.kind || "직원") === amPKind; }).sort(function(a, b){ return AM_KINDS.indexOf(a.data.kind || "직원") - AM_KINDS.indexOf(b.data.kind || "직원") || String(a.data.target).localeCompare(String(b.data.target)); });
-      h += '<div class="hint" style="font-size:12.5px;margin:0 0 12px">자동 메일의 받는 사람·참조 명단입니다. <b>직원</b>은 「대상자 본인」 주소를 찾을 때(이름, 동명이인은 소속까지), <b>직책자</b>는 「대상자의 상위 직책자」를 찾을 때(담당 범위에 대상자의 팀 또는 소속이 들어간 사람) 쓰입니다. <b>HR 담당 · 유관부서</b>는 규칙에서 골라 넣습니다. 엑셀에서 「구분 · 이름 · 소속 · 팀 · 회사 메일 · 개인 메일 · 역할 · 담당 범위」 열을 복사해 붙여 넣을 수 있습니다.</div>' +
-        '<div class="rec-tools"><span class="st-pick">' + [""].concat(AM_KINDS).map(function(k){ var n = people.filter(function(x){ return !k || (x.data.kind || "직원") === k; }).length; return '<button type="button" class="' + (amPKind === k ? "on" : "") + '" data-pk2="' + k + '">' + (k || "전체") + ' <small>' + n + '</small></button>'; }).join("") + '</span><span class="grow"></span>' + (w ? '<button class="btn sm" id="amPaste">엑셀 붙여넣기</button><button class="btn sm primary" id="amPAdd">+ 명단 추가</button>' : '') + '</div>' +
-        '<div class="tbl-box"><table class="rec compact"><thead><tr><th>구분</th><th>이름</th><th>소속</th><th>팀</th><th>회사 메일</th><th>개인 메일</th><th>역할</th><th>담당 범위(직책자)</th></tr></thead><tbody>' + (pl.length ? pl.map(function(x){ var d = x.data; return '<tr class="clk" data-pid="' + x.id + '"><td><span class="badge ' + (d.kind === "직책자" ? "info" : d.kind === "HR 담당" ? "good" : d.kind === "유관부서" ? "warn" : "neutral") + '">' + esc(d.kind || "직원") + '</span></td><td><b>' + esc(d.target) + '</b></td><td>' + esc(d.org || "") + '</td><td>' + esc(d.team || "") + '</td><td>' + esc(d.email || "") + '</td><td>' + esc(d.email2 || "") + '</td><td>' + esc(d.role || "") + '</td><td style="font-size:12px">' + esc(d.scope || "") + '</td></tr>'; }).join("") : '<tr><td colspan="8" class="hint" style="padding:18px">등록된 명단이 없습니다.</td></tr>') + '</tbody></table></div>';
+      var ros = rosterInfo(all), PK = [""].concat(AM_KINDS).concat(["퇴사·제외"]);
+      var pl = people.filter(function(x){ var d = x.data; if (amPKind === "퇴사·제외") return !!d.inactive; if (d.inactive) return false; return !amPKind || (d.kind || "직원") === amPKind; }).sort(function(a, b){ return AM_KINDS.indexOf(a.data.kind || "직원") - AM_KINDS.indexOf(b.data.kind || "직원") || String(a.data.org || "").localeCompare(String(b.data.org || "")) || String(a.data.team || "").localeCompare(String(b.data.team || "")) || String(a.data.target).localeCompare(String(b.data.target)); });
+      h += (ros.need ? '<div class="banner warn" style="margin-top:0">🗂 ' + (ros.last ? "이번 달 조직도를 아직 올리지 않았습니다. 마지막 갱신 " + esc(ros.last.at) + "(" + ros.days + "일 전)." : "조직도를 아직 올리지 않았습니다.") + ' 「조직도 엑셀 올리기」로 최신 재직자 명단을 반영하세요.</div>' : '<div class="banner info" style="margin-top:0">🗂 조직도 마지막 갱신 ' + esc(ros.last.at) + ' · ' + esc(ros.last.by || "") + ' (재직 ' + ros.last.total + '명, 신규 ' + ros.last.add + ' · 변경 ' + ros.last.chg + ' · 퇴사·제외 ' + ros.last.gone + ')</div>') +
+        '<div class="hint" style="font-size:12.5px;margin:0 0 12px">자동 메일의 받는 사람·참조 명단입니다. <b>직원 · 직책자</b>는 매월 <b>조직도 엑셀</b>로 갱신합니다(대상자 본인 주소, 상위 직책자, 팀 전체를 찾을 때 씀). <b>HR 담당 · 유관부서</b>는 직접 추가하며 조직도 갱신에 영향받지 않습니다. 조직도에서 빠진 사람은 지우지 않고 「퇴사·제외」로 옮겨 발송 대상에서만 뺍니다.</div>' +
+        '<div class="rec-tools"><span class="st-pick">' + PK.map(function(k){ var n = people.filter(function(x){ return k === "퇴사·제외" ? x.data.inactive : !x.data.inactive && (!k || (x.data.kind || "직원") === k); }).length; return '<button type="button" class="' + (amPKind === k ? "on" : "") + '" data-pk2="' + k + '">' + (k || "전체(재직)") + ' <small>' + n + '</small></button>'; }).join("") + '</span><span class="grow"></span>' + (w ? '<button class="btn sm primary" id="roUp">🗂 조직도 엑셀 올리기</button><button class="btn sm" id="amPaste">엑셀 붙여넣기</button><button class="btn sm" id="amPAdd">+ 명단 추가</button>' : '') + '</div>' +
+        (ros.logs.length ? '<details class="mapbox" style="margin:0 0 8px"><summary>조직도 갱신 이력 (' + ros.logs.length + ')</summary><div style="font-size:12.5px;padding:6px 10px">' + ros.logs.slice(0, 24).map(function(l){ var d = l.data; return esc(d.at) + ' · ' + esc(d.by || "") + ' · ' + esc(d.file || "") + ' · 재직 ' + d.total + '명 (신규 ' + d.add + ', 변경 ' + d.chg + ', 퇴사·제외 ' + d.gone + (d.no_mail ? ', 메일 없음 ' + d.no_mail : '') + ')'; }).join("<br>") + '</div></details>' : '') +
+        '<div class="tbl-box"><table class="rec compact"><thead><tr><th>구분</th><th>이름</th><th>소속</th><th>팀</th><th>직책</th><th>회사 메일</th><th>개인 메일</th><th>역할</th><th>담당 범위(직책자)</th></tr></thead><tbody>' + (pl.length ? pl.map(function(x){ var d = x.data; return '<tr class="clk' + (d.inactive ? " ended" : "") + '" data-pid="' + x.id + '"><td><span class="badge ' + (d.inactive ? "neutral" : d.kind === "직책자" ? "info" : d.kind === "HR 담당" ? "good" : d.kind === "유관부서" ? "warn" : "neutral") + '">' + esc(d.inactive ? "퇴사·제외" : d.kind || "직원") + '</span>' + (d.source === "roster" ? ' <small class="hint" title="조직도 ' + esc(d.roster_at || "") + '">🗂</small>' : '') + '</td><td><b>' + esc(d.target) + '</b></td><td>' + esc(d.org || "") + '</td><td>' + esc(d.team || "") + '</td><td>' + esc(d.position || "") + '</td><td>' + (d.email ? esc(d.email) : '<span class="badge warn">없음</span>') + '</td><td>' + esc(d.email2 || "") + '</td><td>' + esc(d.role || "") + '</td><td style="font-size:12px">' + esc(d.scope || "") + '</td></tr>'; }).join("") : '<tr><td colspan="9" class="hint" style="padding:18px">등록된 명단이 없습니다.</td></tr>') + '</tbody></table></div>';
     }
     host.innerHTML = h;
     async function save(x, patch){ var data = Object.assign({}, x.data, patch); var r = await sb.from("portal_records").update({ data: data, updated_by: me.email, updated_at: new Date().toISOString() }).eq("id", x.id).select("*"); if (r.error || !r.data || !r.data.length){ alert("저장하지 못했습니다: " + errMsg(r)); return false; } Object.assign(x, r.data[0]); return true; }
@@ -3408,6 +3503,7 @@
     $all("tr[data-qid]", host).forEach(function(tr){ tr.onclick = function(){ var d = byId(tr.dataset.qid).data; var m = showModal('<div style="display:flex;justify-content:space-between;gap:10px"><h3>' + esc(d.subject || "") + '</h3><button class="btn sm ghost" id="dx">닫기 ✕</button></div><p class="hint" style="font-size:12.5px">받는 사람: ' + esc(d.email || "주소 없음") + (d.cc ? ' · 참조: ' + esc(d.cc) : '') + ' · ' + esc(d.status || "") + (d.error ? " · " + esc(d.error) : "") + '</p>' + (d.warn && d.warn.length ? '<div class="banner warn">' + d.warn.map(esc).join("<br>") + '</div>' : '') +
       (d.body_html ? '<div class="mail-pv mail-html">' + cleanHtml(d.body_html) + '</div>' : '<div class="wraptext" style="font-size:13.5px;line-height:1.7;background:var(--paper-0);border-radius:10px;padding:12px 14px">' + esc(d.body || "") + '</div>'), "wide"); $("#dx", m).onclick = closeModal; }; });
     $all("[data-pk2]", host).forEach(function(b){ b.onclick = function(){ amPKind = b.dataset.pk2; rer(); }; });
+    if ($("#roUp")) $("#roUp").onclick = function(){ if (!window.XLSX){ alert("엑셀 도구를 불러오지 못했습니다. 새로고침 후 다시 시도하세요."); return; } openRosterUpload(all, rer); };
     $all("tr[data-pid]", host).forEach(function(tr){ tr.onclick = function(){ if (w) amPersonEdit(byId(tr.dataset.pid)); }; });
     if ($("#amPAdd")) $("#amPAdd").onclick = function(){ amPersonEdit(null); };
     if ($("#amPaste")) $("#amPaste").onclick = function(){ promptModal("엑셀 붙여넣기", "「구분 · 이름 · 소속 · 팀 · 회사 메일 · 개인 메일 · 역할 · 담당 범위」 순서로 복사해 붙여 넣으세요(제목 줄은 있어도 됩니다). 구분은 직원 / 직책자 / HR 담당 / 유관부서. 이미 있는 이름+소속은 내용이 바뀝니다.", "", true, async function(v){
@@ -3418,12 +3514,12 @@
     function amPersonEdit(x){
       var d = x ? x.data : { kind: amPKind || "HR 담당" };
       var m = showModal('<h3>수신 명단 ' + (x ? "수정" : "추가") + '</h3><form class="f" id="ppf"><label>구분<select name="kind">' + AM_KINDS.map(function(k){ return '<option' + ((d.kind || "직원") === k ? " selected" : "") + '>' + k + '</option>'; }).join("") + '</select></label><label>이름<input name="target" value="' + esc(d.target || "") + '" required></label>' +
-        '<label>소속(사업부)<input name="org" value="' + esc(d.org || "") + '"></label><label>팀<input name="team" value="' + esc(d.team || "") + '"></label><label>회사 메일<input name="email" type="email" value="' + esc(d.email || "") + '"></label><label>개인 메일<input name="email2" type="email" value="' + esc(d.email2 || "") + '"></label>' +
+        '<label>소속(사업부)<input name="org" value="' + esc(d.org || "") + '"></label><label>팀<input name="team" value="' + esc(d.team || "") + '"></label><label>직책<input name="position" value="' + esc(d.position || "") + '"></label><label>상태<select name="inactive"><option value="">재직</option><option value="1"' + (d.inactive ? " selected" : "") + '>퇴사·제외</option></select></label><label>회사 메일<input name="email" type="email" value="' + esc(d.email || "") + '"></label><label>개인 메일<input name="email2" type="email" value="' + esc(d.email2 || "") + '"></label>' +
         '<label class="full">역할 메모<input name="role" value="' + esc(d.role || "") + '" placeholder="예: HR실장, 급여 담당, GA 비품, HRBP"></label><label class="full">담당 범위 (직책자만, 쉼표로 여러 개)<input name="scope" value="' + esc(d.scope || "") + '" placeholder="예: 커뮤니티팀, 마케팅본부 · 사업부 전체를 맡으면 소속명(예: CC)"></label>' +
         '<div class="form-actions">' + (x && can(key, "edit") ? '<button type="button" class="btn danger" id="ppDel" style="margin-right:auto">삭제</button>' : '') + '<button type="button" class="btn ghost" id="ppNo">취소</button><button class="btn primary">저장</button></div></form>', "mid");
       $("#ppNo", m).onclick = closeModal;
       if ($("#ppDel", m)) $("#ppDel", m).onclick = async function(){ if (!confirm(x.data.target + " 님을 명단에서 삭제할까요?")) return; var r = await sb.from("portal_records").delete().eq("id", x.id).select("id"); if (r.error || !r.data || !r.data.length){ alert("삭제하지 못했습니다: " + errMsg(r)); return; } S.recs[key] = all.filter(function(y){ return y.id !== x.id; }); closeModal(); rer(); };
-      $("#ppf", m).addEventListener("submit", async function(e){ e.preventDefault(); var fd = new FormData(e.target), data = { list: "people" }; ["kind", "target", "org", "team", "email", "email2", "role", "scope"].forEach(function(k){ data[k] = String(fd.get(k) || "").trim(); });
+      $("#ppf", m).addEventListener("submit", async function(e){ e.preventDefault(); var fd = new FormData(e.target), data = Object.assign({}, x ? x.data : {}, { list: "people" }); ["kind", "target", "org", "team", "position", "email", "email2", "role", "scope"].forEach(function(k){ data[k] = String(fd.get(k) || "").trim(); }); if (fd.get("inactive")) data.inactive = true; else { delete data.inactive; delete data.inactive_at; }
         if (!/@/.test(data.email + data.email2)){ alert("회사 메일이나 개인 메일 중 하나는 넣으세요."); return; }
         var ok = x ? await save(x, data) : await add(data); if (ok){ closeModal(); toast("저장했습니다."); rer(); } });
     }
@@ -3443,38 +3539,44 @@
       var d = x ? Object.assign({}, x.data) : { list: "rule", source: AM_SRC[2][0], event: "start", when: "rel", offset: -7, mode: "approve", enabled: false, subject: "", body_html: "", rcpt_to: { self: true } };
       if (!d.rcpt_to){ d.rcpt_to = d.to ? { extra: d.to } : { self: true, selfPersonal: true }; } if (!d.rcpt_cc) d.rcpt_cc = { extra: d.cc || "" };
       function sel(name, opts, cur){ return '<select name="' + name + '">' + opts.map(function(o){ return '<option value="' + esc(o[0]) + '"' + (String(o[0]) === String(cur) ? " selected" : "") + '>' + esc(o[1]) + '</option>'; }).join("") + '</select>'; }
-      var forms = [];
-      var m = showModal('<h3>발송 규칙 ' + (x ? "수정" : "추가") + '</h3><div class="am-edit"><div class="am-left"><form class="f" id="amf" onsubmit="return false"><label class="full">규칙 이름<input name="target" value="' + esc(d.target || "") + '" required></label>' +
+      var forms = [], ros = rosterInfo(all);
+      var m = showModal('<div class="am-ed-h"><h3>발송 규칙 ' + (x ? "수정" : "추가") + '</h3><nav class="am-steps">' + [["1", "① 발송 조건"], ["2", "② 받는 사람"], ["3", "③ 본문"], ["4", "④ 미리보기"]].map(function(s){ return '<button type="button" data-step="' + s[0] + '" class="' + (s[0] === "1" ? "on" : "") + '">' + s[1] + '</button>'; }).join("") + '</nav></div>' +
+        '<div class="am-pane" data-pane="1"><form class="f" id="amf" onsubmit="return false"><label class="full">규칙 이름<input name="target" value="' + esc(d.target || "") + '" required></label>' +
         '<label>대상' + sel("source", AM_SRC, d.source) + '</label><label>기준일' + sel("event", [["start", "시작일"], ["end", "종료일"], ["return", "복직일(종료 다음 날)"]], d.event) + '</label>' +
         '<label>보내는 시점' + sel("when", AM_WHEN, d.when) + '</label><label>D±n일 (전은 음수, 예: -7)<input type="number" name="offset" value="' + esc(d.offset == null ? 0 : d.offset) + '"></label>' +
         '<label>매월 발송일 (일괄일 때)<input type="number" name="day" min="1" max="31" value="' + esc(d.day || 1) + '"></label><label>일괄 대상' + sel("scope", [["this", "이번 달 해당자"], ["next", "다음 달 해당자"]], d.scope || "this") + '</label>' +
-        '<label>발송 방식' + sel("mode", [["approve", "승인 후 발송"], ["auto", "자동 발송"]], d.mode) + '</label><label>대상 조건 (태그·내용에 포함된 말)<input name="tagq" value="' + esc(d.tagq || "") + '" placeholder="예: 임신기 · 비우면 전체"></label>' +
-        '<div class="full ep-h2">받는 사람</div><div class="full">' + rcpHtml("to", d.rcpt_to, people) + '</div><div class="full ep-h2">참조(CC)</div><div class="full">' + rcpHtml("cc", d.rcpt_cc, people) + '</div>' +
-        '<label class="full">제목 <span class="hint" style="font-weight:500">{이름} 같은 값을 넣을 수 있습니다</span><input name="subject" value="' + esc(d.subject || "") + '" required></label></form>' +
-        '<div class="full ep-h2" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">본문 <span class="grow"></span><span class="mv-wrap"><button type="button" class="btn sm" id="mvBtn">{ } 값 넣기 ▾</button><div class="ed-pop mv-pop" id="mvPop" hidden></div></span>' + '<select id="mfSel" style="max-width:240px"><option value="">매뉴얼 양식 불러오는 중…</option></select>' + '</div>' +
-        editorBar() + '<div class="doc"><div id="edBody" contenteditable="true" style="min-height:240px">' + cleanHtml(amBodyHtml(d)) + '</div></div><textarea id="edHtml" class="ed-html" style="display:none"></textarea></div>' +
-        '<div class="am-right"><div class="ep-h2">미리보기 <select id="pvWho" style="margin-left:6px;max-width:220px"></select></div><div id="pvR" style="font-size:12px;margin:6px 0"></div><div class="am-sub" id="pvS"></div><div class="mail-pv mail-html" id="pvB"></div></div></div>' +
-        '<div class="form-actions">' + (x && can(key, "edit") ? '<button type="button" class="btn danger" id="amDel" style="margin-right:auto">삭제</button>' : '') + '<button type="button" class="btn ghost" id="amNo">취소</button><button type="button" class="btn primary" id="amOk">저장</button></div>', "wide am-modal");
-      var F = $("#amf", m), st = wireEditor(m, function(){ upd(); }), lastRng = null, body = $("#edBody", m);
+        '<label>발송 방식' + sel("mode", [["approve", "승인 후 발송"], ["auto", "자동 발송"]], d.mode) + '</label><label>대상 조건 (태그·내용에 포함된 말)<input name="tagq" value="' + esc(d.tagq || "") + '" placeholder="예: 임신기 · 비우면 전체"></label></form></div>' +
+        '<div class="am-pane" data-pane="2" hidden>' + (ros.stale ? '<div class="banner warn" style="font-size:12.5px">' + (ros.last ? "조직도가 " + ros.days + "일 전(" + esc(ros.last.at) + ") 기준입니다." : "조직도를 아직 올리지 않았습니다.") + ' 「상위 직책자 · 같은 팀 · 팀」은 조직도 기준이라, 수신 주소록에서 최신 조직도를 먼저 올리세요.</div>' : '') +
+        '<div class="ep-h2">받는 사람</div>' + rcpHtml("to", d.rcpt_to, people) + '<div class="ep-h2">참조(CC)</div>' + rcpHtml("cc", d.rcpt_cc, people) +
+        '<div class="ep-h2">예시 대상자 기준 실제 주소 <span class="hint" style="font-weight:500">(④ 미리보기에서 대상자를 바꿀 수 있습니다)</span></div><div id="rcpPv" style="font-size:12px"></div></div>' +
+        '<div class="am-pane" data-pane="3" hidden><label class="am-subj">제목 <input name="subject" form="amf" value="' + esc(d.subject || "") + '" placeholder="예: [안내] {이름}님 휴직 안내"></label>' +
+        '<div class="am-body"><div class="am-body-main">' + editorBar(MAIL_BTNS) + '<div class="doc"><div id="edBody" contenteditable="true" class="am-edbody">' + cleanHtml(amBodyHtml(d)) + '</div></div><textarea id="edHtml" class="ed-html" style="display:none"></textarea></div>' +
+        '<aside class="am-vars"><select id="mfSel"><option value="">매뉴얼 양식 불러오는 중…</option></select><div class="ep-h" style="margin-top:10px">값 넣기 <span class="hint" style="font-weight:500">누르면 커서 자리에 들어가고, 대상자마다 바뀝니다</span></div><div id="mvList"></div></aside></div></div>' +
+        '<div class="am-pane" data-pane="4" hidden><div class="ep-h2">대상자 <select id="pvWho" style="margin-left:6px;max-width:260px"></select></div><div id="pvR" style="font-size:12.5px;margin:6px 0"></div><div class="am-sub" id="pvS"></div><div class="mail-pv mail-html am-pvbody" id="pvB"></div></div>' +
+        '<div class="form-actions">' + (x && can(key, "edit") ? '<button type="button" class="btn danger" id="amDel" style="margin-right:auto">삭제</button>' : '<span style="margin-right:auto"></span>') + '<button type="button" class="btn ghost" id="amPrev">‹ 이전</button><button type="button" class="btn" id="amNext">다음 ›</button><button type="button" class="btn ghost" id="amNo">취소</button><button type="button" class="btn primary" id="amOk">저장</button></div>', "wide am-modal");
+      var F = $("#amf", m), st = wireEditor(m, function(){ upd(); }), lastRng = null, body = $("#edBody", m), step = 1, subj = $('[name="subject"]', m);
+      function go(n){ step = Math.max(1, Math.min(4, n)); $all("[data-pane]", m).forEach(function(p){ p.hidden = +p.dataset.pane !== step; }); $all("[data-step]", m).forEach(function(b){ b.classList.toggle("on", +b.dataset.step === step); }); $("#amPrev", m).disabled = step === 1; $("#amNext", m).disabled = step === 4; if (step >= 2) upd(); }
+      $all("[data-step]", m).forEach(function(b){ b.onclick = function(){ go(+b.dataset.step); }; }); $("#amPrev", m).onclick = function(){ go(step - 1); }; $("#amNext", m).onclick = function(){ go(step + 1); }; go(1);
       document.addEventListener("selectionchange", function(){ var s = window.getSelection(); if (s && s.rangeCount && body.contains(s.getRangeAt(0).startContainer)) lastRng = s.getRangeAt(0).cloneRange(); });
       function insertVar(k){ body.focus(); var s = window.getSelection(); if (lastRng){ s.removeAllRanges(); s.addRange(lastRng); } document.execCommand("insertHTML", false, '<span class="mvar">{' + k + '}</span>&nbsp;'); upd(); }
       function curKind(){ return amKind(F.source.value); }
-      function drawVars(){ $("#mvPop", m).innerHTML = '<div class="ep-h">대상자마다 자동으로 바뀌는 값</div>' + MailCore.varsFor(curKind()).map(function(v){ return '<button type="button" data-mv="' + esc(v[0]) + '"><b>{' + esc(v[0]) + '}</b><small>' + esc(v[1]) + (v[4] ? ' · 날짜 뒤에 |요일 · |한글 표기 가능' : '') + '</small></button>'; }).join("");
-        $all("[data-mv]", m).forEach(function(b){ b.onmousedown = function(e){ e.preventDefault(); }; b.onclick = function(){ $("#mvPop", m).hidden = true; insertVar(b.dataset.mv); }; }); }
-      $("#mvBtn", m).onmousedown = function(e){ e.preventDefault(); }; $("#mvBtn", m).onclick = function(){ drawVars(); var p = $("#mvPop", m); p.hidden = !p.hidden; };
-      sb.from("portal_pages").select("id,title,cat,body_html").ilike("body_html", "%<details%").then(function(r){ if (!$("#mfSel", m)) return; S.pages.forEach(function(p){ var x = (r.data || []).filter(function(y){ return y.id === p.id; })[0]; if (x) p.body_html = x.body_html; });
-        forms = mailForms(); $("#mfSel", m).innerHTML = '<option value="">' + (forms.length ? "매뉴얼 양식 불러오기…" : "불러올 양식 없음") + '</option>' + forms.map(function(f, i){ return '<option value="' + i + '">' + esc(f.name + " · " + f.page) + '</option>'; }).join(""); });
-      if ($("#mfSel", m)) $("#mfSel", m).onchange = function(e){ var f = forms[+e.target.value]; e.target.value = ""; if (!f) return; if (body.textContent.trim() && !confirm("「" + f.name + "」 양식으로 본문을 바꿀까요? 지금 본문은 지워집니다.")) return; body.innerHTML = cleanHtml(f.html); upd(); };
+      function drawVars(){ $("#mvList", m).innerHTML = MailCore.varsFor(curKind()).map(function(v){ return '<button type="button" data-mv="' + esc(v[0]) + '" title="' + esc(v[1]) + (v[4] ? " · 날짜 뒤에 |요일 · |한글 표기 가능 (예: {" + v[0] + "|요일})" : "") + '"><b>{' + esc(v[0]) + '}</b><small>' + esc(v[1]) + '</small></button>'; }).join("");
+        $all("[data-mv]", m).forEach(function(b){ b.onmousedown = function(e){ e.preventDefault(); }; b.onclick = function(){ insertVar(b.dataset.mv); }; }); }
+      drawVars();
+      sb.from("portal_pages").select("id,title,cat,body_html").ilike("body_html", "%<details%").then(function(r){ if (!$("#mfSel", m)) return; S.pages.forEach(function(p){ var y = (r.data || []).filter(function(z){ return z.id === p.id; })[0]; if (y) p.body_html = y.body_html; });
+        forms = mailForms(); $("#mfSel", m).innerHTML = '<option value="">' + (forms.length ? "📄 매뉴얼 양식 불러오기…" : "불러올 양식 없음") + '</option>' + forms.map(function(f, i){ return '<option value="' + i + '">' + esc(f.name + " · " + f.page) + '</option>'; }).join(""); });
+      $("#mfSel", m).onchange = function(e){ var f = forms[+e.target.value]; e.target.value = ""; if (!f) return; if (body.textContent.trim() && !confirm("「" + f.name + "」 양식으로 본문을 바꿀까요? 지금 본문은 지워집니다.")) return; body.innerHTML = cleanHtml(f.html); upd(); };
       function people2(){ return people; }
       function whoList(){ return amSrcRecs(F.source.value, F.tagq.value).slice().sort(function(a, b){ return String(b.data.start || "").localeCompare(String(a.data.start || "")); }).slice(0, 40); }
       function drawWho(){ var l = whoList(), cur = $("#pvWho", m).value; $("#pvWho", m).innerHTML = (l.length ? l.map(function(y){ return '<option value="' + y.id + '"' + (y.id === cur ? " selected" : "") + '>' + esc(y.data.target + " · " + (y.data.type || "") + " " + (y.data.start || "")) + '</option>'; }).join("") : '') + '<option value="">예시(홍길동)</option>'; }
       var tmr = null;
       function upd(){ clearTimeout(tmr); tmr = setTimeout(function(){ var id = $("#pvWho", m).value, rec = id ? amSrcRecs(F.source.value, "").filter(function(y){ return y.id === id; })[0] : null, r = rec ? rec.data : { target: "홍길동", org: "MS", team: "○○팀", type: "예시", start: todayStr(), end: addDay(todayStr(), 30), email: "" };
         var dd = { rcpt_to: rcpRead($('[data-rcp="to"]', m)), rcpt_cc: rcpRead($('[data-rcp="cc"]', m)) }, to = amRcpt(dd, r, people, "to"), cc = amRcpt(dd, r, people, "cc");
-        $("#pvR", m).innerHTML = '<b>받는 사람</b> ' + (rcpSummary(to) || '<span class="badge warn">없음</span>') + (cc.list.length || cc.missing.length ? '<br><b>참조</b> ' + rcpSummary(cc) : '');
-        $("#pvS", m).textContent = "제목: " + MailCore.fill(F.subject.value, r, amCtx()); $("#pvB", m).innerHTML = cleanHtml(MailCore.fill(st.getHtml(), r, amCtx(), { html: true, mark: true })); }, 200); }
+        var rc = '<b>받는 사람</b> ' + (rcpSummary(to) || '<span class="badge warn">없음</span>') + (cc.list.length || cc.missing.length ? '<br><b>참조</b> ' + rcpSummary(cc) : '');
+        $("#pvR", m).innerHTML = rc; $("#rcpPv", m).innerHTML = '<div class="hint" style="margin-bottom:4px">예시 대상자: ' + esc(r.target + (r.team ? " (" + [r.org, r.team].filter(Boolean).join(" ") + ")" : "")) + '</div>' + rc;
+        $("#pvS", m).textContent = "제목: " + MailCore.fill(subj.value, r, amCtx()); $("#pvB", m).innerHTML = cleanHtml(MailCore.fill(st.getHtml(), r, amCtx(), { html: true, mark: true })); }, 200); }
       rcpWire($('[data-rcp="to"]', m), people2(), upd); rcpWire($('[data-rcp="cc"]', m), people2(), upd);
-      F.addEventListener("input", upd); F.addEventListener("change", function(e){ if (e.target.name === "source" || e.target.name === "tagq") drawWho(); upd(); }); $("#pvWho", m).onchange = upd;
+      F.addEventListener("input", upd); subj.addEventListener("input", upd); F.addEventListener("change", function(e){ if (e.target.name === "source" || e.target.name === "tagq"){ drawWho(); drawVars(); } upd(); }); $("#pvWho", m).onchange = upd;
       drawWho(); upd();
       $("#amNo", m).onclick = function(){ if (st.dirty && !confirm("저장하지 않고 닫을까요?")) return; closeModal(); };
       if ($("#amDel", m)) $("#amDel", m).onclick = async function(){ if (!confirm("이 규칙을 삭제할까요?")) return; var r = await sb.from("portal_records").delete().eq("id", x.id).select("id"); if (r.error || !r.data || !r.data.length){ alert("삭제하지 못했습니다: " + errMsg(r)); return; } S.recs[key] = all.filter(function(y){ return y.id !== x.id; }); closeModal(); rer(); };

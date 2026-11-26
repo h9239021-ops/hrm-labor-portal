@@ -61,21 +61,25 @@
   }
   // 받는 사람 · 참조: { self, selfPersonal, leader, ids:[], extra:"" } (예전 규칙의 문자열은 extra로 읽음)
   function normSpec(v) {
-    if (v && typeof v === "object") return { self: !!v.self, selfPersonal: !!v.selfPersonal, leader: !!v.leader, ids: (v.ids || []).slice(), extra: v.extra || "" };
-    return { self: false, selfPersonal: false, leader: false, ids: [], extra: String(v || "") };
+    if (v && typeof v === "object") return { self: !!v.self, selfPersonal: !!v.selfPersonal, leader: !!v.leader, sameTeam: !!v.sameTeam, ids: (v.ids || []).slice(), teams: (v.teams || []).slice(), extra: v.extra || "" };
+    return { self: false, selfPersonal: false, leader: false, sameTeam: false, ids: [], teams: [], extra: String(v || "") };
   }
   function splitMails(s) { return String(s || "").split(/[,;\s]+/).map(function (x) { return x.trim(); }).filter(function (x) { return /@/.test(x); }); }
   function pdata(p) { return p.data || p; }
+  function active(p) { var x = pdata(p); return !x.inactive; }
+  // 조직도 기준 팀 구성원(퇴사·제외 표시된 사람 제외)
+  function teamMembers(people, org, team) { org = String(org || "").trim(); team = String(team || "").trim(); if (!team) return [];
+    return people.filter(function (p) { var x = pdata(p); return active(p) && (x.kind === "직원" || x.kind === "직책자" || !x.kind) && String(x.team || "").trim() === team && (!org || String(x.org || "").trim() === org); }).map(pdata); }
   function findSelf(people, d) {
     var nm = String(d.target || "").trim(); if (!nm) return null;
-    var l = people.filter(function (p) { var x = pdata(p); return String(x.target || "").trim() === nm && (x.kind || "직원") !== "외부"; });
+    var l = people.filter(function (p) { var x = pdata(p); return String(x.target || "").trim() === nm && active(p); });
     if (l.length > 1) { var o = l.filter(function (p) { return (pdata(p).org || "") === (d.org || ""); }); if (o.length) l = o; }
     return l[0] ? pdata(l[0]) : null;
   }
   function scopeList(x) { return String(x.scope || "").split(/[,\n]/).map(function (s) { return s.trim(); }).filter(Boolean); }
   function findLeaders(people, d) {
     var team = String(d.team || "").trim(), org = String(d.org || "").trim(), nm = String(d.target || "").trim();
-    var leaders = people.map(pdata).filter(function (x) { return x.kind === "직책자" && String(x.target || "").trim() !== nm; });
+    var leaders = people.filter(active).map(pdata).filter(function (x) { return x.kind === "직책자" && String(x.target || "").trim() !== nm; });
     var byTeam = team ? leaders.filter(function (x) { return scopeList(x).some(function (s) { return s === team || s === org + " " + team || s === org + "/" + team || s === org + " › " + team; }); }) : [];
     if (byTeam.length) return byTeam;
     return org ? leaders.filter(function (x) { return scopeList(x).indexOf(org) >= 0; }) : [];
@@ -88,11 +92,13 @@
     if (spec.self) { var me = findSelf(people, d); if (me && me.email) add(me.email, d.target, "대상자 본인"); else missing.push("대상자 본인 회사 메일(주소록에 " + (d.target || "이름") + " 없음)"); }
     if (spec.selfPersonal) { var pm = d.email || ((findSelf(people, d) || {}).email2); if (pm) add(pm, d.target, "대상자 개인 메일"); else missing.push("대상자 개인 메일(기록·주소록에 없음)"); }
     if (spec.leader) { var ls = findLeaders(people, d); if (ls.length) ls.forEach(function (x) { add(x.email, x.target, "상위 직책자"); }); else missing.push("상위 직책자(" + [d.org, d.team].filter(Boolean).join(" ") + " 담당 직책자 미지정)"); }
+    if (spec.sameTeam) { var tm = teamMembers(people, d.org, d.team); if (tm.length) tm.forEach(function (x) { add(x.email, x.target, "같은 팀"); }); else missing.push("대상자와 같은 팀(" + [d.org, d.team].filter(Boolean).join(" ") + ") 구성원이 조직도에 없음"); }
+    spec.teams.forEach(function (t) { var tm2 = teamMembers(people, t.org, t.team); if (tm2.length) tm2.forEach(function (x) { add(x.email, x.target, (t.org ? t.org + " " : "") + t.team); }); else missing.push((t.org ? t.org + " " : "") + t.team + " 구성원이 조직도에 없음"); });
     spec.ids.forEach(function (id) { var p = people.filter(function (q) { return q.id === id; })[0]; if (p) add(pdata(p).email, pdata(p).target, pdata(p).role || pdata(p).kind || "명단"); else missing.push("명단에서 지워진 사람"); });
     splitMails(spec.extra).forEach(function (e) { add(e, "", "직접 입력"); });
     return { list: list, missing: missing };
   }
-  function specEmpty(spec) { spec = normSpec(spec); return !spec.self && !spec.selfPersonal && !spec.leader && !spec.ids.length && !splitMails(spec.extra).length; }
+  function specEmpty(spec) { spec = normSpec(spec); return !spec.self && !spec.selfPersonal && !spec.leader && !spec.sameTeam && !spec.ids.length && !spec.teams.length && !splitMails(spec.extra).length; }
   // 포털 편집기 HTML → 메일용(클래스 대신 인라인 스타일)
   var NOTE_C = { info: ["#eff6ff", "#93c5fd"], tip: ["#ecfdf5", "#86efac"], warn: ["#fffbeb", "#fcd34d"], danger: ["#fef2f2", "#fca5a5"] };
   function emailHtml(html) {
@@ -125,5 +131,5 @@
     var html = head + tbl + foot;
     return { subject: "[연차 정산]" + (extra ? "[추가] " : " ") + ymL + " 퇴직자 연차 정산 내역 (" + rows.length + "명)", html: html, emailHtml: emailHtml(html), text: htmlToText(html) };
   }
-  return { VARS: VARS, varsFor: varsFor, fill: fill, fmtDate: fmtDate, normSpec: normSpec, resolve: resolve, specEmpty: specEmpty, splitMails: splitMails, emailHtml: emailHtml, htmlToText: htmlToText, settleMail: settleMail, SETTLE_HEAD: SETTLE_HEAD, esc: esc, addDay: addDay };
+  return { teamMembers: teamMembers, VARS: VARS, varsFor: varsFor, fill: fill, fmtDate: fmtDate, normSpec: normSpec, resolve: resolve, specEmpty: specEmpty, splitMails: splitMails, emailHtml: emailHtml, htmlToText: htmlToText, settleMail: settleMail, SETTLE_HEAD: SETTLE_HEAD, esc: esc, addDay: addDay };
 });
