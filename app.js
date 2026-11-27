@@ -40,7 +40,7 @@
   ];
   // menus drawn by the shared record list: "cat.menu" → REC_DEF key
   var GEN_MENU = { "leave.status": "leave", "absence.status": "absence", "case.cases": "cases", "case.discipline": "discipline", "council.agenda": "agenda", "safety.status": "safety", "advice.opinions": "opinions" };
-  var HOME_KEYS = [["home.org", "업무분장표"], ["home.calendar", "연간 계획 캘린더"], ["home.faq", "FAQ"], ["home.laws", "법령정보"], ["att.automail", "자동 메일"]];
+  var HOME_KEYS = [["home.org", "업무분장표"], ["home.calendar", "연간 계획 캘린더"], ["home.faq", "FAQ"], ["home.laws", "법령정보"], ["att.automail", "자동 메일"], ["home.staff", "재직자 현황"]];
   var DOW = ["일", "월", "화", "수", "목", "금", "토"];
 
   /* ---------- utils ---------- */
@@ -541,6 +541,7 @@
     else if (p[0] === "laws" && can("home.laws", "read")){ renderLawPage(); }
     else if (p[0] === "overview" && canChg()){ renderOverview(p[1]); }
     else if (p[0] === "automail" && can("att.automail", "read")){ renderAutoMailPage(p[1]); }
+    else if (p[0] === "staff" && can("home.staff", "read")){ renderStaff(); }
     else renderHome();
     wireShell();
   }
@@ -1652,6 +1653,7 @@
     $("#rNo", m).onclick = closeModal;
     markRequired(m, defKey, d);
     if (defKey === "cases") wireCaseForm(m, x);
+    wireStaffPick(m, defKey, x);
     if ($("#rDel", m)) $("#rDel", m).onclick = async function(){
       if (!confirm("이 항목을 삭제할까요?")) return;
       var r = await sb.from("portal_records").delete().eq("id", x.id).select("id");
@@ -3041,6 +3043,10 @@
         '<div class="form-actions full">' + (x && can("leave.annual", "edit") ? '<button type="button" class="btn danger" id="stDel" style="margin-right:auto">삭제</button>' : '') + '<button type="button" class="btn" id="stRun">계산하기</button>' + (w ? '<button type="submit" class="btn primary">' + (x ? "수정 저장" : "정산 저장") + '</button>' : '') + '</div></form>' +
       '<div id="stOut" class="settle-out"><p class="hint">입사일과 퇴사일을 넣고 「계산하기」를 누르세요.</p></div></div>';
     var F = $("#stF");
+    loadStaff().then(function(){ var ti = $('[name="target"]', F); if (!ti || !staffRecs().length) return; ti.setAttribute("list", "stDL"); ti.setAttribute("autocomplete", "off"); ti.insertAdjacentHTML("afterend", staffDatalist("stDL", true) + '<small class="hint" id="stWho"></small>');
+      ti.addEventListener("change", function(){ var s2 = staffFind(ti.value), o = $("#stWho", F); if (!s2){ o.textContent = ti.value.trim() ? "재직자 현황에 없는 이름 · 저장하면 재직자 현황에 퇴사자로 추가됩니다" : ""; return; } var sd = s2.data;
+        [["emp_id", sd.emp_id], ["org", sd.org], ["team", sd.team], ["join", sd.join]].concat(sd.inactive && sd.last_day ? [["retire", sd.last_day]] : []).forEach(function(p){ var el = $('[name="' + p[0] + '"]', F); if (el && p[1]) el.value = p[1]; });
+        o.textContent = "👥 재직자 현황: " + staffLabel(s2).replace(sd.target + " · ", "") + (sd.group_date ? " · 그룹사 전적일 " + sd.group_date + "(참고, 계산은 입사일 기준)" : ""); }); });
     function per(kind){ return $all('.per-row[data-k="' + kind + '"]', F).map(function(r){ return { start: $("[data-ps]", r).value, end: $("[data-pe]", r).value }; }).filter(function(p){ return p.start && p.end && p.start <= p.end; }); }
     function read(){ var fd = new FormData(F), o = {}; ["target", "emp_id", "org", "team", "join", "retire", "note"].forEach(function(k){ var v = String(fd.get(k) || "").trim(); if (v) o[k] = v; });
       ["used", "carry", "comp", "first_year_used"].forEach(function(k){ var v = String(fd.get(k) || "").trim(); o[k] = v === "" ? "" : +v; }); o.fy_month = +fd.get("fy_month") || 1; o.unpaid = per("u"); o.absent = per("a"); return o; }
@@ -3059,7 +3065,9 @@
       var r = x ? await sb.from("portal_records").update({ data: data, updated_by: me.email, updated_at: new Date().toISOString() }).eq("id", x.id).select("*")
                 : await sb.from("portal_records").insert({ cat: "leave", menu: "annual", data: data, updated_by: me.email }).select("*");
       if (r.error || !r.data || !r.data.length){ alert("저장하지 못했습니다: " + errMsg(r)); return; }
-      if (x) Object.assign(x, r.data[0]); else S.recs["leave.annual"].push(r.data[0]); logp("leave.annual", x ? "edit" : "add", "정산 " + data.target); toast("저장했습니다."); location.hash = "#/c/leave/annual/settle"; });
+      if (x) Object.assign(x, r.data[0]); else S.recs["leave.annual"].push(r.data[0]); logp("leave.annual", x ? "edit" : "add", "정산 " + data.target);
+      try { await syncStaffRetire(data); } catch(e2){ console.warn(e2); }
+      toast("저장했습니다." + (can("home.staff", "write") ? " 재직자 현황에도 퇴사(" + data.retire + ")로 반영했습니다." : "")); location.hash = "#/c/leave/annual/settle"; });
   }
   function settleHtml(o, R){
     if (!R) return '<p class="hint">계산할 수 없습니다.</p>';
@@ -3092,8 +3100,8 @@
     var host = $("#cm"), cfgX = annRecs("config")[0], cfg = cfgX ? cfgX.data : { list: "config", enabled: false }, w = can("leave.annual", "write");
     var ym = todayStr().slice(0, 7), sd = settleSendDate(ym), nm2 = ymd(new Date(+ym.slice(0, 4), +ym.slice(5, 7), 1)).slice(0, 7), sd2 = settleSendDate(nm2);
     var canAm = can("att.automail", "read"), amAll = S.recs["att.automail"];
-    if (canAm && !amAll){ loadRecs("att", "automail").then(function(){ if ($("#mcF")) drawSettleMail(c, nav); }).catch(function(){}); }
-    var people = (amAll || []).filter(function(q){ return q.data.list === "people"; });
+    if (canAm && !amAll){ Promise.all([loadRecs("att", "automail"), loadStaff()]).then(function(){ if ($("#mcF")) drawSettleMail(c, nav); }).catch(function(){}); }
+    var people = amAll ? amPeopleAll() : [];
     var toSpec = cfg.rcpt_to || { extra: cfg.to || "" }, ccSpec = cfg.rcpt_cc || { extra: cfg.cc || "" };
     var hist = (amAll || []).filter(function(q){ return q.data.list === "queue" && q.data.kind === "annual-settle"; }).sort(function(a, b){ return String(b.created_at || "").localeCompare(String(a.created_at || "")); });
     function inMail(x, m){ var ml = x.data.mail; return ml && ml.month === m && ml.status !== "실패"; }
@@ -3350,19 +3358,19 @@
   function amNav(tab, qn, pn){ var t = [["", "발송 규칙"], ["settle", "퇴직자 연차 정산 메일"], ["queue", "발송 대기·기록"], ["people", "수신 주소록"]];
     return '<nav class="subtabs">' + t.filter(function(x){ return x[0] !== "settle" || can("leave.annual", "read"); }).map(function(x){ return '<a href="#/automail' + (x[0] ? "/" + x[0] : "") + '" class="' + ((tab || "rules") === (x[0] || "rules") ? "on" : "") + '">' + x[1] + (x[0] === "queue" && qn != null ? ' <span class="hint">' + qn + '</span>' : x[0] === "people" && pn != null ? ' <span class="hint">' + pn + '</span>' : '') + '</a>'; }).join("") + '</nav>'; }
   // 조직도 갱신 상태
-  function rosterInfo(all){ var logs = (all || S.recs["att.automail"] || []).filter(function(x){ return x.data.list === "roster_log"; }).map(function(x, i){ return { x: x, i: i }; }).sort(function(a, b){ return String(b.x.data.at || "").localeCompare(String(a.x.data.at || "")) || String(b.x.created_at || "").localeCompare(String(a.x.created_at || "")) || b.i - a.i; }).map(function(o){ return o.x; }), last = logs[0] ? logs[0].data : null, t = todayStr();
+  function rosterInfo(all){ if (!can("home.staff", "read")) return { logs: [], last: null, days: null, need: false, stale: false }; var logs = (all || S.recs["home.staff"] || []).filter(function(x){ return x.data.list === "roster_log"; }).map(function(x, i){ return { x: x, i: i }; }).sort(function(a, b){ return String(b.x.data.at || "").localeCompare(String(a.x.data.at || "")) || String(b.x.created_at || "").localeCompare(String(a.x.created_at || "")) || b.i - a.i; }).map(function(o){ return o.x; }), last = logs[0] ? logs[0].data : null, t = todayStr();
     var days = last ? Math.round((parseD(t) - parseD(last.at)) / 864e5) : null; return { logs: logs, last: last, days: days, need: !last || String(last.at).slice(0, 7) < t.slice(0, 7), stale: !last || days > 35 }; }
   // 자동 메일 요약(상단 📨 아이콘 · 창)
   async function amSummary(){
-    await Promise.all([loadRecs("att", "automail"), can("leave.annual", "read") ? loadRecs("leave", "annual") : null, can("att.worktypes", "read") ? loadRecs("att", "worktypes") : null, can("absence.status", "read") ? loadRecs("absence", "status") : null, can("leave.status", "read") ? loadRecs("leave", "status") : null]);
+    await Promise.all([loadRecs("att", "automail"), loadStaff(), can("leave.annual", "read") ? loadRecs("leave", "annual") : null, can("att.worktypes", "read") ? loadRecs("att", "worktypes") : null, can("absence.status", "read") ? loadRecs("absence", "status") : null, can("leave.status", "read") ? loadRecs("leave", "status") : null]);
     var all = S.recs["att.automail"] || [], q = all.filter(function(x){ return x.data.list === "queue"; }), cfg = all.filter(function(x){ return x.data.list === "config"; })[0], t = todayStr(), wk = addDay(t, 6), keys = {};
     q.forEach(function(x){ keys[x.data.key] = 1; });
-    var o = { wait: q.filter(function(x){ return x.data.status === "승인 대기"; }).length, noaddr: q.filter(function(x){ return x.data.status === "주소 필요"; }).length, ready: q.filter(function(x){ return x.data.status === "발송 대기"; }).length, soon: 0, last: cfg && cfg.data.last_run, roster: rosterInfo(all) };
+    var o = { wait: q.filter(function(x){ return x.data.status === "승인 대기"; }).length, noaddr: q.filter(function(x){ return x.data.status === "주소 필요"; }).length, ready: q.filter(function(x){ return x.data.status === "발송 대기"; }).length, soon: 0, last: cfg && cfg.data.last_run, roster: rosterInfo(S.recs["home.staff"] || []) };
     all.filter(function(x){ return x.data.list === "rule" && x.data.enabled; }).forEach(function(r){ amTargets(r.data, t).forEach(function(g){ if (g.due >= t && g.due <= wk && !keys[r.id + "|" + g.rec.id + "|" + g.date]) o.soon++; }); });
     if (can("leave.annual", "read")){ var ac = (S.recs["leave.annual"] || []).filter(function(x){ return x.data.list === "config"; })[0], ym = t.slice(0, 7), sd = settleSendDate(ym); o.settle = t <= sd.send ? sd : settleSendDate(ymd(new Date(+ym.slice(0, 4), +ym.slice(5, 7), 1)).slice(0, 7)); o.settleOn = !!(ac && ac.data.enabled); }
     return o;
   }
-  async function amBadgeRefresh(){ var b = $("#amBadge"); if (!b) return; try { var o = await amSummary(), n = o.wait + o.noaddr + (o.roster.need ? 1 : 0); b = $("#amBadge"); if (!b) return; b.textContent = n; b.hidden = !n; b.title = (o.wait ? "승인 대기 " + o.wait + "건 " : "") + (o.noaddr ? "주소 필요 " + o.noaddr + "건 " : "") + (o.roster.need ? "조직도 갱신 필요" : ""); } catch(e){} }
+  async function amBadgeRefresh(){ var b = $("#amBadge"); if (!b) return; try { var o = await amSummary(), n = o.wait + o.noaddr + (o.roster.need ? 1 : 0); b = $("#amBadge"); if (!b) return; b.textContent = n; b.hidden = !n; b.title = (o.wait ? "승인 대기 " + o.wait + "건 " : "") + (o.noaddr ? "주소 필요 " + o.noaddr + "건 " : "") + (o.roster.need ? "인원 현황 갱신 필요" : ""); } catch(e){} }
   async function toggleAmPop(btn){
     var old = $("#amPop"); if (old){ old.remove(); return; } closeMega();
     var p = document.createElement("div"); p.id = "amPop"; p.className = "hd-pop"; p.innerHTML = '<p class="hint">불러오는 중…</p>'; document.body.appendChild(p);
@@ -3370,7 +3378,7 @@
     var o; try { o = await amSummary(); } catch(e){ p.innerHTML = '<p class="hint">불러오지 못했습니다.</p>'; return; }
     function it(href, lab, val, sub, cls){ return '<a class="am-s' + (cls ? " " + cls : "") + '" href="' + href + '"><small>' + lab + '</small><b>' + val + '</b><small>' + sub + '</small></a>'; }
     p.innerHTML = '<div class="hd-pop-h"><b>📨 자동 메일</b><span class="hint">' + (o.last ? "발송기 마지막 실행 " + esc(o.last) : "발송기 실행 기록 없음") + '</span></div>' +
-      (o.roster.need ? '<a class="banner warn" style="display:block;margin:0 0 8px;font-size:12.5px;text-decoration:none" href="#/automail/people">🗂 ' + (o.roster.last ? "조직도 갱신 필요 — 마지막 갱신 " + esc(o.roster.last.at) : "조직도를 아직 올리지 않았습니다") + ' ›</a>' : '') +
+      (o.roster.need ? '<a class="banner warn" style="display:block;margin:0 0 8px;font-size:12.5px;text-decoration:none" href="#/staff">👥 ' + (o.roster.last ? "인원 현황 갱신 필요 — 마지막 갱신 " + esc(o.roster.last.at) : "인원 현황을 아직 올리지 않았습니다") + ' ›</a>' : '') +
       '<div class="am-pop-g">' + it("#/automail/queue", "승인 대기", o.wait + "<small>건</small>", o.wait ? "확인 후 승인 필요" : "없음", o.wait ? "hot" : "") + it("#/automail/queue", "발송 대기", o.ready + "<small>건</small>", "다음 실행 때 발송") +
       it("#/automail", "이번 주 발송 예정", o.soon + "<small>건</small>", todayStr().slice(5) + " ~ " + addDay(todayStr(), 6).slice(5)) + it("#/automail/queue", "주소 필요", o.noaddr + "<small>건</small>", o.noaddr ? "수신 주소록 확인" : "없음", o.noaddr ? "warn" : "") +
       (o.settle ? it("#/automail/settle", "연차 정산 메일", md(o.settle.send), o.settleOn ? "자동 발송 켜짐" : "꺼짐") : '') + '</div>' +
@@ -3379,7 +3387,7 @@
   function closeMega(){ var x = $("#megaP"); if (x) x.remove(); var y = $("#amPop"); if (y) y.remove(); }
   function toggleMega(){
     if ($("#megaP")){ closeMega(); return; } closeMega();
-    var cats = CATS.filter(catVisible), home = [["#/", "🏠 홈"]].concat(can("home.laws", "read") ? [["#/laws", "⚖️ 법령정보"]] : []).concat(canChg() ? [["#/overview", "📋 현황 종합"]] : []).concat(can("att.automail", "read") ? [["#/automail", "📨 자동 메일"]] : []).concat(isAdmin() ? [["#/admin", "🔐 권한 관리"]] : []);
+    var cats = CATS.filter(catVisible), home = [["#/", "🏠 홈"]].concat(can("home.laws", "read") ? [["#/laws", "⚖️ 법령정보"]] : []).concat(canChg() ? [["#/overview", "📋 현황 종합"]] : []).concat(can("att.automail", "read") ? [["#/automail", "📨 자동 메일"]] : []).concat(can("home.staff", "read") ? [["#/staff", "👥 재직자 현황"]] : []).concat(isAdmin() ? [["#/admin", "🔐 권한 관리"]] : []);
     var p = document.createElement("div"); p.id = "megaP"; p.className = "mega";
     p.innerHTML = '<div class="mega-in"><div class="mega-h"><b>🐻 전체 메뉴</b><span class="grow"></span><button type="button" class="btn sm ghost" id="megaX">닫기 ✕</button></div><div class="mega-home">' + home.map(function(h){ return '<a href="' + h[0] + '">' + h[1] + '</a>'; }).join("") + '</div><div class="mega-grid">' +
       cats.map(function(c){ var ms = c.menus.filter(function(m){ return level(c.id + "." + m[0]) >= 1; }); return '<div class="mega-c"><a class="mega-t" href="' + (c.link ? c.link : "#/c/" + c.id) + '"' + (c.link ? ' target="_blank" rel="noopener"' : '') + '><span>' + c.ic + '</span>' + esc(c.name) + (c.link ? ' ↗' : '') + '</a>' + ms.map(function(m){ return '<a href="#/c/' + c.id + '/' + m[0] + '">' + esc(m[1]) + '</a>'; }).join("") + '</div>'; }).join("") + '</div></div>';
@@ -3394,86 +3402,197 @@
     wireShell();
     if (sub === "settle"){
       if (!can("leave.annual", "read")){ $("#cm").innerHTML = amNav("settle") + '<div class="banner warn">휴가 › 연차유급휴가 관리 권한이 있어야 볼 수 있습니다.</div>'; return; }
-      try { await Promise.all([loadRecs("leave", "annual"), loadRecs("att", "automail")]); } catch(e){ $("#cm").innerHTML = '<div class="banner danger">불러오지 못했습니다: ' + esc(e.message) + '</div>'; return; }
+      try { await Promise.all([loadRecs("leave", "annual"), loadRecs("att", "automail"), loadStaff()]); } catch(e){ $("#cm").innerHTML = '<div class="banner danger">불러오지 못했습니다: ' + esc(e.message) + '</div>'; return; }
       if (!$("#cm")) return; var am = S.recs["att.automail"] || [];
-      drawSettleMail(catById("leave"), amNav("settle", am.filter(function(x){ return x.data.list === "queue"; }).length, am.filter(function(x){ return x.data.list === "people"; }).length) + '<div class="hint" style="font-size:12.5px;margin:-4px 0 10px">퇴직자별 정산 내역 확인·계산은 <a href="#/c/leave/annual/settle">휴가 › 연차유급휴가 관리 › 퇴직자 연차 정산</a>에서 합니다.</div>');
+      drawSettleMail(catById("leave"), amNav("settle", am.filter(function(x){ return x.data.list === "queue"; }).length, amPeopleAll().length) + '<div class="hint" style="font-size:12.5px;margin:-4px 0 10px">퇴직자별 정산 내역 확인·계산은 <a href="#/c/leave/annual/settle">휴가 › 연차유급휴가 관리 › 퇴직자 연차 정산</a>에서 합니다.</div>');
       return; }
     renderAutoMail(catById("att"), sub);
   }
+  /* =====================================================================
+     재직자 현황(공통 명단): 인원 현황 엑셀 월 업로드 → 자동 메일 · 연차 정산 · 휴가/휴직 입력 · 선부여에서 함께 사용
+     동명이인은 이름 뒤 A·B로 구분하므로 이름(없으면 사번)으로 사람을 찾는다. 근속 기준일은 입사일(그룹사 전적일은 참고).
+     ===================================================================== */
+  function staffRecs(){ return (S.recs["home.staff"] || []).filter(function(x){ return x.data.list === "emp"; }); }
+  function staffFind(name, empId){ name = String(name || "").trim(); var l = staffRecs();
+    if (empId){ var e = l.filter(function(x){ return x.data.emp_id === empId; })[0]; if (e) return e; }
+    var m = l.filter(function(x){ return String(x.data.target || "").trim() === name; }); return m.filter(function(x){ return !x.data.inactive; })[0] || m[0] || null; }
+  async function loadStaff(){ if (!can("home.staff", "read")) return []; try { return await loadRecs("home", "staff"); } catch(e){ return []; } }
+  // 자동 메일 명단: 수동 명단(HR 담당 · 유관부서 등) + 재직자 현황(직원 · 직책자)
+  function amPeopleAll(){ var manual = (S.recs["att.automail"] || []).filter(function(x){ return x.data.list === "people" && x.data.source !== "roster"; });
+    return manual.concat(staffRecs().map(function(x){ return { id: x.id, data: Object.assign({}, x.data, { kind: x.data.kind || rosterKind(x.data.position) }), staff: true }; })); }
+  function normDate(v){ v = String(v == null ? "" : v).trim(); if (!v || v === "-") return ""; var m = v.match(/^(\d{4})[-.\/](\d{1,2})[-.\/](\d{1,2})/); if (m) return m[1] + "-" + pad(+m[2]) + "-" + pad(+m[3]);
+    m = v.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/); if (m){ var y = +m[3]; if (y < 100) y += y > 50 ? 1900 : 2000; return y + "-" + pad(+m[1]) + "-" + pad(+m[2]); }
+    if (/^\d{5}(\.\d+)?$/.test(v)){ var d = new Date(Date.UTC(1899, 11, 30) + Math.floor(+v) * 864e5); return d.getUTCFullYear() + "-" + pad(d.getUTCMonth() + 1) + "-" + pad(d.getUTCDate()); } return v; }
+  function staffStatus(d){ return d.inactive ? (d.retire_src === "settle" && !d.roster_status ? "퇴직(정산 등록)" : /제외/.test(d.status || "") ? "퇴직(명단 제외)" : "퇴직") : (d.status || "재직"); }
+  function staffLabel(x){ var d = x.data; return d.target + " · " + [d.emp_id, [d.org, d.team].filter(Boolean).join(" "), d.join ? "입사 " + d.join : "", staffStatus(d)].filter(Boolean).join(" · "); }
+  function staffDatalist(id, withRetired){ return '<datalist id="' + id + '">' + staffRecs().filter(function(x){ return withRetired || !x.data.inactive; }).sort(function(a, b){ return String(a.data.target).localeCompare(String(b.data.target)); }).map(function(x){ return '<option value="' + esc(x.data.target) + '">' + esc(staffLabel(x).replace(x.data.target + " · ", "")) + '</option>'; }).join("") + '</datalist>'; }
+  // 퇴직자 연차 정산을 수기로 저장하면 재직자 현황에도 퇴사로 반영(다음 달 인원 현황 업로드 전까지)
+  async function syncStaffRetire(o){
+    if (!can("home.staff", "write") || !o || !o.target || !o.retire) return; await loadStaff();
+    var x = staffFind(o.target, o.emp_id), now = new Date().toISOString(), base = { inactive: true, last_day: o.retire, retire_src: "settle", retire_at: todayStr(), status: "퇴직" };
+    if (x){ if (x.data.inactive && x.data.last_day === o.retire) return; var d = Object.assign({}, x.data, base); delete d.roster_status;
+      var r = await sb.from("portal_records").update({ data: d, updated_by: me.email, updated_at: now }).eq("id", x.id).select("*"); if (!r.error && r.data && r.data[0]) Object.assign(x, r.data[0]); }
+    else { var r2 = await sb.from("portal_records").insert({ cat: "home", menu: "staff", data: Object.assign({ list: "emp", target: o.target, emp_id: o.emp_id || "", org: o.org || "", team: o.team || "", join: o.join || "", kind: "직원", source: "manual" }, base), updated_by: me.email }).select("*");
+      if (!r2.error && r2.data && r2.data[0]) (S.recs["home.staff"] = S.recs["home.staff"] || []).push(r2.data[0]); }
+  }
+  // 기록 입력 창: 이름 고르면 소속·팀 자동, 육아휴직 6개월 확인, 선부여 1년 미만/이상 판정
+  function wireStaffPick(m, defKey, x){
+    if (["leave", "absence", "worktypes", "advance"].indexOf(defKey) < 0) return;
+    var inp = $('#rf input[name="target"]', m); if (!inp) return;
+    loadStaff().then(function(){ if (!staffRecs().length || !document.body.contains(inp)) return;
+      inp.setAttribute("list", "staffDL"); inp.setAttribute("autocomplete", "off"); inp.insertAdjacentHTML("afterend", staffDatalist("staffDL", defKey === "advance"));
+      var info = document.createElement("div"); info.className = "full staff-info"; $("#rf", m).insertBefore(info, $("#rf", m).firstChild);
+      function set(n, v){ var el = $('#rf [name="' + n + '"]', m); if (el && v != null && v !== "") el.value = v; }
+      function check(fill){ var s = staffFind(inp.value), msg = [];
+        if (s){ var d = s.data; if (fill){ set("org", d.org); set("team", d.team); }
+          msg.push('<span class="hint">👥 ' + esc(staffLabel(s)) + (d.group_date ? ' · 그룹사 전적일 ' + esc(d.group_date) + '(참고)' : '') + '</span>');
+          var st = ($('#rf [name="start"]', m) || {}).value || "", tp = ($('#rf [name="type"]', m) || {}).value || "";
+          if (defKey === "absence" && /육아휴직/.test(tp) && st && d.join){ var six = addMon(d.join, 6); if (st < six) msg.push('<span class="banner warn" style="display:block;margin:4px 0 0">입사일 ' + esc(d.join) + ' 기준 휴직 시작일에 계속근로 6개월이 안 됩니다(6개월 되는 날 ' + esc(six) + '). 회사가 육아휴직을 거부할 수 있는 요건이니 확인 후 저장하세요.</span>'); }
+          if (defKey === "advance" && d.join){ var st2 = st || todayStr(), ten = st2 < addMon(d.join, 12) ? "미만" : "이상", sel = $('#rf [name="tenure"]', m); if (sel && (fill || !sel.value)) sel.value = ten; msg.push('<span class="hint">입사 1년 ' + (ten === "미만" ? "미만" : "이상") + '(사용 기한 시작일 기준)</span>'); } }
+        else if (inp.value.trim()) msg.push('<span class="hint">재직자 현황에 없는 이름입니다(동명이인은 이름 뒤 A·B 확인).</span>');
+        info.innerHTML = msg.join("<br>"); }
+      inp.addEventListener("change", function(){ check(true); }); ["start", "type"].forEach(function(n){ var el = $('#rf [name="' + n + '"]', m); if (el) el.addEventListener("change", function(){ check(false); }); });
+      if (inp.value) check(false); });
+  }
+  /* ---------- 재직자 현황 화면 ---------- */
+  var STAFF_COLS = [["_st", "상태"], ["emp_id", "사번", "text"], ["target", "이름", "text"], ["join", "입사일", "text"], ["utype", "사용자 유형"], ["company", "회사"], ["division", "부문"], ["org", "사업부"], ["hq", "본부"], ["office", "실"], ["team", "팀"], ["part", "파트"], ["position", "직책"], ["email", "회사 메일", "text"], ["last_day", "마지막 근로일", "text"]];
+  var stF = { _st: "" }, stView = "active";
+  async function renderStaff(){
+    app.innerHTML = shell('<div class="cat-head"><div class="crumb"><a href="#/">홈</a> › 재직자 현황</div><h1><span>👥</span>재직자 현황</h1><p class="hint" style="margin:4px 0 14px;font-size:13px">매월 인원 현황 엑셀을 올려 관리하는 공통 명단입니다. 자동 메일(받는 사람·상위 직책자·같은 팀), 퇴직자 연차 정산, 휴가·휴직 기록 입력, 연차 선부여에서 함께 씁니다. 동명이인은 이름 뒤 A·B로 구분합니다.</p></div><div class="cat-wrap"><div class="cat-main" id="cm"><p class="hint">불러오는 중…</p></div></div>', "재직자 현황");
+    wireShell();
+    try { await loadRecs("home", "staff"); } catch(e){ $("#cm").innerHTML = '<div class="banner danger">불러오지 못했습니다: ' + esc(e.message) + '</div>'; return; }
+    drawStaff();
+  }
+  function drawStaff(){
+    var host = $("#cm"); if (!host) return; var all = staffRecs(), ros = rosterInfo(S.recs["home.staff"] || []), w = can("home.staff", "write");
+    var cnt = { active: all.filter(function(x){ return !x.data.inactive; }).length, leave: all.filter(function(x){ return !x.data.inactive && /휴직/.test(x.data.status || ""); }).length, gone: all.filter(function(x){ return x.data.inactive; }).length, settle: all.filter(function(x){ return x.data.retire_src === "settle" && !x.data.roster_status; }).length };
+    host.innerHTML = (ros.need ? '<div class="banner warn" style="margin-top:0">🗂 ' + (ros.last ? "이번 달 인원 현황을 아직 올리지 않았습니다. 마지막 갱신 " + esc(ros.last.at) + "(" + ros.days + "일 전)." : "인원 현황을 아직 올리지 않았습니다.") + ' 「인원 현황 엑셀 올리기」로 반영하세요.</div>' : '<div class="banner info" style="margin-top:0">🗂 마지막 갱신 ' + esc(ros.last.at) + ' · ' + esc(ros.last.by || "") + ' (' + esc(ros.last.file || "") + ')</div>') +
+      '<div class="kpis" style="grid-template-columns:repeat(4,minmax(0,1fr));margin-bottom:10px">' + [["재직(휴직 포함)", cnt.active, "명"], ["휴직", cnt.leave, "명"], ["퇴직", cnt.gone, "명"], ["정산으로 먼저 등록된 퇴사", cnt.settle, "명"]].map(function(k){ return '<div class="kpi"><div class="k">' + k[0] + '</div><div class="v" style="font-size:22px">' + k[1] + '<small>' + k[2] + '</small></div></div>'; }).join("") + '</div>' +
+      '<div class="rec-tools"><span class="st-pick">' + [["active", "재직(휴직 포함)"], ["gone", "퇴직"], ["all", "전체"]].map(function(v){ return '<button type="button" class="' + (stView === v[0] ? "on" : "") + '" data-sv="' + v[0] + '">' + v[1] + '</button>'; }).join("") + '</span><span class="grow"></span>' +
+        (w ? '<button class="btn sm primary" id="stUp">🗂 인원 현황 엑셀 올리기</button><button class="btn sm" id="stAdd">+ 직접 추가</button>' : '') + '</div>' +
+      (ros.logs.length ? '<details class="mapbox" style="margin:0 0 8px"><summary>갱신 이력 (' + ros.logs.length + ')</summary><div style="font-size:12.5px;padding:6px 10px">' + ros.logs.slice(0, 24).map(function(l){ var d = l.data; return esc(d.at) + ' · ' + esc(d.by || "") + ' · ' + esc(d.file || "") + ' · ' + d.total + '명 (신규 ' + d.add + ', 변경 ' + d.chg + ', 명단 제외 ' + d.gone + ')'; }).join("<br>") + '</div></details>' : '') +
+      '<div class="pp-bar"><span class="hint" id="sfCnt"></span><span class="grow"></span><button type="button" class="btn sm ghost" id="sfReset">필터 초기화</button><button type="button" class="btn sm" id="sfXls">⬇ 엑셀 내려받기</button></div><div id="sfTbl"></div>';
+    var base = all.filter(function(x){ return stView === "all" || (stView === "gone" ? x.data.inactive : !x.data.inactive); });
+    function val(d, k){ return k === "_st" ? staffStatus(d) : String(d[k] == null ? "" : d[k]).trim(); }
+    function pass(x, skip){ var d = x.data; return STAFF_COLS.every(function(c){ var v = stF[c[0]]; if (!v || c[0] === skip) return true; var cur = val(d, c[0]); return c[2] === "text" ? cur.toLowerCase().indexOf(v.toLowerCase()) >= 0 : (v === "(빈칸)" ? !cur : cur === v); }); }
+    function table(){ var list = base.filter(function(x){ return pass(x); }).sort(function(a, b){ return String(a.data.org || "").localeCompare(String(b.data.org || "")) || String(a.data.team || "").localeCompare(String(b.data.team || "")) || String(a.data.target).localeCompare(String(b.data.target)); });
+      var head = '<tr>' + STAFF_COLS.map(function(c){ return '<th>' + c[1] + '</th>'; }).join("") + '</tr><tr class="pp-f">' + STAFF_COLS.map(function(c){
+        if (c[2] === "text") return '<th><input type="search" data-sf="' + c[0] + '" value="' + esc(stF[c[0]] || "") + '" placeholder="검색"></th>';
+        var opts = {}, blank = false; base.forEach(function(x){ if (!pass(x, c[0])) return; var v = val(x.data, c[0]); if (v) opts[v] = (opts[v] || 0) + 1; else blank = true; });
+        return '<th><select data-sf="' + c[0] + '"' + (stF[c[0]] ? ' class="on"' : '') + '><option value="">전체</option>' + Object.keys(opts).sort().map(function(k){ return '<option' + (k === stF[c[0]] ? " selected" : "") + ' value="' + esc(k) + '">' + esc(k) + ' (' + opts[k] + ')</option>'; }).join("") + (blank ? '<option value="(빈칸)"' + (stF[c[0]] === "(빈칸)" ? " selected" : "") + '>(빈칸)</option>' : '') + '</select></th>'; }).join("") + '</tr>';
+      $("#sfTbl").innerHTML = '<div class="tbl-box pp-box"><table class="rec compact pp-tbl"><thead>' + head + '</thead><tbody>' + (list.length ? list.slice(0, 1500).map(function(x){ var d = x.data; return '<tr class="clk' + (d.inactive ? " ended" : "") + '" data-sid="' + x.id + '">' + STAFF_COLS.map(function(c){ var v = val(d, c[0]);
+          if (c[0] === "_st") return '<td><span class="badge ' + (d.inactive ? (d.retire_src === "settle" && !d.roster_status ? "warn" : "neutral") : /휴직/.test(v) ? "info" : "good") + '">' + esc(v) + '</span>' + (d.source === "manual" ? ' <small class="hint" title="직접 입력">✍</small>' : '') + '</td>';
+          if (c[0] === "target") return '<td><b>' + esc(v) + '</b></td>'; return '<td>' + esc(v) + '</td>'; }).join("") + '</tr>'; }).join("") : '<tr><td colspan="' + STAFF_COLS.length + '" class="hint" style="padding:18px">조건에 맞는 사람이 없습니다.</td></tr>') + '</tbody></table></div>';
+      $("#sfCnt").textContent = list.length + "명 / " + base.length + "명";
+      $all("#sfTbl select[data-sf]").forEach(function(s){ s.onchange = function(){ stF[s.dataset.sf] = s.value; table(); }; });
+      $all("#sfTbl input[data-sf]").forEach(function(i){ i.addEventListener("change", function(){ stF[i.dataset.sf] = i.value.trim(); table(); }); });
+      $all("#sfTbl tr[data-sid]").forEach(function(tr){ tr.onclick = function(){ if (w) staffEdit(all.filter(function(y){ return y.id === tr.dataset.sid; })[0]); }; });
+      $("#sfXls").onclick = function(){ if (!window.XLSX){ alert("엑셀 도구를 불러오지 못했습니다."); return; } var ws = XLSX.utils.aoa_to_sheet([STAFF_COLS.map(function(c){ return c[1]; })].concat(list.map(function(x){ return STAFF_COLS.map(function(c){ return val(x.data, c[0]); }); }))); var wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "재직자 현황"); XLSX.writeFile(wb, "재직자현황_" + todayStr() + ".xlsx"); };
+    }
+    table();
+    $("#sfReset").onclick = function(){ stF = {}; table(); };
+    $all("[data-sv]", host).forEach(function(b){ b.onclick = function(){ stView = b.dataset.sv; drawStaff(); }; });
+    if ($("#stUp")) $("#stUp").onclick = function(){ if (!window.XLSX){ alert("엑셀 도구를 불러오지 못했습니다. 새로고침 후 다시 시도하세요."); return; } openRosterUpload(function(){ loadRecs("home", "staff").then(drawStaff); }); };
+    if ($("#stAdd")) $("#stAdd").onclick = function(){ staffEdit(null); };
+  }
+  function staffEdit(x){
+    var d = x ? x.data : { status: "재직" }, F2 = [["target", "이름 (동명이인은 A·B)"], ["emp_id", "사번"], ["join", "입사일", "date"], ["group_date", "그룹사 전적일(참고)", "date"], ["utype", "사용자 유형"], ["company", "회사"], ["division", "부문"], ["org", "사업부"], ["hq", "본부"], ["office", "실"], ["team", "팀"], ["part", "파트"], ["position", "직책"], ["email", "회사 메일", "email"], ["last_day", "마지막 근로일", "date"], ["note", "비고"]];
+    var m = showModal('<h3>재직자 ' + (x ? "수정" : "직접 추가") + '</h3><form class="f" id="sef">' + F2.map(function(f){ return '<label>' + f[1] + '<input name="' + f[0] + '" type="' + (f[2] || "text") + '" value="' + esc(d[f[0]] || "") + '"></label>'; }).join("") +
+      '<label>재직 상태<select name="status">' + ["재직", "휴직", "퇴직"].map(function(s){ return '<option' + ((d.inactive ? "퇴직" : d.status || "재직") === s ? " selected" : "") + '>' + s + '</option>'; }).join("") + '</select></label>' +
+      (x && x.data.retire_src === "settle" ? '<p class="full hint" style="font-size:12px">퇴직자 연차 정산(' + esc(x.data.retire_at || "") + ')에서 퇴사로 먼저 등록된 사람입니다. 다음 인원 현황 업로드 때 명단 기준으로 다시 맞춰집니다.</p>' : '') +
+      '<div class="form-actions">' + (x && can("home.staff", "edit") ? '<button type="button" class="btn danger" id="seDel" style="margin-right:auto">삭제</button>' : '') + '<button type="button" class="btn ghost" id="seNo">취소</button><button class="btn primary">저장</button></div></form>', "wide");
+    $("#seNo", m).onclick = closeModal;
+    if ($("#seDel", m)) $("#seDel", m).onclick = async function(){ if (!confirm(d.target + " 님을 재직자 현황에서 삭제할까요? 퇴사자는 삭제하지 말고 「퇴직」으로 두는 것을 권합니다.")) return; var r = await sb.from("portal_records").delete().eq("id", x.id).select("id"); if (r.error || !r.data || !r.data.length){ alert("삭제하지 못했습니다: " + errMsg(r)); return; } S.recs["home.staff"] = S.recs["home.staff"].filter(function(y){ return y.id !== x.id; }); closeModal(); drawStaff(); };
+    $("#sef", m).addEventListener("submit", async function(e){ e.preventDefault(); var fd = new FormData(e.target), data = Object.assign({}, d, { list: "emp" });
+      F2.forEach(function(f){ data[f[0]] = String(fd.get(f[0]) || "").trim(); }); if (!data.target){ alert("이름을 넣으세요."); return; }
+      var st = fd.get("status"); data.status = st; if (st === "퇴직"){ data.inactive = true; } else { delete data.inactive; delete data.retire_src; }
+      data.kind = rosterKind(data.position); data.scope = rosterScope(data); if (!x) data.source = "manual";
+      var dup = staffRecs().filter(function(y){ return (!x || y.id !== x.id) && y.data.target === data.target; })[0]; if (dup && !confirm("같은 이름(" + data.target + ")이 이미 있습니다. 동명이인이면 이름 뒤에 A·B를 붙이세요. 그래도 저장할까요?")) return;
+      var r = x ? await sb.from("portal_records").update({ data: data, updated_by: me.email, updated_at: new Date().toISOString() }).eq("id", x.id).select("*") : await sb.from("portal_records").insert({ cat: "home", menu: "staff", data: data, updated_by: me.email }).select("*");
+      if (r.error || !r.data || !r.data.length){ alert("저장하지 못했습니다: " + errMsg(r)); return; } if (x) Object.assign(x, r.data[0]); else S.recs["home.staff"].push(r.data[0]); closeModal(); toast("저장했습니다."); drawStaff(); });
+  }
+
   // 조직도 엑셀 올리기 → 변경 확인 → 반영
   var ROSTER_COLS = [["target", "이름", /^(이름|성명|사원명|직원명)$/], ["emp_id", "사번", /^(사원 ?번호|사번|직원 ?번호)$/], ["company", "회사", /^(회사|법인|회사명|법인명)$/], ["division", "부문", /^부문$/],
     ["org", "사업부", /^(사업부|소속)$/], ["hq", "본부", /^본부$/], ["office", "실", /^실$/], ["team", "팀", /^(팀|팀명)$/], ["part", "파트", /^파트$/], ["position", "직책", /^직책$/],
-    ["email", "회사 메일(로그인 아이디)", /로그인 ?아이디|회사 ?메일|e-?mail|이메일/i], ["status", "재직 상태", /재직 ?상태/]];
+    ["email", "회사 메일(로그인 아이디)", /로그인 ?아이디|회사 ?메일|e-?mail|이메일/i], ["status", "재직 상태", /재직 ?상태/],
+    ["join", "입사일", /^입사 ?일(자)?$/], ["group_date", "그룹사 전적일(참고)", /전적 ?일/], ["utype", "사용자 유형", /사용자 ?유형/], ["site", "사업장", /^사업장$/], ["last_day", "마지막 근로일", /마지막 ?근로일|^퇴사 ?일(자)?$|^퇴직 ?일(자)?$/]];
   function rosterKind(pos){ pos = String(pos || "").trim(); return pos && pos !== "-" && !/팀원/.test(pos) ? "직책자" : "직원"; }
   function rosterScope(r){ return [r.part, r.team, r.office, r.hq, r.org, r.division].filter(function(v){ return v; })[0] || ""; }
-  function openRosterUpload(all, done){
-    var m = showModal('<h3>조직도 엑셀 올리기</h3><p class="hint" style="font-size:12.5px">인사시스템이나 HRBP 「입퇴사자 공유」 파일의 <b>재직자 명단</b>을 그대로 올리세요. 열 이름을 자동으로 알아보고, 반영 전에 지금 명단과 비교해 보여 줍니다. 직접 넣은 HR 담당 · 유관부서 명단은 건드리지 않습니다.</p>' +
+  function openRosterUpload(done){
+    var m = showModal('<h3>인원 현황 엑셀 올리기</h3><p class="hint" style="font-size:12.5px">매월 「인원 현황 데이터」 파일을 그대로 올리세요. 열 이름을 자동으로 알아보고, 반영 전에 지금 재직자 현황과 비교해 보여 줍니다. 퇴직자는 지우지 않고 마지막 근로일과 함께 남깁니다. <b>휴대폰 번호는 읽지도 저장하지도 않습니다.</b> 사람은 사번, 없으면 이름(동명이인은 A·B가 붙은 이름)으로 맞춥니다.</p>' +
       '<label class="btn" style="cursor:pointer;display:inline-block">📂 엑셀 파일 고르기<input type="file" id="roF" accept=".xlsx,.xls,.csv" hidden></label> <span class="hint" id="roName"></span><div id="roBody"></div>', "wide");
-    var rows = null, head = [], hIdx = 0, map = {}, fname = "";
+    var head = [], hIdx = 0, map = {}, fname = "", sheets = [], skipped = 0;
     $("#roF", m).onchange = async function(e){ var f = e.target.files[0]; if (!f) return; fname = f.name; $("#roName", m).textContent = f.name;
       try { var wb = XLSX.read(await f.arrayBuffer(), { type: "array", cellDates: true }); } catch(err){ $("#roBody", m).innerHTML = '<div class="banner danger">파일을 읽지 못했습니다: ' + esc(err.message) + '</div>'; return; }
-      // 이름 열이 있는 시트만 명단으로 읽는다(시트마다 제목 줄 위치를 따로 찾음). 첫 번째로 찾은 시트의 열 구성을 기준으로 삼는다
-      sheets = wb.SheetNames.map(function(n){ var aoa = XLSX.utils.sheet_to_json(wb.Sheets[n], { header: 1, defval: "", raw: false }), hi = -1;
+      sheets = wb.SheetNames.map(function(n){ var aoa = XLSX.utils.sheet_to_json(wb.Sheets[n], { header: 1, defval: "", raw: false, dateNF: "yyyy-mm-dd" }), hi = -1;
         for (var i = 0; i < Math.min(15, aoa.length); i++){ if (aoa[i].some(function(c){ return ROSTER_COLS[0][2].test(String(c).trim()); }) && aoa[i].some(function(c){ return ROSTER_COLS[10][2].test(String(c).trim()); })){ hi = i; break; } }
         return { name: n, aoa: aoa, hi: hi, use: false }; });
       var firstOk = sheets.filter(function(x){ return x.hi >= 0; })[0]; if (!firstOk){ $("#roBody", m).innerHTML = '<div class="banner danger">「이름」과 「로그인 아이디(메일)」 제목이 있는 시트를 찾지 못했습니다.</div>'; return; }
       firstOk.use = true; setHead(firstOk); draw(); };
-    var sheets = [];
     function setHead(sh){ hIdx = sh.hi; head = sh.aoa[sh.hi].map(function(c){ return String(c).trim(); }); map = {};
       ROSTER_COLS.forEach(function(c){ map[c[0]] = head.findIndex(function(h){ return c[2].test(h); }); }); }
     function curRows(){ var out = []; sheets.forEach(function(sh){ if (!sh.use || sh.hi < 0) return; var hd = sh.aoa[sh.hi].map(function(c){ return String(c).trim(); });
       sh.aoa.slice(sh.hi + 1).forEach(function(r){ var o = []; head.forEach(function(h, i){ var k = hd.indexOf(h); o[i] = k >= 0 ? r[k] : ""; }); out.push(o); }); }); return out; }
-    var skipped = 0;
     function parse(){ var out = []; skipped = 0; curRows().forEach(function(r){ var o = {}; ROSTER_COLS.forEach(function(c){ var v = map[c[0]] >= 0 ? String(r[map[c[0]]] == null ? "" : r[map[c[0]]]).trim() : ""; o[c[0]] = v === "-" ? "" : v; });
-      if (!o.target) return; if (/퇴직|퇴사/.test(o.status)){ skipped++; return; } out.push(o); }); return out; }
+      if (!o.target){ if (Object.keys(o).some(function(k){ return o[k]; })) skipped++; return; } ["join", "group_date", "last_day"].forEach(function(k){ o[k] = normDate(o[k]); });
+      o.retired = /퇴직|퇴사/.test(o.status); o.kind = rosterKind(o.position); o.scope = rosterScope(o); out.push(o); }); return out; }
+    var FLD = ["join", "group_date", "utype", "company", "division", "org", "hq", "office", "team", "part", "position", "site", "email", "status", "last_day"];
+    var LBL = { join: "입사일", group_date: "전적일", utype: "사용자 유형", company: "회사", division: "부문", org: "사업부", hq: "본부", office: "실", team: "팀", part: "파트", position: "직책", site: "사업장", email: "메일", status: "재직 상태", last_day: "마지막 근로일" };
     function draw(){
-      var ro = parse(), cur = all.filter(function(x){ return x.data.list === "people" && (x.data.kind === "직원" || x.data.kind === "직책자" || !x.data.kind); });
-      function keyOf(d){ return d.emp_id ? "#" + d.emp_id : (d.target + "|" + (d.org || "")); }
-      var byKey = {}; cur.forEach(function(x){ byKey[keyOf(x.data)] = x; if (x.data.emp_id) byKey[x.data.target + "|" + (x.data.org || "")] = byKey[x.data.target + "|" + (x.data.org || "")] || x; });
-      var seenKey = {}, dup = [], add = [], chg = [], same = 0, used = {};
-      ro.forEach(function(r){ var k = keyOf(r); if (seenKey[k]) dup.push(r); seenKey[k] = 1; r.kind = rosterKind(r.position); r.scope = rosterScope(r);
-        var ex = byKey[k] || byKey[r.target + "|" + (r.org || "")]; if (!ex){ add.push(r); return; } used[ex.id] = 1;
-        var diffs = ["company", "division", "org", "hq", "office", "team", "part", "position", "email", "kind"].filter(function(f){ return String(ex.data[f] || "") !== String(r[f] || "") && !(f === "email" && !r.email); });
-        if (ex.data.inactive) diffs.push("복귀"); if (diffs.length) chg.push({ x: ex, r: r, diffs: diffs }); else same++; });
-      var gone = cur.filter(function(x){ return !used[x.id] && !x.data.inactive; });
-      var noMail = ro.filter(function(r){ return !/@/.test(r.email); }), teams = {}; ro.forEach(function(r){ if (!r.team) return; var k = (r.org || "") + " " + r.team; teams[k] = teams[k] || { lead: false }; if (r.kind === "직책자" && !r.part) teams[k].lead = true; });
+      var ro = parse(), cur = staffRecs(), byEmp = {}, byName = {};
+      cur.forEach(function(x){ if (x.data.emp_id) byEmp[x.data.emp_id] = x; var n = String(x.data.target || "").trim(); if (!byName[n] || (byName[n].data.inactive && !x.data.inactive)) byName[n] = x; });
+      var seen = {}, dup = [], add = [], chg = [], keep = [], same = 0, used = {};
+      ro.forEach(function(r){ var k = r.emp_id ? "#" + r.emp_id : r.target; if (seen[k] || seen["@" + r.target]) dup.push(r); seen[k] = 1; seen["@" + r.target] = 1;
+        var ex = (r.emp_id && byEmp[r.emp_id]) || byName[r.target]; if (!ex || used[ex.id]){ add.push(r); return; } used[ex.id] = 1;
+        var guard = ex.data.retire_src === "settle" && !ex.data.roster_status && !r.retired; if (guard) keep.push({ x: ex, r: r });
+        var diffs = FLD.filter(function(f){ return String(ex.data[f] || "") !== String(r[f] || "") && !(f === "email" && !r.email) && !(guard && (f === "status" || f === "last_day")); });
+        if (!guard && !!ex.data.inactive !== r.retired) diffs.push(r.retired ? "퇴직" : "복귀");
+        if (diffs.length) chg.push({ x: ex, r: r, diffs: diffs, guard: guard }); else same++; });
+      var gone = cur.filter(function(x){ return !used[x.id] && !x.data.inactive && x.data.source !== "manual"; });
+      var act = ro.filter(function(r){ return !r.retired; }), noMail = act.filter(function(r){ return !/@/.test(r.email); }), noJoin = act.filter(function(r){ return !r.join; }), teams = {};
+      act.forEach(function(r){ if (!r.team) return; var k = (r.org || "") + " " + r.team; teams[k] = teams[k] || { lead: false }; if (r.kind === "직책자" && !r.part) teams[k].lead = true; });
       var noLead = Object.keys(teams).filter(function(k){ return !teams[k].lead; });
       function lst(arr, f){ return arr.length ? '<div class="ro-list">' + arr.slice(0, 200).map(f).join("") + (arr.length > 200 ? '<div class="hint">… 외 ' + (arr.length - 200) + '명</div>' : '') + '</div>' : ''; }
-      $("#roBody", m).innerHTML = '<div class="ro-sheets">읽을 시트: ' + sheets.map(function(sh, i){ return '<label' + (sh.hi < 0 ? ' class="hint" title="명단 형식(이름·로그인 아이디 제목)이 아니라 건너뜀"' : '') + '><input type="checkbox" data-sh="' + i + '"' + (sh.use ? " checked" : "") + (sh.hi < 0 ? " disabled" : "") + '> ' + esc(sh.name) + '</label>'; }).join("") + (skipped ? ' <span class="hint">· 재직 상태 「퇴직」 ' + skipped + '명은 제외</span>' : '') + '</div>' +
-        '<details class="mapbox" style="margin:10px 0"><summary>열 매핑 확인·변경 (' + (hIdx + 1) + '번째 줄을 제목으로 읽음 · 조직: 회사 › 부문 › 사업부 › 본부 › 실 › 팀 › 파트)' + (map.target < 0 || map.email < 0 ? ' <span class="badge danger">필수 열 미지정</span>' : '') + '</summary><div class="pgrid">' +
-        ROSTER_COLS.map(function(c){ return '<label>' + c[1] + '<select data-map="' + c[0] + '"><option value="-1">(없음)</option>' + head.map(function(h, i){ return '<option value="' + i + '"' + (map[c[0]] === i ? " selected" : "") + '>' + esc(h || "(빈 제목 " + (i + 1) + ")") + '</option>'; }).join("") + '</select></label>'; }).join("") + '</div></details>' +
-        '<div class="kpis" style="grid-template-columns:repeat(5,minmax(0,1fr));margin:8px 0">' + [["올린 인원", ro.length], ["신규", add.length], ["변경", chg.length], ["빠짐(퇴사 추정)", gone.length], ["변경 없음", same]].map(function(k){ return '<div class="kpi"><div class="k">' + k[0] + '</div><div class="v" style="font-size:22px">' + k[1] + '<small>명</small></div></div>'; }).join("") + '</div>' +
-        (noMail.length || dup.length || noLead.length ? '<div class="banner warn" style="font-size:12.5px">' + (noMail.length ? "메일 없는 사람 " + noMail.length + "명: " + esc(noMail.slice(0, 15).map(function(r){ return r.target; }).join(", ")) + (noMail.length > 15 ? " 외" : "") + "<br>" : "") + (dup.length ? "같은 사람이 두 번 이상: " + esc(dup.map(function(r){ return r.target; }).join(", ")) + "<br>" : "") + (noLead.length ? "직책자(팀장 등)가 없는 팀 " + noLead.length + "개: " + esc(noLead.slice(0, 12).join(", ")) + (noLead.length > 12 ? " 외" : "") + " — 이 팀 사람의 상위 직책자 1차는 팀장 대신 그 위(실장·본부장 등)로 잡힙니다" : "") + '</div>' : '') +
-        (add.length ? '<h4 class="ro-h">신규 ' + add.length + '명</h4>' + lst(add, function(r){ return '<span>' + esc(r.target) + ' <small>' + esc([r.org, r.team, r.position].filter(Boolean).join(" · ")) + '</small></span>'; }) : '') +
-        (chg.length ? '<h4 class="ro-h">변경 ' + chg.length + '명</h4>' + lst(chg, function(c){ return '<span>' + esc(c.r.target) + ' <small>' + esc(c.diffs.map(function(f){ return f === "복귀" ? "퇴사·제외 → 재직" : ({ company: "회사", division: "부문", org: "사업부", hq: "본부", office: "실", team: "팀", part: "파트", position: "직책", email: "메일", kind: "구분" }[f] + " " + (c.x.data[f] || "-") + "→" + (c.r[f] || "-")); }).join(" / ")) + '</small></span>'; }) : '') +
-        (gone.length ? '<h4 class="ro-h">명단에서 빠진 사람 ' + gone.length + '명 <span class="hint" style="font-weight:500">(지우지 않고 「퇴사·제외」로 표시해 발송 대상에서만 뺍니다)</span></h4>' + lst(gone, function(x){ return '<span>' + esc(x.data.target) + ' <small>' + esc([x.data.org, x.data.team].filter(Boolean).join(" ")) + '</small></span>'; }) : '') +
+      $("#roBody", m).innerHTML = '<div class="ro-sheets">읽을 시트: ' + sheets.map(function(sh, i){ return '<label' + (sh.hi < 0 ? ' class="hint" title="명단 형식(이름·로그인 아이디 제목)이 아니라 건너뜀"' : '') + '><input type="checkbox" data-sh="' + i + '"' + (sh.use ? " checked" : "") + (sh.hi < 0 ? " disabled" : "") + '> ' + esc(sh.name) + '</label>'; }).join("") + (skipped ? ' <span class="hint">· 이름 없는 줄 ' + skipped + '개는 건너뜀</span>' : '') + '</div>' +
+        '<details class="mapbox" style="margin:10px 0"><summary>열 매핑 확인·변경 (' + (hIdx + 1) + '번째 줄을 제목으로 읽음 · 휴대폰 열은 읽지 않음)' + (map.target < 0 || map.email < 0 || map.join < 0 ? ' <span class="badge danger">필수 열 미지정</span>' : '') + '</summary><div class="pgrid">' +
+        ROSTER_COLS.map(function(c){ return '<label>' + c[1] + '<select data-map="' + c[0] + '"><option value="-1">(없음)</option>' + head.map(function(h, i){ return /휴대폰|핸드폰|전화|연락처|주민/.test(h) ? '' : '<option value="' + i + '"' + (map[c[0]] === i ? " selected" : "") + '>' + esc(h || "(빈 제목 " + (i + 1) + ")") + '</option>'; }).join("") + '</select></label>'; }).join("") + '</div></details>' +
+        '<div class="kpis" style="grid-template-columns:repeat(5,minmax(0,1fr));margin:8px 0">' + [["올린 인원", ro.length, "재직·휴직 " + act.length + " · 퇴직 " + (ro.length - act.length)], ["신규", add.length, ""], ["변경", chg.length, "입퇴사·조직·직책 등"], ["명단에서 빠짐", gone.length, "퇴직(명단 제외)로 표시"], ["변경 없음", same, ""]].map(function(k){ return '<div class="kpi"><div class="k">' + k[0] + '</div><div class="v" style="font-size:22px">' + k[1] + '<small>명</small></div>' + (k[2] ? '<div class="s">' + k[2] + '</div>' : '') + '</div>'; }).join("") + '</div>' +
+        (keep.length ? '<div class="banner warn" style="font-size:12.5px">퇴직자 연차 정산으로 먼저 퇴사 등록했는데 이번 명단에는 재직·휴직으로 나온 사람 ' + keep.length + '명: ' + esc(keep.map(function(k){ return k.r.target + "(" + (k.x.data.last_day || "") + " 퇴사)"; }).join(", ")) + ' — 명단이 아직 반영 전일 수 있어 <b>퇴직 상태를 유지</b>합니다. 실제로 재직 중이면 재직자 현황에서 직접 바꾸세요.</div>' : '') +
+        (noMail.length || dup.length || noLead.length || noJoin.length ? '<div class="banner warn" style="font-size:12.5px">' + (noMail.length ? "메일 없는 재직자 " + noMail.length + "명: " + esc(noMail.slice(0, 15).map(function(r){ return r.target; }).join(", ")) + (noMail.length > 15 ? " 외" : "") + "<br>" : "") + (noJoin.length ? "입사일 없는 재직자 " + noJoin.length + "명: " + esc(noJoin.slice(0, 15).map(function(r){ return r.target; }).join(", ")) + "<br>" : "") + (dup.length ? "같은 사번·이름이 두 번 이상(동명이인이면 이름 뒤 A·B 확인): " + esc(dup.map(function(r){ return r.target; }).join(", ")) + "<br>" : "") + (noLead.length ? "직책자(팀장 등)가 없는 팀 " + noLead.length + "개: " + esc(noLead.slice(0, 12).join(", ")) + (noLead.length > 12 ? " 외" : "") + " — 이 팀 사람의 상위 직책자 1차는 그 위(실장·본부장 등)로 잡힙니다" : "") + '</div>' : '') +
+        (add.length ? '<h4 class="ro-h">신규 ' + add.length + '명</h4>' + lst(add, function(r){ return '<span>' + esc(r.target) + ' <small>' + esc([r.org, r.team, r.position, r.join ? "입사 " + r.join : "", r.retired ? "퇴직 " + (r.last_day || "") : ""].filter(Boolean).join(" · ")) + '</small></span>'; }) : '') +
+        (chg.length ? '<h4 class="ro-h">변경 ' + chg.length + '명</h4>' + lst(chg, function(c){ return '<span>' + esc(c.r.target) + ' <small>' + esc(c.diffs.map(function(f){ return f === "복귀" ? "퇴직 → 재직" : f === "퇴직" ? "재직 → 퇴직(" + (c.r.last_day || "") + ")" : LBL[f] + " " + (c.x.data[f] || "-") + "→" + (c.r[f] || "-"); }).join(" / ")) + '</small></span>'; }) : '') +
+        (gone.length ? '<h4 class="ro-h">명단에서 빠진 사람 ' + gone.length + '명 <span class="hint" style="font-weight:500">(지우지 않고 「퇴직(명단 제외)」로 표시해 자동 메일 대상에서 뺍니다. 직접 추가한 사람은 건드리지 않습니다)</span></h4>' + lst(gone, function(x){ return '<span>' + esc(x.data.target) + ' <small>' + esc([x.data.org, x.data.team].filter(Boolean).join(" ")) + '</small></span>'; }) : '') +
         '<div class="form-actions"><button type="button" class="btn ghost" id="roNo">취소</button><button type="button" class="btn primary" id="roOk"' + (map.target < 0 ? " disabled" : "") + '>이대로 반영</button></div>';
       $all("[data-map]", m).forEach(function(s){ s.onchange = function(){ map[s.dataset.map] = +s.value; draw(); }; });
       $all("[data-sh]", m).forEach(function(c){ c.onchange = function(){ sheets[+c.dataset.sh].use = c.checked; draw(); }; });
       $("#roNo", m).onclick = closeModal;
-      $("#roOk", m).onclick = async function(){ var b = this; if (!confirm("신규 " + add.length + "명, 변경 " + chg.length + "명, 퇴사·제외 " + gone.length + "명을 반영할까요?")) return; b.disabled = true; b.textContent = "반영 중…";
+      $("#roOk", m).onclick = async function(){ var b = this; if (!confirm("신규 " + add.length + "명, 변경 " + chg.length + "명, 명단 제외 " + gone.length + "명을 재직자 현황에 반영할까요?")) return; b.disabled = true; b.textContent = "반영 중…";
         try {
           var now = new Date().toISOString(), today = todayStr();
-          function pick(r){ return { target: r.target, emp_id: r.emp_id || "", company: r.company || "", division: r.division || "", org: r.org || "", hq: r.hq || "", office: r.office || "", team: r.team || "", part: r.part || "", position: r.position || "", email: r.email || "", status: r.status || "", kind: r.kind, scope: r.scope || "", source: "roster", roster_at: today }; }
-          var ins = add.map(function(r){ return { cat: "att", menu: "automail", data: Object.assign({ list: "people" }, pick(r)), updated_by: me.email }; });
-          var ups = chg.map(function(c){ var d = Object.assign({}, c.x.data, pick(c.r)); if (!c.r.email) d.email = c.x.data.email || ""; delete d.inactive; delete d.inactive_at; if (c.x.data.kind === "직책자" && c.r.kind === "직원" && c.x.data.source !== "roster") d.kind = "직책자"; if (!d.scope && c.x.data.scope) d.scope = c.x.data.scope; return { id: c.x.id, cat: "att", menu: "automail", data: d, updated_by: me.email, updated_at: now }; })
-            .concat(gone.map(function(x){ return { id: x.id, cat: "att", menu: "automail", data: Object.assign({}, x.data, { inactive: true, inactive_at: today }), updated_by: me.email, updated_at: now }; }));
-          for (var i = 0; i < ins.length; i += 300){ var r1 = await sb.from("portal_records").insert(ins.slice(i, i + 300)); if (r1.error) throw r1.error; }
-          for (var j = 0; j < ups.length; j += 15){ var rs = await Promise.all(ups.slice(j, j + 15).map(function(u){ return sb.from("portal_records").update({ data: u.data, updated_by: u.updated_by, updated_at: u.updated_at }).eq("id", u.id).select("id"); }));
-            rs.forEach(function(r2){ if (r2.error) throw r2.error; }); b.textContent = "반영 중… " + Math.min(j + 15, ups.length) + " / " + ups.length; }
-          var r3 = await sb.from("portal_records").insert({ cat: "att", menu: "automail", data: { list: "roster_log", at: today, by: me.name, file: fname, total: ro.length, add: add.length, chg: chg.length, gone: gone.length, no_mail: noMail.length }, updated_by: me.email }); if (r3.error) throw r3.error;
-          logp("att.automail", "roster", fname + " +" + add.length + " ~" + chg.length + " -" + gone.length);
-          delete S.recs["att.automail"]; closeModal(); toast("조직도를 반영했습니다."); done(); amBadgeRefresh();
+          function pick(r){ var o = { list: "emp", source: "roster", roster_at: today, roster_status: r.status || "", kind: r.kind, scope: r.scope || "" }; ["target", "emp_id"].concat(FLD).forEach(function(f){ o[f] = r[f] || ""; }); if (r.retired) o.inactive = true; return o; }
+          var ins = add.map(function(r){ return { cat: "home", menu: "staff", data: pick(r), updated_by: me.email }; });
+          var ups = chg.map(function(c){ var d = Object.assign({}, c.x.data, pick(c.r)); if (!c.r.email) d.email = c.x.data.email || "";
+              if (c.guard){ d.inactive = true; d.status = c.x.data.status || "퇴직"; d.last_day = c.x.data.last_day || ""; delete d.roster_status; }
+              else if (!c.r.retired){ delete d.inactive; delete d.inactive_at; delete d.retire_src; delete d.retire_at; }
+              return { id: c.x.id, data: d }; })
+            .concat(gone.map(function(x){ return { id: x.id, data: Object.assign({}, x.data, { inactive: true, inactive_at: today, status: "명단 제외" }) }; }));
+          for (var i = 0; i < ins.length; i += 300){ var r1 = await sb.from("portal_records").insert(ins.slice(i, i + 300)); if (r1.error) throw r1.error; b.textContent = "반영 중… 신규 " + Math.min(i + 300, ins.length) + " / " + ins.length; }
+          for (var j = 0; j < ups.length; j += 15){ var rs = await Promise.all(ups.slice(j, j + 15).map(function(u){ return sb.from("portal_records").update({ data: u.data, updated_by: me.email, updated_at: now }).eq("id", u.id).select("id"); }));
+            rs.forEach(function(r2){ if (r2.error) throw r2.error; }); b.textContent = "반영 중… 변경 " + Math.min(j + 15, ups.length) + " / " + ups.length; }
+          var r3 = await sb.from("portal_records").insert({ cat: "home", menu: "staff", data: { list: "roster_log", at: today, by: me.name, file: fname, total: ro.length, active: act.length, add: add.length, chg: chg.length, gone: gone.length, no_mail: noMail.length, kept: keep.length }, updated_by: me.email }); if (r3.error) throw r3.error;
+          logp("home.staff", "roster", fname + " +" + add.length + " ~" + chg.length + " -" + gone.length);
+          delete S.recs["home.staff"]; closeModal(); toast("재직자 현황을 반영했습니다."); done(); amBadgeRefresh();
         } catch(err){ alert("반영하지 못했습니다: " + (err.message || err)); b.disabled = false; b.textContent = "이대로 반영"; } };
     }
   }
   async function renderAutoMail(c, sub){
     var host = $("#cm"), key = "att.automail"; amTab = ["queue", "people"].indexOf(sub) >= 0 ? sub : "rules";
     host.innerHTML = '<p class="hint">불러오는 중…</p>';
-    try { await Promise.all([loadRecs("att", "automail"), can("leave.annual", "read") ? loadRecs("leave", "annual") : null, can("att.worktypes", "read") ? loadRecs("att", "worktypes") : null, can("absence.status", "read") ? loadRecs("absence", "status") : null, can("leave.status", "read") ? loadRecs("leave", "status") : null]); }
+    try { await Promise.all([loadRecs("att", "automail"), loadStaff(), can("leave.annual", "read") ? loadRecs("leave", "annual") : null, can("att.worktypes", "read") ? loadRecs("att", "worktypes") : null, can("absence.status", "read") ? loadRecs("absence", "status") : null, can("leave.status", "read") ? loadRecs("leave", "status") : null]); }
     catch(err){ host.innerHTML = '<div class="banner danger">불러오지 못했습니다: ' + esc(err.message) + '</div>'; return; }
     if (!$("#cm")) return;
-    var all = S.recs[key], rules = all.filter(function(x){ return x.data.list === "rule"; }), queue = all.filter(function(x){ return x.data.list === "queue"; }), people = all.filter(function(x){ return x.data.list === "people"; }), w = can(key, "write");
+    var all = S.recs[key], rules = all.filter(function(x){ return x.data.list === "rule"; }), queue = all.filter(function(x){ return x.data.list === "queue"; }), people = amPeopleAll(), w = can(key, "write");
     function rer(){ renderAutoMail(c, sub); }
     var cfg = all.filter(function(x){ return x.data.list === "config"; })[0];
     var h = amNav(amTab === "rules" ? "" : amTab, queue.length, people.length) +
@@ -3490,17 +3609,17 @@
             '<div class="hint" style="font-size:12.5px">받는 사람: ' + esc(toTxt) + (ccTxt ? ' · 참조: ' + esc(ccTxt) : '') + '</div><div class="am-sub">제목: ' + esc(d.subject || "") + '</div></div>'; }).join("") : '<p class="hint" style="padding:14px">등록된 규칙이 없습니다.</p>') + '</div>';
     } else if (amTab === "queue"){
       var qs = queue.slice().sort(function(a, b){ return String(b.data.due || "").localeCompare(String(a.data.due || "")) || String(b.created_at || "").localeCompare(String(a.created_at || "")); });
-      var ros2 = rosterInfo(all); if (ros2.stale && people.some(function(x){ return x.data.source === "roster"; })) h += '<div class="banner warn" style="margin-top:0">🗂 조직도가 ' + ros2.days + '일 전 기준입니다. 상위 직책자 · 팀 단위 받는 사람이 실제와 다를 수 있으니 최신 조직도를 올리세요.</div>';
+      var ros2 = rosterInfo(S.recs["home.staff"] || []); if (ros2.stale && people.some(function(x){ return x.staff; })) h += '<div class="banner warn" style="margin-top:0">👥 재직자 현황(인원 현황)이 ' + ros2.days + '일 전 기준입니다. 상위 직책자 · 팀 단위 받는 사람이 실제와 다를 수 있으니 <a href="#/staff">재직자 현황</a>에서 최신 인원 현황을 올리세요.</div>';
       h += '<div class="hint" style="font-size:12.5px;margin:0 0 12px">발송기가 만든 메일입니다. "승인 대기"는 내용을 확인하고 승인하면 다음 실행 때 발송됩니다. "주소 필요"는 수신 주소록을 채우면 다음 실행 때 다시 시도합니다. 행을 누르면 실제 본문을 볼 수 있습니다.</div>' +
         '<div class="tbl-box"><table class="rec compact"><thead><tr><th>발송 예정일</th><th>규칙</th><th>대상</th><th>받는 사람</th><th>참조</th><th>제목</th><th>상태</th><th>발송 시각</th><th></th></tr></thead><tbody>' +
         (qs.length ? qs.map(function(x){ var d = x.data; return '<tr class="clk" data-qid="' + x.id + '"><td>' + esc(d.due || "") + '</td><td>' + (d.kind === "annual-settle" ? '<span class="badge info">연차 정산</span> ' + esc(d.month || "") + ' ' + esc(d.round || "") : esc(d.rule_name || "")) + '</td><td><b>' + esc(d.target || "") + '</b>' + (d.people && d.people.length ? '<small class="hint" style="display:block;font-size:11.5px;max-width:200px">' + esc(d.people.map(function(p){ return p.target; }).join(", ")) + '</small>' : '') + '</td><td style="font-size:12px;max-width:220px">' + esc(d.email || "") + (d.warn && d.warn.length ? '<br><span class="badge warn" title="' + esc(d.warn.join(" / ")) + '">확인 ' + d.warn.length + '</span>' : '') + '</td><td style="font-size:12px;max-width:200px">' + esc(d.cc || "") + '</td><td>' + esc(d.subject || "") + '</td><td><span class="badge ' + stCls(d.status || "") + '"' + (d.error ? ' title="' + esc(d.error) + '"' : '') + '>' + esc(d.status || "") + '</span></td><td>' + esc(String(d.sent_at || "").slice(0, 16).replace("T", " ")) + '</td><td>' + (w && d.status === "승인 대기" ? '<button class="btn sm primary" data-qok="' + x.id + '">승인</button>' : '') + '</td></tr>'; }).join("") : '<tr><td colspan="9" class="hint" style="padding:18px">아직 만들어진 메일이 없습니다.</td></tr>') + '</tbody></table></div>';
     } else {
-      var ros = rosterInfo(all), PK = [""].concat(AM_KINDS).concat(["퇴사·제외"]);
+      var ros = rosterInfo(S.recs["home.staff"] || []), PK = [""].concat(AM_KINDS).concat(["퇴사·제외"]);
       var pl = people.filter(function(x){ var d = x.data; if (amPKind === "퇴사·제외") return !!d.inactive; if (d.inactive) return false; return !amPKind || (d.kind || "직원") === amPKind; }).sort(function(a, b){ return AM_KINDS.indexOf(a.data.kind || "직원") - AM_KINDS.indexOf(b.data.kind || "직원") || String(a.data.org || "").localeCompare(String(b.data.org || "")) || String(a.data.team || "").localeCompare(String(b.data.team || "")) || String(a.data.target).localeCompare(String(b.data.target)); });
-      h += (ros.need ? '<div class="banner warn" style="margin-top:0">🗂 ' + (ros.last ? "이번 달 조직도를 아직 올리지 않았습니다. 마지막 갱신 " + esc(ros.last.at) + "(" + ros.days + "일 전)." : "조직도를 아직 올리지 않았습니다.") + ' 「조직도 엑셀 올리기」로 최신 재직자 명단을 반영하세요.</div>' : '<div class="banner info" style="margin-top:0">🗂 조직도 마지막 갱신 ' + esc(ros.last.at) + ' · ' + esc(ros.last.by || "") + ' (재직 ' + ros.last.total + '명, 신규 ' + ros.last.add + ' · 변경 ' + ros.last.chg + ' · 퇴사·제외 ' + ros.last.gone + ')</div>') +
-        '<div class="hint" style="font-size:12.5px;margin:0 0 12px">자동 메일의 받는 사람·참조 명단입니다. <b>직원 · 직책자</b>는 매월 <b>조직도 엑셀</b>(인원 현황 데이터: F~L열 조직, M열 직책, S열 로그인 아이디 = 회사 메일)로 갱신합니다. 대상자 본인 주소, 상위 직책자 1·2·3차(파트장 → 팀장 → 실장 → 본부장 → 사업부장 순), 같은 팀(파트가 아닌 팀 기준)을 찾을 때 씁니다. <b>HR 담당 · 유관부서</b>는 직접 추가하며 조직도 갱신에 영향받지 않습니다. 조직도에서 빠진 사람은 지우지 않고 「퇴사·제외」로 옮겨 발송 대상에서만 뺍니다.</div>' +
-        '<div class="rec-tools"><span class="st-pick">' + PK.map(function(k){ var n = people.filter(function(x){ return k === "퇴사·제외" ? x.data.inactive : !x.data.inactive && (!k || (x.data.kind || "직원") === k); }).length; return '<button type="button" class="' + (amPKind === k ? "on" : "") + '" data-pk2="' + k + '">' + (k || "전체(재직)") + ' <small>' + n + '</small></button>'; }).join("") + '</span><span class="grow"></span>' + (w ? '<button class="btn sm primary" id="roUp">🗂 조직도 엑셀 올리기</button><button class="btn sm" id="amPaste">엑셀 붙여넣기</button><button class="btn sm" id="amPAdd">+ 명단 추가</button>' : '') + '</div>' +
-        (ros.logs.length ? '<details class="mapbox" style="margin:0 0 8px"><summary>조직도 갱신 이력 (' + ros.logs.length + ')</summary><div style="font-size:12.5px;padding:6px 10px">' + ros.logs.slice(0, 24).map(function(l){ var d = l.data; return esc(d.at) + ' · ' + esc(d.by || "") + ' · ' + esc(d.file || "") + ' · 재직 ' + d.total + '명 (신규 ' + d.add + ', 변경 ' + d.chg + ', 퇴사·제외 ' + d.gone + (d.no_mail ? ', 메일 없음 ' + d.no_mail : '') + ')'; }).join("<br>") + '</div></details>' : '') +
+      h += (ros.need ? '<div class="banner warn" style="margin-top:0">👥 ' + (ros.last ? "이번 달 인원 현황을 아직 올리지 않았습니다. 마지막 갱신 " + esc(ros.last.at) + "(" + ros.days + "일 전)." : "인원 현황을 아직 올리지 않았습니다.") + ' <a href="#/staff">재직자 현황</a>에서 「인원 현황 엑셀 올리기」로 반영하세요.</div>' : ros.last ? '<div class="banner info" style="margin-top:0">👥 직원 · 직책자는 <a href="#/staff">재직자 현황</a> 기준입니다 · 마지막 갱신 ' + esc(ros.last.at) + ' · ' + esc(ros.last.by || "") + '</div>' : '') +
+        '<div class="hint" style="font-size:12.5px;margin:0 0 12px">자동 메일의 받는 사람·참조 명단입니다. <b>직원 · 직책자</b>는 <b>재직자 현황</b>(매월 인원 현황 엑셀 업로드)에서 가져옵니다. 수정도 재직자 현황에서 합니다. 대상자 본인 주소, 상위 직책자 1·2·3차(파트장 → 팀장 → 실장 → 본부장 → 사업부장 순), 같은 팀(파트가 아닌 팀 기준)을 찾을 때 씁니다. <b>HR 담당 · 유관부서</b>는 여기서 직접 추가하며 인원 현황 갱신에 영향받지 않습니다. 퇴직자는 「퇴사·제외」로 옮겨 발송 대상에서만 뺍니다.</div>' +
+        '<div class="rec-tools"><span class="st-pick">' + PK.map(function(k){ var n = people.filter(function(x){ return k === "퇴사·제외" ? x.data.inactive : !x.data.inactive && (!k || (x.data.kind || "직원") === k); }).length; return '<button type="button" class="' + (amPKind === k ? "on" : "") + '" data-pk2="' + k + '">' + (k || "전체(재직)") + ' <small>' + n + '</small></button>'; }).join("") + '</span><span class="grow"></span>' + (can("home.staff", "read") ? '<a class="btn sm" href="#/staff">👥 재직자 현황 ›</a>' : '') + (w ? '<button class="btn sm" id="amPaste">엑셀 붙여넣기</button><button class="btn sm primary" id="amPAdd">+ HR 담당 · 유관부서 추가</button>' : '') + '</div>' +
+        
         '<div class="pp-bar"><span class="hint" id="ppCnt"></span><span class="grow"></span><button type="button" class="btn sm ghost" id="ppReset">필터 초기화</button><button type="button" class="btn sm" id="ppXls">⬇ 엑셀 내려받기</button></div><div id="ppTbl"></div>';
     }
     host.innerHTML = h;
@@ -3526,22 +3645,21 @@
         var opts = {}, blank = false; base.forEach(function(x){ if (!pass(x, c[0])) return; var v = val(x.data, c[0]); if (v) opts[v] = (opts[v] || 0) + 1; else blank = true; });
         var ks = Object.keys(opts).sort(); return '<th><select data-pf="' + c[0] + '"' + (f[c[0]] ? ' class="on"' : '') + '><option value="">전체</option>' + ks.map(function(k){ return '<option' + (k === f[c[0]] ? " selected" : "") + ' value="' + esc(k) + '">' + esc(k) + ' (' + opts[k] + ')</option>'; }).join("") + (blank ? '<option value="(빈칸)"' + (f[c[0]] === "(빈칸)" ? " selected" : "") + '>(빈칸)</option>' : '') + '</select></th>'; }).join("") + '</tr>';
       $("#ppTbl").innerHTML = '<div class="tbl-box pp-box"><table class="rec compact pp-tbl"><thead>' + head + '</thead><tbody>' + (list.length ? list.slice(0, 1500).map(function(x){ var d = x.data; return '<tr class="clk' + (d.inactive ? " ended" : "") + '" data-pid="' + x.id + '">' + C.map(function(c){ var v = val(d, c[0]);
-          if (c[0] === "kind") return '<td><span class="badge ' + (d.inactive ? "neutral" : d.kind === "직책자" ? "info" : d.kind === "HR 담당" ? "good" : d.kind === "유관부서" ? "warn" : "neutral") + '">' + esc(v) + '</span>' + (d.source === "roster" ? ' <small class="hint" title="조직도 ' + esc(d.roster_at || "") + '">🗂</small>' : '') + '</td>';
+          if (c[0] === "kind") return '<td><span class="badge ' + (d.inactive ? "neutral" : d.kind === "직책자" ? "info" : d.kind === "HR 담당" ? "good" : d.kind === "유관부서" ? "warn" : "neutral") + '">' + esc(v) + '</span>' + (x.staff ? ' <small class="hint" title="재직자 현황(' + esc(d.roster_at || "직접 입력") + ')">👥</small>' : '') + '</td>';
           if (c[0] === "target") return '<td><b>' + esc(v) + '</b></td>'; if (c[0] === "email" && !v) return '<td><span class="badge warn">없음</span></td>'; return '<td>' + esc(v) + '</td>'; }).join("") + '</tr>'; }).join("") + (list.length > 1500 ? '<tr><td colspan="' + C.length + '" class="hint">… 1,500명까지만 표시합니다. 필터로 좁혀 보세요.</td></tr>' : '')
         : '<tr><td colspan="' + C.length + '" class="hint" style="padding:18px">조건에 맞는 명단이 없습니다.</td></tr>') + '</tbody></table></div>';
       $("#ppCnt").textContent = list.length + "명 / " + base.length + "명" + (Object.keys(f).some(function(k){ return f[k]; }) ? " (필터 적용 중)" : "");
       $all("#ppTbl select[data-pf]").forEach(function(sel){ sel.onchange = function(){ f[sel.dataset.pf] = sel.value; drawPeople(base, canW); }; });
       $all("#ppTbl input[data-pf]").forEach(function(inp){ inp.addEventListener("change", function(){ f[inp.dataset.pf] = inp.value.trim(); drawPeople(base, canW); var n = $('#ppTbl input[data-pf="' + inp.dataset.pf + '"]'); if (n) n.focus(); }); });
-      $all("#ppTbl tr[data-pid]").forEach(function(tr){ tr.onclick = function(){ if (canW) amPersonEdit(byId(tr.dataset.pid)); }; });
+      $all("#ppTbl tr[data-pid]").forEach(function(tr){ tr.onclick = function(){ var px = base.filter(function(y){ return y.id === tr.dataset.pid; })[0]; if (px && px.staff){ if (confirm("직원 · 직책자는 재직자 현황에서 고칩니다. 재직자 현황으로 갈까요?")) location.hash = "#/staff"; return; } if (canW) amPersonEdit(byId(tr.dataset.pid)); }; });
       $("#ppReset").onclick = function(){ amPF = {}; f = amPF; drawPeople(base, canW); };
       $("#ppXls").onclick = function(){ if (!window.XLSX){ alert("엑셀 도구를 불러오지 못했습니다."); return; } var ws = XLSX.utils.aoa_to_sheet([C.map(function(c){ return c[1]; })].concat(list.map(function(x){ return C.map(function(c){ return val(x.data, c[0]); }); }))); var wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "수신 주소록"); XLSX.writeFile(wb, "수신주소록_" + todayStr() + ".xlsx"); };
     }
-    if ($("#roUp")) $("#roUp").onclick = function(){ if (!window.XLSX){ alert("엑셀 도구를 불러오지 못했습니다. 새로고침 후 다시 시도하세요."); return; } openRosterUpload(all, rer); };
     if ($("#amPAdd")) $("#amPAdd").onclick = function(){ amPersonEdit(null); };
     if ($("#amPaste")) $("#amPaste").onclick = function(){ promptModal("엑셀 붙여넣기", "「구분 · 이름 · 소속 · 팀 · 회사 메일 · 개인 메일 · 역할 · 담당 범위」 순서로 복사해 붙여 넣으세요(제목 줄은 있어도 됩니다). 구분은 직원 / 직책자 / HR 담당 / 유관부서. 이미 있는 이름+소속은 내용이 바뀝니다.", "", true, async function(v){
       var rows = v.split(/\r?\n/).map(function(l){ return l.split("\t").map(function(s){ return s.trim(); }); }).filter(function(p){ return p[1] && (/@/.test(p[4] || "") || /@/.test(p[5] || "")); }), n = 0;
       for (var i = 0; i < rows.length; i++){ var p = rows[i], d = { list: "people", kind: AM_KINDS.indexOf(p[0]) >= 0 ? p[0] : "직원", target: p[1], org: p[2] || "", team: p[3] || "", email: p[4] || "", email2: p[5] || "", role: p[6] || "", scope: p[7] || "" };
-        var ex = people.filter(function(x){ return x.data.target === d.target && (x.data.org || "") === d.org; })[0]; if (ex){ if (await save(ex, d)) n++; } else if (await add(d)) n++; }
+        var ex = people.filter(function(x){ return !x.staff && x.data.target === d.target && (x.data.org || "") === d.org; })[0]; if (ex){ if (await save(ex, d)) n++; } else if (await add(d)) n++; }
       toast(n + "명을 저장했습니다."); rer(); }); };
     function amPersonEdit(x){
       var d = x ? x.data : { kind: amPKind || "HR 담당" };
@@ -3571,14 +3689,14 @@
       var d = x ? Object.assign({}, x.data) : { list: "rule", source: AM_SRC[2][0], event: "start", when: "rel", offset: -7, mode: "approve", enabled: false, subject: "", body_html: "", rcpt_to: { self: true } };
       if (!d.rcpt_to){ d.rcpt_to = d.to ? { extra: d.to } : { self: true, selfPersonal: true }; } if (!d.rcpt_cc) d.rcpt_cc = { extra: d.cc || "" };
       function sel(name, opts, cur){ return '<select name="' + name + '">' + opts.map(function(o){ return '<option value="' + esc(o[0]) + '"' + (String(o[0]) === String(cur) ? " selected" : "") + '>' + esc(o[1]) + '</option>'; }).join("") + '</select>'; }
-      var forms = [], ros = rosterInfo(all);
+      var forms = [], ros = rosterInfo(S.recs["home.staff"] || []);
       var m = showModal('<div class="am-ed-h"><h3>발송 규칙 ' + (x ? "수정" : "추가") + '</h3><nav class="am-steps">' + [["1", "① 발송 조건"], ["2", "② 받는 사람"], ["3", "③ 본문"], ["4", "④ 미리보기"]].map(function(s){ return '<button type="button" data-step="' + s[0] + '" class="' + (s[0] === "1" ? "on" : "") + '">' + s[1] + '</button>'; }).join("") + '</nav></div>' +
         '<div class="am-pane" data-pane="1"><form class="f" id="amf" onsubmit="return false"><label class="full">규칙 이름<input name="target" value="' + esc(d.target || "") + '" required></label>' +
         '<label>대상' + sel("source", AM_SRC, d.source) + '</label><label>기준일' + sel("event", [["start", "시작일"], ["end", "종료일"], ["return", "복직일(종료 다음 날)"]], d.event) + '</label>' +
         '<label>보내는 시점' + sel("when", AM_WHEN, d.when) + '</label><label>D±n일 (전은 음수, 예: -7)<input type="number" name="offset" value="' + esc(d.offset == null ? 0 : d.offset) + '"></label>' +
         '<label>매월 발송일 (일괄일 때)<input type="number" name="day" min="1" max="31" value="' + esc(d.day || 1) + '"></label><label>일괄 대상' + sel("scope", [["this", "이번 달 해당자"], ["next", "다음 달 해당자"]], d.scope || "this") + '</label>' +
         '<label>발송 방식' + sel("mode", [["approve", "승인 후 발송"], ["auto", "자동 발송"]], d.mode) + '</label><label>대상 조건 (태그·내용에 포함된 말)<input name="tagq" value="' + esc(d.tagq || "") + '" placeholder="예: 임신기 · 비우면 전체"></label></form></div>' +
-        '<div class="am-pane" data-pane="2" hidden>' + (ros.stale ? '<div class="banner warn" style="font-size:12.5px">' + (ros.last ? "조직도가 " + ros.days + "일 전(" + esc(ros.last.at) + ") 기준입니다." : "조직도를 아직 올리지 않았습니다.") + ' 「상위 직책자 · 같은 팀 · 팀」은 조직도 기준이라, 수신 주소록에서 최신 조직도를 먼저 올리세요.</div>' : '') +
+        '<div class="am-pane" data-pane="2" hidden>' + (ros.stale ? '<div class="banner warn" style="font-size:12.5px">' + (ros.last ? "조직도가 " + ros.days + "일 전(" + esc(ros.last.at) + ") 기준입니다." : "조직도를 아직 올리지 않았습니다.") + ' 「상위 직책자 · 같은 팀 · 팀」은 조직도 기준이라, 재직자 현황에서 최신 인원 현황을 먼저 올리세요.</div>' : '') +
         '<div class="ep-h2">받는 사람</div>' + rcpHtml("to", d.rcpt_to, people) + '<div class="ep-h2">참조(CC)</div>' + rcpHtml("cc", d.rcpt_cc, people) +
         '<div class="ep-h2">예시 대상자 기준 실제 주소 <span class="hint" style="font-weight:500">(④ 미리보기에서 대상자를 바꿀 수 있습니다)</span></div><div id="rcpPv" style="font-size:12px"></div></div>' +
         '<div class="am-pane" data-pane="3" hidden><label class="am-subj">제목 <input name="subject" form="amf" value="' + esc(d.subject || "") + '" placeholder="예: [안내] {이름}님 휴직 안내"></label>' +

@@ -82,7 +82,10 @@ async function patch(x, p) { const data = { ...x.data, ...p }; const r = await s
 const am = await recs("att", "automail");
 const all = { wt: await recs("att", "worktypes"), absence: await recs("absence", "status"), leave: await recs("leave", "status") };
 const rules = am.filter((x) => x.data.list === "rule" && x.data.enabled === true);
-const people = am.filter((x) => x.data.list === "people");
+// 받는 사람 명단: 직접 넣은 HR 담당·유관부서 + 재직자 현황(직원·직책자, 매월 인원 현황 업로드)
+const rosterKind = (pos) => { pos = String(pos || "").trim(); return pos && pos !== "-" && !/팀원/.test(pos) ? "직책자" : "직원"; };
+const staff = (await recs("home", "staff")).filter((x) => x.data.list === "emp").map((x) => ({ ...x, data: { ...x.data, kind: x.data.kind || rosterKind(x.data.position) } }));
+const people = am.filter((x) => x.data.list === "people" && x.data.source !== "roster").concat(staff);
 const queue = am.filter((x) => x.data.list === "queue");
 const keys = new Set(queue.map((x) => x.data.key));
 let made = 0, sent = 0, failed = 0, noaddr = 0;
